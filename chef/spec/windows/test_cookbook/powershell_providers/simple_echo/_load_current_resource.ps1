@@ -1,1 +1,0 @@
-write-output "load current resource for simple echo"
