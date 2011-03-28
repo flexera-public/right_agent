@@ -2,3 +2,5 @@
 tags
 .DS_Store
 *.swp
+.rvmrc
+.bundle
