@@ -45,9 +45,6 @@ module RightScale
     # Maximum number of queued requests before triggering re-enroll vote
     MAX_QUEUED_REQUESTS = 1000
 
-    # Number of seconds that should be spent in offline mode before triggering a re-enroll vote
-    REENROLL_VOTE_DELAY = 900 # 15 minutes
-
     # (EM::Timer) Timer while waiting for mapper ping response
     attr_accessor :pending_ping
   
@@ -98,7 +95,6 @@ module RightScale
       @queue_running = false
       @queue_initializing = false
       @queue = []
-      @reenroll_vote_count = 0
       @retry_timeout = nil_if_zero(@options[:retry_timeout])
       @retry_interval = nil_if_zero(@options[:retry_interval])
       @ping_interval = @options[:ping_interval] || 0
@@ -344,7 +340,6 @@ module RightScale
         @offlines.update
         @queue = []
         @queueing_mode = :offline
-        @reenroll_vote_timer ||= EM::Timer.new(REENROLL_VOTE_DELAY) { vote_to_reenroll(timer_trigger=true) }
       end
     end
 
@@ -357,8 +352,6 @@ module RightScale
       if offline? && @queue_running
         RightLinkLog.info("[offline] Connection to broker re-established")
         @offlines.finish
-        @reenroll_vote_timer.cancel if @reenroll_vote_timer
-        @reenroll_vote_timer = nil
         @stop_flushing_queue = false
         @flushing_queue = true
         # Let's wait a bit not to flood the mapper
@@ -730,20 +723,6 @@ module RightScale
       true
     end
 
-    # Vote for re-enrollment and reset trigger
-    #
-    # === Parameters
-    # timer_trigger(Boolean):: true if vote was triggered by timer, false if it
-    #                          was triggered by number of messages in in-memory queue
-    def vote_to_reenroll(timer_trigger)
-      RightScale::ReenrollManager.vote
-      if timer_trigger
-        @reenroll_vote_timer = EM::Timer.new(REENROLL_VOTE_DELAY) { vote_to_reenroll(timer_trigger = true) }
-      else
-        @reenroll_vote_count = 0
-      end
-    end
-
     # Is agent currently offline?
     #
     # === Return
@@ -790,8 +769,6 @@ module RightScale
     # === Return
     # true:: Always return true
     def queue_request(request)
-      @reenroll_vote_count += 1 if @queue_running
-      vote_to_reenroll(timer_trigger = false) if @reenroll_vote_count >= MAX_QUEUED_REQUESTS
       if @queue_initializing
         # We are in the initialization callback, requests should be put at the head of the queue
         @queue.unshift(request)

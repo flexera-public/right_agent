@@ -65,7 +65,7 @@ class TestData6
   end
 end
 
-describe RightScale::RightLinkTracer do
+describe RightScale::RightTracer do
 
   before(:all) do
     @test = TestData.new
@@ -78,37 +78,37 @@ describe RightScale::RightLinkTracer do
 
   it 'should trace instance methods' do
     flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
-    RightScale::RightLinkTracer.add_tracing_to_class(@test.class)
+    RightScale::RightTracer.add_tracing_to_class(@test.class)
     @test.trace_me
   end
 
   it 'should trace class methods' do
     flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
-    RightScale::RightLinkTracer.add_tracing_to_class(@test2.class)
+    RightScale::RightTracer.add_tracing_to_class(@test2.class)
     TestData2.trace_me_too
   end
 
   it 'should trace entire modules' do
     flexmock(RightScale::RightLinkLog).should_receive(:debug).times(4)
-    RightScale::RightLinkTracer.add_tracing_to_namespaces('Traced')
+    RightScale::RightTracer.add_tracing_to_namespaces('Traced')
     @test3.trace_me_three
     Traced::TestData3.trace_me_four
   end
 
   it 'should return correct results' do
     flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
-    RightScale::RightLinkTracer.add_tracing_to_class(@test4.class)
+    RightScale::RightTracer.add_tracing_to_class(@test4.class)
     @test4.send_result.should == 'result'
   end
 
   it 'should trace methods taking blocks' do
     flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
-    RightScale::RightLinkTracer.add_tracing_to_class(@test5.class)
+    RightScale::RightTracer.add_tracing_to_class(@test5.class)
     @test5.use_block { 'result' }.should == 'result'    
   end
 
   it 'should handle methods names ending with special characters' do
-    RightScale::RightLinkTracer.add_tracing_to_class(@test6.class)
+    RightScale::RightTracer.add_tracing_to_class(@test6.class)
   end
 
 end

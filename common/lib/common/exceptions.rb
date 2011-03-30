@@ -20,32 +20,11 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-begin
-  require 'chef/exceptions'
-rescue LoadError => e
-  # Make sure we're dealing with a legitimate missing-file LoadError
-  raise e unless e.message =~ /^no such file to load/
-
-  # Do not require the chef gem to be installed just to load this code
-  module Chef
-    class Exceptions
-      class Exec < RuntimeError; end
-    end
-  end
-end
-
 module RightScale
   class Exceptions
     class Application < RuntimeError; end
     class Argument < RuntimeError; end
     class IO < RuntimeError; end
     class PlatformError < StandardError; end
-    class Exec < Chef::Exceptions::Exec
-      def initialize(msg, cwd=nil)
-        super(msg)
-        @path = cwd
-      end
-      attr_reader :path    # Path where command was run
-    end
   end
 end

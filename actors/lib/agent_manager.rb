@@ -26,7 +26,7 @@ class AgentManager
 
   include RightScale::Actor
 
-  expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect, :record_fault
+  expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect
 
   # Valid log levels
   LEVELS = [:debug, :info, :warn, :error, :fatal]
@@ -47,9 +47,9 @@ class AgentManager
   def ping(_)
     res = RightScale::OperationResult.success(:identity => @agent.options[:identity],
                                               :hostname => Socket.gethostname,
-                                              :version => RightScale::RightLinkConfig.protocol_version,
-                                              :brokers => @agent.broker.status,
-                                              :time => Time.now.to_i)
+                                              :version  => RightScale::RightLinkConfig.protocol_version,
+                                              :brokers  => @agent.broker.status,
+                                              :time     => Time.now.to_i)
   end
 
   # Retrieve statistics about agent operation
@@ -93,7 +93,7 @@ class AgentManager
     begin
       return RightScale::OperationResult.success(self.instance_eval(code))
     rescue Exception => e
-      return RightScale::OperationResult.error(e.message + " at\n" + e.backtrace.join("\n"))
+      return RightScale::OperationResult.error(e.message + " at\n  " + e.backtrace.join("\n  "))
     end
   end
 
@@ -166,39 +166,6 @@ class AgentManager
       res = RightScale::OperationResult.error("Failed to notify agent that brokers #{options[:brokers]} are unusable: #{e.message}")
     end
     res
-  end
-
-  # Process fault (i.e. mapper failed to decrypt one of our packets)
-  # Vote for re-enrollment
-  #
-  # === Return
-  # res(RightScale::OperationResult):: Always returns success
-  def record_fault(_)
-    RightScale::ReenrollManager.vote
-    res = RightScale::OperationResult.success
-  end
-
-  # Process exception raised by handling of packet
-  # If it's a serialization error and the packet has a valid signature, vote for re-enroll
-  #
-  # === Parameters
-  # e(Exception):: Exception to be analyzed
-  # msg(String):: Serialized message that triggered error
-  #
-  # === Return
-  # true:: Always return true
-  def self.process_exception(e, msg)
-    if e.is_a?(RightScale::Serializer::SerializationError)
-      begin
-        serializer = Serializer.new
-        data = serializer.load(msg)
-        sig = RightScale::Signature.from_data(data['signature'])
-        @cert ||= RightScale::Certificate.load(File.join(RightScale::RightLinkConfig[:certs_dir], 'mapper.cert'))
-        ReenrollManager.vote if sig.match?(@cert)
-      rescue Exception => _
-        RightScale::RightLinkLog.error("Failed processing serialization error", e)
-      end
-    end
   end
 
 end

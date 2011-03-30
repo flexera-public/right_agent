@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -21,20 +21,15 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require 'mixlib/config'
-require File.join(File.dirname(__FILE__), 'platform')
-RightScale::Platform.load_platform_specific # To define 'File.normalize_path'
 
 module RightScale
 
   # RightLink global configuration options
-  class RightLinkConfig
+  class AgentConfig
     extend Mixlib::Config
   end
 
-  # Initialize platform
-  RightLinkConfig[:platform] = Platform.new
-
   # Initialized from content of 'config.rb'
   # Modify 'config.rb' and not this file!
-  RightLinkConfig.from_file(File.join(File.dirname(__FILE__), 'config.rb'))
+  AgentConfig.from_file(File.join(File.dirname(__FILE__), 'config.rb'))
 end

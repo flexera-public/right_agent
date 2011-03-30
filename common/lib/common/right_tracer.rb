@@ -31,10 +31,10 @@ end
 
 module RightScale
 
-  class RightLinkTracer
+  class RightTracer
 
     NON_TRACEABLE_CLASSES = [ 'Kernel', 'Module', 'Object' , 'SyslogLogger', 'RightSupport::SystemLogger' ] +
-                            [ 'RightScale::RightLinkTracer', 'RightScale::Multiplexer' ] +
+                            [ 'RightScale::RightTracer', 'RightScale::Multiplexer' ] +
                             [ 'RightScale::RightLinkLog', 'RightScale::RightLinkLog::Formatter' ]
 
     NON_TRACEABLE_METHODS = [ :metaclass, :method_missing, :method_added, :blank_slate_method_added, :[], :[]= ]
