@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -63,13 +63,13 @@ module RightScale
               if commands.include?(cmd_name)
                 commands[cmd_name].call(c, conn)
               else
-                RightLinkLog.warn("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
+                RightLog.warn("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
               end
             else
-              RightLinkLog.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
+              RightLog.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
             end
           rescue Exception => e
-            RightLinkLog.warn("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
+            RightLog.warn("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
           end
         end
 
@@ -81,11 +81,11 @@ module RightScale
           if pid_file.exists?
             pid_file.set_command_options(cmd_options)
           else
-            RightLinkLog.warn("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
+            RightLog.warn("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
           end
         end
 
-        RightLinkLog.info("[setup] Command server started listening on port #{@listen_port}")
+        RightLog.info("[setup] Command server started listening on port #{@listen_port}")
       rescue Exceptions::IO
         # Port already taken, increment and retry
         cmd_options = start(socket_port + 1, identity, commands, options)
@@ -101,7 +101,7 @@ module RightScale
     # false:: Otherwise
     def self.stop
       CommandIO.instance.stop_listening
-      RightLinkLog.info("[stop] Command server stopped listening")
+      RightLog.info("[stop] Command server stopped listening")
     end
 
   end

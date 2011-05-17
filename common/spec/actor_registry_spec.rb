@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -68,7 +68,7 @@ describe RightScale::ActorRegistry do
 
   it "should log info message that actor was registered" do
     importer = WebDocumentImporter.new
-    flexmock(RightScale::RightLinkLog).should_receive(:info).with("[actor] #{importer.class.to_s}").once
+    flexmock(RightScale::RightLog).should_receive(:info).with("[actor] #{importer.class.to_s}").once
     @registry.register(importer, nil)
   end
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -38,7 +38,7 @@ require File.join(COMMON_BASE_DIR, 'daemonize')
 require File.join(COMMON_BASE_DIR, 'pid_file')
 require File.join(COMMON_BASE_DIR, 'exceptions')
 require File.join(COMMON_BASE_DIR, 'multiplexer')
-require File.join(COMMON_BASE_DIR, 'right_link_log')
+require File.join(COMMON_BASE_DIR, 'right_log')
 require File.join(COMMON_BASE_DIR, 'right_tracer')
 require File.join(COMMON_BASE_DIR, 'audit_formatter')
 require File.join(COMMON_BASE_DIR, 'serializer')

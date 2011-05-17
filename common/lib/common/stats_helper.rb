@@ -1,4 +1,4 @@
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -270,7 +270,7 @@ module RightScale
                          "message" => exception.message, "where" => backtrace})
           end
         rescue Exception => e
-          RightLinkLog.error("Failed to track exception '#{exception}' due to: #{e}\n" + e.backtrace.join("\n")) rescue nil
+          RightLog.error("Failed to track exception '#{exception}' due to: #{e}\n" + e.backtrace.join("\n")) rescue nil
         end
         true
       end

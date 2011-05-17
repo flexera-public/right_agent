@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -63,7 +63,7 @@ $:.push File.join(File.dirname( __FILE__), '..', 'actors', 'lib')
 config = Spec::Runner.configuration
 config.mock_with :flexmock
 
-RightScale::RightLinkLog.init
+RightScale::RightLog.init
 
 $TESTING = true
 $VERBOSE = nil # Disable constant redefined warning
@@ -174,10 +174,10 @@ module RightScale
 
 end # RightScale
 
-require File.normalize_path(File.join(__FILE__, '..', '..', 'common', 'lib', 'common', 'right_link_log'))
+require File.normalize_path(File.join(__FILE__, '..', '..', 'common', 'lib', 'common', 'right_log'))
 
 module RightScale
-  class RightLinkLog
+  class RightLog
     # Monkey path RightLink logger to not log by default
     # Define env var RS_LOG to override this behavior and have
     # the logger log normally

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2010 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -48,7 +48,7 @@ module RightScale
         if process_running? pid
           raise "#{@pid_file} already exists (pid: #{pid})"
         else
-          RightLinkLog.info "removing stale pid file: #{@pid_file}"
+          RightLog.info "removing stale pid file: #{@pid_file}"
           remove
         end
       end
@@ -65,7 +65,7 @@ module RightScale
         open(@pid_file,'w') { |f| f.write(Process.pid) }
         File.chmod(0644, @pid_file)
       rescue Exception => e
-        RightLinkLog.error "Failed to create PID file: #{e.message}"
+        RightLog.error "Failed to create PID file: #{e.message}"
         raise
       end
       true

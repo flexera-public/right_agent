@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -47,7 +47,7 @@ module RightScale
       raise ArgumentError, "#{actor.inspect} is not a RightScale::Actor subclass instance" unless RightScale::Actor === actor
       log_msg = "[actor] #{actor.class.to_s}"
       log_msg += ", prefix #{prefix}" if prefix && !prefix.empty?
-      RightLinkLog.info(log_msg)
+      RightLog.info(log_msg)
       prefix ||= actor.class.default_prefix
       actors[prefix.to_s] = actor
     end

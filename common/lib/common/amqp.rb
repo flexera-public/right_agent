@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -216,7 +216,7 @@ begin
         end
       end
 
-      RightScale::RightLinkLog.warning("Attempting to reconnect to broker " +
+      RightScale::RightLog.warning("Attempting to reconnect to broker " +
         "#{RightScale::AgentIdentity.new('rs', 'broker', @settings[:port].to_i, @settings[:host].gsub('-', '~')).to_s}")
       log 'reconnecting'
       EM.reconnect(@settings[:host], @settings[:port], self)
@@ -251,7 +251,7 @@ begin
       begin
         orig_receive_data(*args)
       rescue Exception => e
-        RightScale::RightLinkLog.error("Exception caught while processing AMQP frame, closing connection",
+        RightScale::RightLog.error("Exception caught while processing AMQP frame, closing connection",
                                        e, :trace) unless ENV['IGNORE_AMQP_FAILURES']
         close_connection
       end
@@ -503,7 +503,7 @@ module RightScale
 
       each_usable(options[:brokers]) do |b|
         begin
-          RightLinkLog.info("[setup] Subscribing queue #{queue[:name]}#{to_exchange} on broker #{b[:alias]}")
+          RightLog.info("[setup] Subscribing queue #{queue[:name]}#{to_exchange} on broker #{b[:alias]}")
           q = b[:mq].queue(queue[:name], queue_options)
           b[:queues] << q
           if exchange
@@ -523,13 +523,13 @@ module RightScale
                   execute_callback(blk, b[:identity], msg)
                 elsif msg == "nil"
                   # This happens as part of connecting an instance agent to a broker
-                  RightLinkLog.debug("RECV #{b[:alias]} nil message ignored")
+                  RightLog.debug("RECV #{b[:alias]} nil message ignored")
                 elsif
                   packet = receive(b, queue[:name], msg, options)
                   execute_callback(blk, b[:identity], packet) if packet
                 end
               rescue Exception => e
-                RightLinkLog.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
+                RightLog.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
                                    "on broker #{b[:alias]}", e, :trace)
                 @exceptions.track("receive", e)
               end
@@ -541,13 +541,13 @@ module RightScale
                   execute_callback(blk, b[:identity], msg)
                 elsif msg == "nil"
                   # This happens as part of connecting an instance agent to a broker
-                  RightLinkLog.debug("RECV #{b[:alias]} nil message ignored")
+                  RightLog.debug("RECV #{b[:alias]} nil message ignored")
                 elsif
                   packet = receive(b, queue[:name], msg, options)
                   execute_callback(blk, b[:identity], packet) if packet
                 end
               rescue Exception => e
-                RightLinkLog.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
+                RightLog.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
                                    "on broker #{b[:alias]}", e, :trace)
                 @exceptions.track("receive", e)
               end
@@ -555,7 +555,7 @@ module RightScale
           end
           identities << b[:identity]
         rescue Exception => e
-          RightLinkLog.error("Failed subscribing queue #{queue.inspect}#{to_exchange} on broker #{b[:alias]}", e, :trace)
+          RightLog.error("Failed subscribing queue #{queue.inspect}#{to_exchange} on broker #{b[:alias]}", e, :trace)
           @exceptions.track("subscribe", e)
         end
       end
@@ -600,10 +600,10 @@ module RightScale
           b[:queues].each do |q|
             if queue_names.include?(q.name)
               begin
-                RightLinkLog.info("[stop] Unsubscribing queue #{q.name} on broker #{b[:alias]}")
+                RightLog.info("[stop] Unsubscribing queue #{q.name} on broker #{b[:alias]}")
                 q.unsubscribe { handler.completed_one }
               rescue Exception => e
-                RightLinkLog.error("Failed unsubscribing queue #{q.name} on broker #{b[:alias]}", e, :trace)
+                RightLog.error("Failed unsubscribing queue #{q.name} on broker #{b[:alias]}", e, :trace)
                 @exceptions.track("unsubscribe", e)
                 handler.completed_one
               end
@@ -628,11 +628,11 @@ module RightScale
       identities = []
       each_usable(options[:brokers]) do |b|
         begin
-          RightLinkLog.info("[setup] Declaring #{name} #{type.to_s} on broker #{b[:alias]}")
+          RightLog.info("[setup] Declaring #{name} #{type.to_s} on broker #{b[:alias]}")
           b[:mq].__send__(type, name, options)
           identities << b[:identity]
         rescue Exception => e
-          RightLinkLog.error("Failed declaring #{type.to_s} #{name} on broker #{b[:alias]}", e, :trace)
+          RightLog.error("Failed declaring #{type.to_s} #{name} on broker #{b[:alias]}", e, :trace)
           @exceptions.track("declare", e)
         end
       end
@@ -674,19 +674,19 @@ module RightScale
       no_serialize = options[:no_serialize] || @serializer.nil?
       msg = if no_serialize then packet else @serializer.dump(packet) end
       brokers = use(options)
-      choices = if RightLinkLog.level == :debug
+      choices = if RightLog.level == :debug
         " [#{brokers.inject([]) { |c, b| if b[:status] == :connected then c << b[:alias] else c end }.join(", ")}]"
       end
       brokers.each do |b|
         if b[:status] == :connected
           begin
-            unless (options[:no_log] && RightLinkLog.level != :debug) || no_serialize
+            unless (options[:no_log] && RightLog.level != :debug) || no_serialize
               re = "RE-" if packet.respond_to?(:tries) && !packet.tries.empty?
-              log_filter = options[:log_filter] unless RightLinkLog.level == :debug
-              RightLinkLog.info("#{re}SEND #{b[:alias]}#{choices} #{packet.to_s(log_filter, :send_version)} " +
+              log_filter = options[:log_filter] unless RightLog.level == :debug
+              RightLog.info("#{re}SEND #{b[:alias]}#{choices} #{packet.to_s(log_filter, :send_version)} " +
                                 "#{options[:log_data]}")
             end
-            RightLinkLog.debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
+            RightLog.debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
                                "type #{exchange[:type]}, options #{exchange[:options].inspect}")
             delete_from_cache(b[:mq], exchange[:type], exchange[:name]) if exchange_options[:declare]
             b[:mq].__send__(exchange[:type], exchange[:name], exchange_options).publish(msg, options)
@@ -694,7 +694,7 @@ module RightScale
             @published.store(msg, packet, brokers.map { |b| b[:identity] }, options) if options[:mandatory] && !no_serialize
             break unless options[:fanout]
           rescue Exception => e
-            RightLinkLog.error("Failed publishing to exchange #{exchange.inspect} on broker #{b[:alias]}", e, :trace)
+            RightLog.error("Failed publishing to exchange #{exchange.inspect} on broker #{b[:alias]}", e, :trace)
             @exceptions.track("publish", e)
           end
         end
@@ -736,7 +736,7 @@ module RightScale
           b[:mq].queue(name, options).delete
           identities << b[:identity]
         rescue Exception => e
-          RightLinkLog.error("Failed deleting queue #{name.inspect} on broker #{b[:alias]}", e, :trace)
+          RightLog.error("Failed deleting queue #{name.inspect} on broker #{b[:alias]}", e, :trace)
           @exceptions.track("delete", e)
         end
       end
@@ -1012,7 +1012,7 @@ module RightScale
       identity = self.class.identity(host, port)
       existing = @brokers_hash[identity]
       if existing && [:connected, :connecting].include?(existing[:status]) && !force
-        RightLinkLog.info("Ignored request to reconnect #{identity} because already #{existing[:status].to_s}")
+        RightLog.info("Ignored request to reconnect #{identity} because already #{existing[:status].to_s}")
         false
       elsif !existing && identity2 = get(alias_id)
         raise Exception, "Not allowed to change host or port of existing broker #{identity2}, " +
@@ -1068,7 +1068,7 @@ module RightScale
     def remove(host, port, &blk)
       identity = self.class.identity(host, port)
       if broker = @brokers_hash[identity]
-        RightLinkLog.info("Removing #{identity}, alias #{broker[:alias]} from broker list")
+        RightLog.info("Removing #{identity}, alias #{broker[:alias]} from broker list")
         if connection_closable(broker)
           # Not using close_one here because broker being removed immediately
           broker[:connection].close
@@ -1078,7 +1078,7 @@ module RightScale
         @brokers.reject! { |b| b[:identity] == identity }
         yield identity if block_given?
       else
-        RightLinkLog.info("Ignored request to remove #{identity} because unknown")
+        RightLog.info("Ignored request to remove #{identity} because unknown")
         identity = nil
       end
       identity
@@ -1173,10 +1173,10 @@ module RightScale
               # Update cache entry to record this failed delivery
               details[:failed] << b[:identity]
             end
-            RightLinkLog.debug("RETURN #{b[:alias]} because #{reason} for #{to}")
+            RightLog.debug("RETURN #{b[:alias]} because #{reason} for #{to}")
             blk.call(b[:identity], reason, msg, to, details)
           rescue Exception => e
-            RightLinkLog.error("Failed return #{info.inspect} of message from broker #{b[:alias]}", e, :trace)
+            RightLog.error("Failed return #{info.inspect} of message from broker #{b[:alias]}", e, :trace)
             @exceptions.track("return", e)
           end
         end
@@ -1234,7 +1234,7 @@ module RightScale
           mandatory = false
         else
           t = token ? " <#{token}>" : ""
-          RightLinkLog.info("NO ROUTE #{aliases(details[:brokers]).join(", ")} [#{name}]#{t} to #{to}")
+          RightLog.info("NO ROUTE #{aliases(details[:brokers]).join(", ")} [#{name}]#{t} to #{to}")
           @non_delivery.call(reason, details[:type], token, details[:from], to) if @non_delivery
         end
       end
@@ -1243,7 +1243,7 @@ module RightScale
         t = token ? " <#{token}>" : ""
         p = persistent ? ", persistent" : ""
         m = mandatory ? ", mandatory" : ""
-        RightLinkLog.info("RE-ROUTE #{aliases(remaining).join(", ")} [#{details[:name]}]#{t} to #{to}#{p}#{m}")
+        RightLog.info("RE-ROUTE #{aliases(remaining).join(", ")} [#{details[:name]}]#{t} to #{to}#{p}#{m}")
         exchange = {:type => :queue, :name => to, :options => {:no_declare => true}}
         publish(exchange, message, options.merge(:no_serialize => true, :brokers => remaining,
                                                  :persistent => persistent, :mandatory => mandatory))
@@ -1389,7 +1389,7 @@ module RightScale
             close_one(b[:identity], propagate = false) { handler.completed_one }
           rescue Exception => e
             handler.completed_one
-            RightLinkLog.error("Failed to close broker #{b[:alias]}", e, :trace)
+            RightLog.error("Failed to close broker #{b[:alias]}", e, :trace)
             @exceptions.track("close", e)
           end
         end
@@ -1417,14 +1417,14 @@ module RightScale
 
       if connection_closable(broker)
         begin
-          RightLinkLog.info("[stop] Closed connection to broker #{broker[:alias]}")
+          RightLog.info("[stop] Closed connection to broker #{broker[:alias]}")
           update_status(broker, :closed) if propagate
           broker[:connection].close do
             broker[:status] = :closed
             yield if block_given?
           end
         rescue Exception => e
-          RightLinkLog.error("Failed to close broker #{broker[:alias]}", e, :trace)
+          RightLog.error("Failed to close broker #{broker[:alias]}", e, :trace)
           @exceptions.track("close", e)
           broker[:status] = :closed
           yield if block_given?
@@ -1543,7 +1543,7 @@ module RightScale
         :retry_backoff => 0
       }
       begin
-        RightLinkLog.info("[setup] Connecting to broker #{broker[:identity]}, alias #{broker[:alias]}")
+        RightLog.info("[setup] Connecting to broker #{broker[:identity]}, alias #{broker[:alias]}")
         reconnect_interval = options[:reconnect_interval] || RECONNECT_INTERVAL
         broker[:connection] = AMQP.connect(:user               => options[:user],
                                            :pass               => options[:pass],
@@ -1558,7 +1558,7 @@ module RightScale
       rescue Exception => e
         broker[:status] = :failed
         broker[:failures].update
-        RightLinkLog.error("Failed connecting to broker #{broker[:alias]}", e, :trace)
+        RightLog.error("Failed connecting to broker #{broker[:alias]}", e, :trace)
         @exceptions.track("connect", e)
         broker[:connection].close if broker[:connection]
       end
@@ -1584,21 +1584,21 @@ module RightScale
       begin
         packet = @serializer.load(msg)
         if options.key?(packet.class)
-          unless options[:no_log] && RightLinkLog.level != :debug
+          unless options[:no_log] && RightLog.level != :debug
             re = "RE-" if packet.respond_to?(:tries) && !packet.tries.empty?
-            log_filter = options[packet.class] unless RightLinkLog.level == :debug
-            RightLinkLog.info("#{re}RECV #{broker[:alias]} #{packet.to_s(log_filter, :recv_version)} " +
+            log_filter = options[packet.class] unless RightLog.level == :debug
+            RightLog.info("#{re}RECV #{broker[:alias]} #{packet.to_s(log_filter, :recv_version)} " +
                               "#{options[:log_data]}")
           end
           packet
         else
           category = options[:category] + " " if options[:category]
-          RightLinkLog.warn("Received invalid #{category}packet type from queue #{queue} " +
+          RightLog.warn("Received invalid #{category}packet type from queue #{queue} " +
                             "on broker #{broker[:alias]}: #{packet.class}")
           nil
         end
       rescue Exception => e
-        RightLinkLog.error("Failed receiving from queue #{queue} on #{broker[:alias]}", e, :trace)
+        RightLog.error("Failed receiving from queue #{queue} on #{broker[:alias]}", e, :trace)
         @exceptions.track("receive", e)
         @exception_on_receive.call(msg, e, self) if @exception_on_receive
         nil
@@ -1637,7 +1637,7 @@ module RightScale
 
       after = connected
       unless before == after
-        RightLinkLog.info("[status] Broker #{broker[:alias]} is now #{status}, connected brokers: [#{aliases(after).join(", ")}]")
+        RightLog.info("[status] Broker #{broker[:alias]} is now #{status}, connected brokers: [#{aliases(after).join(", ")}]")
       end
       @connection_status.reject! do |k, v|
         reject = false
@@ -1695,7 +1695,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def update_failure(broker)
-      RightLinkLog.error("Failed to connect to broker #{broker[:alias]}")
+      RightLog.error("Failed to connect to broker #{broker[:alias]}")
       if broker[:last_failed]
         broker[:retries] += 1
       else
@@ -1730,7 +1730,7 @@ module RightScale
           if choice = @brokers_hash[a]
             choices << choice
           else
-            RightLinkLog.error("Invalid broker id #{a.inspect}, check server configuration")
+            RightLog.error("Invalid broker id #{a.inspect}, check server configuration")
           end
         end
       else

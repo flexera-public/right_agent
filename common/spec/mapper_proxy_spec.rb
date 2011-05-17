@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,9 +28,9 @@ describe RightScale::MapperProxy do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-#   flexmock(RightScale::RightLinkLog).should_receive(:error).with(on { |arg| puts caller.join("\n") } )
-    flexmock(RightScale::RightLinkLog).should_receive(:error).never.by_default
-    flexmock(RightScale::RightLinkLog).should_receive(:warn).never.by_default
+#   flexmock(RightScale::RightLog).should_receive(:error).with(on { |arg| puts caller.join("\n") } )
+    flexmock(RightScale::RightLog).should_receive(:error).never.by_default
+    flexmock(RightScale::RightLog).should_receive(:warn).never.by_default
     @timer = flexmock("timer", :cancel => true).by_default
   end
 
@@ -103,7 +103,7 @@ describe RightScale::MapperProxy do
     end
 
     it "should log an exception if the connectivity check fails" do
-      flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Failed connectivity check/, Exception, :trace).once
+      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed connectivity check/, Exception, :trace).once
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).once.by_default
       RightScale::MapperProxy.new(@agent)
@@ -114,7 +114,7 @@ describe RightScale::MapperProxy do
     end
 
     it "should attempt to reconnect if mapper ping times out" do
-      flexmock(RightScale::RightLinkLog).should_receive(:warn).with(/Mapper ping via broker/).once
+      flexmock(RightScale::RightLog).should_receive(:warn).with(/Mapper ping via broker/).once
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       broker_id = "rs-broker-localhost-5672"
       @broker.should_receive(:identity_parts).with(broker_id).and_return(["localhost", 5672, 0, 0]).once
@@ -413,7 +413,7 @@ describe RightScale::MapperProxy do
         pending 'Too difficult to get timing right for Windows' if RightScale::Platform.windows?
         EM.run do
           result = RightScale::OperationResult.success
-          flexmock(RightScale::RightLinkLog).should_receive(:warn).once
+          flexmock(RightScale::RightLog).should_receive(:warn).once
           @agent.should_receive(:options).and_return({:retry_timeout => 0.6, :retry_interval => 0.1})
           RightScale::MapperProxy.new(@agent)
           @instance = RightScale::MapperProxy.instance
@@ -483,7 +483,7 @@ describe RightScale::MapperProxy do
         end
 
         it "should try to reconnect if ping times out" do
-          flexmock(RightScale::RightLinkLog).should_receive(:warn).once
+          flexmock(RightScale::RightLog).should_receive(:warn).once
           flexmock(EM::Timer).should_receive(:new).and_yield.once
           flexmock(@agent).should_receive(:connect).once
           @instance.__send__(:check_connection, @broker_id)
@@ -491,8 +491,8 @@ describe RightScale::MapperProxy do
         end
 
         it "should log error if attempt to reconnect fails" do
-          flexmock(RightScale::RightLinkLog).should_receive(:warn).once
-          flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
+          flexmock(RightScale::RightLog).should_receive(:warn).once
+          flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
           flexmock(@agent).should_receive(:connect).and_raise(Exception)
           flexmock(EM::Timer).should_receive(:new).and_yield.once
           @instance.__send__(:check_connection, @broker_id)
@@ -598,7 +598,7 @@ describe RightScale::MapperProxy do
     end
 
     it "should log non-delivery if there is no response handler" do
-      flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Non-delivery of/).once
+      flexmock(RightScale::RightLog).should_receive(:info).with(/Non-delivery of/).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::NO_ROUTE_TO_TARGET)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
@@ -606,7 +606,7 @@ describe RightScale::MapperProxy do
     end
 
     it "should log a debug message if request no longer pending" do
-      flexmock(RightScale::RightLinkLog).should_receive(:debug).with(/No pending request for response/).once
+      flexmock(RightScale::RightLog).should_receive(:debug).with(/No pending request for response/).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       @instance.pending_requests['token2'].should be_nil
@@ -682,7 +682,7 @@ describe RightScale::MapperProxy do
 
     it "should log an error if the response handler raises an exception but still delete pending request" do
       @agent.should_receive(:options).and_return({:single_threaded => true})
-      flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Failed processing response/, Exception, :trace).once
+      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed processing response/, Exception, :trace).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_| raise Exception}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')

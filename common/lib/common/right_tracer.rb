@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -35,7 +35,7 @@ module RightScale
 
     NON_TRACEABLE_CLASSES = [ 'Kernel', 'Module', 'Object' , 'SyslogLogger', 'RightSupport::SystemLogger' ] +
                             [ 'RightScale::RightTracer', 'RightScale::Multiplexer' ] +
-                            [ 'RightScale::RightLinkLog', 'RightScale::RightLinkLog::Formatter' ]
+                            [ 'RightScale::RightLog', 'RightScale::RightLog::Formatter' ]
 
     NON_TRACEABLE_METHODS = [ :metaclass, :method_missing, :method_added, :blank_slate_method_added, :[], :[]= ]
 
@@ -58,9 +58,9 @@ module RightScale
           klass.module_eval <<-EOM
             alias :o_l_d_#{m} :#{m}
             def #{m}(*args, &blk)
-              RightLinkLog.debug("<<< #{klass}##{m}(" + args.map(&:inspect).join(',') + ")")
+              RightLog.debug("<<< #{klass}##{m}(" + args.map(&:inspect).join(',') + ")")
               res = o_l_d_#{m}(*args, &blk)
-              RightLinkLog.debug(">>> #{klass}##{m}")
+              RightLog.debug(">>> #{klass}##{m}")
               res
             end
           EOM
@@ -74,9 +74,9 @@ module RightScale
             class << self
               alias :o_l_d_#{m} :#{m}
               def #{m}(*args, &blk)
-                RightLinkLog.debug("<<< #{klass}.#{m}(" + args.map(&:inspect).join(',') + ")")
+                RightLog.debug("<<< #{klass}.#{m}(" + args.map(&:inspect).join(',') + ")")
                 res = o_l_d_#{m}(*args, &blk)
-                RightLinkLog.debug(">>> #{klass}.#{m}")
+                RightLog.debug(">>> #{klass}.#{m}")
                 res
               end
             end

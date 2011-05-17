@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -37,7 +37,7 @@ describe RightScale::Agent do
   describe "Default Option" do
 
     before(:all) do
-      flexmock(RightScale::RightLinkLog).should_receive(:error).never.by_default
+      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       @timer = flexmock("timer")
@@ -125,7 +125,7 @@ describe RightScale::Agent do
   describe "Passed in Options" do
 
     before(:each) do
-      flexmock(RightScale::RightLinkLog).should_receive(:error).never.by_default
+      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       @timer = flexmock("timer")
@@ -257,7 +257,7 @@ describe RightScale::Agent do
   describe "" do
 
     before(:each) do
-      flexmock(RightScale::RightLinkLog).should_receive(:error).never.by_default
+      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       @timer = flexmock("timer")
@@ -338,7 +338,7 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
           @broker.should_receive(:connect).with("123", 2, 1, 1, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:connection_status).and_yield(:failed)
-          flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Failed to connect to broker/).once
+          flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to connect to broker/).once
           flexmock(@agent).should_receive(:update_configuration).never
           @agent.connect("123", 2, 1, 1)
         end
@@ -378,7 +378,7 @@ describe RightScale::Agent do
           @broker.should_receive(:remove).never
           @broker.should_receive(:close_one).never
           flexmock(@agent).should_receive(:update_configuration).never
-          flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Not disconnecting.*last connected broker/).once
+          flexmock(RightScale::RightLog).should_receive(:error).with(/Not disconnecting.*last connected broker/).once
           @agent.disconnect("123", 1)
         end
       end
@@ -492,11 +492,11 @@ describe RightScale::Agent do
         @dispatcher.should_receive(:dispatch_age).and_return(22).once
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Termination waiting 9 seconds for/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting 9 seconds for/).once
           @agent.terminate
         end
       end
@@ -507,11 +507,11 @@ describe RightScale::Agent do
         @dispatcher.should_receive(:dispatch_age).and_return(nil).once
         flexmock(EM::Timer).should_receive(:new).with(0, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Termination waiting/).never
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting/).never
           @agent.terminate
         end
       end
@@ -524,13 +524,13 @@ describe RightScale::Agent do
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Termination waiting/).once
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/Continuing with termination/).once
-          flexmock(RightScale::RightLinkLog).should_receive(:info).with(/The following 1 request/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/Continuing with termination/).once
+          flexmock(RightScale::RightLog).should_receive(:info).with(/The following 1 request/).once
           @agent.terminate
         end
       end

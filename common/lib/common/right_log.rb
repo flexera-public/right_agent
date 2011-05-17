@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -30,11 +30,11 @@ require 'singleton'
 module RightScale
 
   # Logs both to syslog and to local file
-  class RightLinkLog
+  class RightLog
 
     include Singleton
 
-    # Default formatter for a RightLinkLog
+    # Default formatter for a RightLog
     class Formatter < Logger::Formatter
       @@show_time = true
 
@@ -132,7 +132,7 @@ module RightScale
     # (Object):: Result from singleton
     class << self
       def method_missing(m, *args)
-        RightLinkLog.instance.__send__(m, *args)
+        RightLog.instance.__send__(m, *args)
       end
     end
 
@@ -242,7 +242,7 @@ module RightScale
     # @logger(RightScale::Multiplexer):: Multiplexer logger
     def add_logger(logger)
       init unless @initialized
-      logger.level = level_from_sym(RightLinkLog.instance.level)
+      logger.level = level_from_sym(RightLog.instance.level)
       @logger.add(logger)
     end
 
@@ -403,17 +403,17 @@ module RightScale
       @logger
     end
 
-  end # RightLinkLog
+  end # RightLog
 
   # Helper module to simplify logging calls
-  module RightLinkLogHelpers
+  module RightLogHelpers
 
-    def log_debug(*args) RightLinkLog.debug(*args) end
-    def log_info(*args) RightLinkLog.info(*args) end
-    def log_warning(*args) RightLinkLog.warning(*args) end
-    def log_error(*args) RightLinkLog.error(*args) end
-    def format_error(*args) RightLinkLog.format(*args) end
+    def log_debug(*args) RightLog.debug(*args) end
+    def log_info(*args) RightLog.info(*args) end
+    def log_warning(*args) RightLog.warning(*args) end
+    def log_error(*args) RightLog.error(*args) end
+    def format_error(*args) RightLog.format(*args) end
 
-  end # RightLinkLogHelper
+  end # RightLogHelper
 
 end # RightScale

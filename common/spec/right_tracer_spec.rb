@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -77,32 +77,32 @@ describe RightScale::RightTracer do
   end
 
   it 'should trace instance methods' do
-    flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
+    flexmock(RightScale::RightLog).should_receive(:debug).twice
     RightScale::RightTracer.add_tracing_to_class(@test.class)
     @test.trace_me
   end
 
   it 'should trace class methods' do
-    flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
+    flexmock(RightScale::RightLog).should_receive(:debug).twice
     RightScale::RightTracer.add_tracing_to_class(@test2.class)
     TestData2.trace_me_too
   end
 
   it 'should trace entire modules' do
-    flexmock(RightScale::RightLinkLog).should_receive(:debug).times(4)
+    flexmock(RightScale::RightLog).should_receive(:debug).times(4)
     RightScale::RightTracer.add_tracing_to_namespaces('Traced')
     @test3.trace_me_three
     Traced::TestData3.trace_me_four
   end
 
   it 'should return correct results' do
-    flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
+    flexmock(RightScale::RightLog).should_receive(:debug).twice
     RightScale::RightTracer.add_tracing_to_class(@test4.class)
     @test4.send_result.should == 'result'
   end
 
   it 'should trace methods taking blocks' do
-    flexmock(RightScale::RightLinkLog).should_receive(:debug).twice
+    flexmock(RightScale::RightLog).should_receive(:debug).twice
     RightScale::RightTracer.add_tracing_to_class(@test5.class)
     @test5.use_block { 'result' }.should == 'result'    
   end

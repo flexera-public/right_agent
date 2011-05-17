@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -143,7 +143,7 @@ module RightScale
     # === Return
     # (OperationResult):: Corresponding result
     def self.error(message, exception = nil)
-      OperationResult.new(ERROR, RightLinkLog.format(message, exception))
+      OperationResult.new(ERROR, RightLog.format(message, exception))
     end
 
     # Create new continue status

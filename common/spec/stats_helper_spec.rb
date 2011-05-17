@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -275,7 +275,7 @@ describe RightScale::StatsHelper do
     end
 
     it "should catch any exceptions raised internally" do
-      flexmock(RightScale::RightLinkLog).should_receive(:error).with(/Failed to track exception/).once
+      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to track exception/).once
       flexmock(@exception).should_receive(:backtrace).and_raise(Exception)
       @stats = RightScale::StatsHelper::ExceptionStats.new
       @stats.track("testing", @exception, "message")

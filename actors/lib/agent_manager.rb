@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -74,7 +74,7 @@ class AgentManager
   def set_log_level(level)
     level = level.to_sym if level.is_a?(String)
     res = if LEVELS.include?(level)
-      RightScale::RightLinkLog.level = level
+      RightScale::RightLog.level = level
       RightScale::OperationResult.success
     else
       RightScale::OperationResult.error("Invalid log level '#{level.to_s}'")

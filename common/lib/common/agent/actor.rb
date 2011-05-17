@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -87,7 +87,7 @@ module RightScale
           if instance_methods.include?(meth.to_s) or instance_methods.include?(meth.to_sym)
             true
           else
-            RightLinkLog.warn("Exposing non-existing method #{meth} in actor #{name}")
+            RightLog.warn("Exposing non-existing method #{meth} in actor #{name}")
             false
           end
         end.map {|meth| "/#{prefix}/#{meth}".squeeze('/')}

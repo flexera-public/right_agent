@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -157,11 +157,11 @@ module RightScale
     # === Return
     # true:: Always return true
     def run
-      RightLinkLog.init(@identity, @options[:log_path], :print => true)
-      RightLinkLog.level = @options[:log_level] if @options[:log_level]
-      RightLinkLog.debug("Start options:")
+      RightLog.init(@identity, @options[:log_path], :print => true)
+      RightLog.level = @options[:log_level] if @options[:log_level]
+      RightLog.debug("Start options:")
       log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v}" }
-      log_opts.each { |l| RightLinkLog.debug(l) }
+      log_opts.each { |l| RightLog.debug(l) }
       
       begin
         # Capture process id in file after optional daemonize
@@ -196,19 +196,19 @@ module RightScale
                 @check_status_brokers = @broker.all
                 EM.add_periodic_timer(interval) { check_status }
               rescue Exception => e
-                RightLinkLog.error("Agent failed startup", e, :trace) unless e.message == "exit"
+                RightLog.error("Agent failed startup", e, :trace) unless e.message == "exit"
                 EM.stop
               end
             end
           else
-            RightLinkLog.error("Agent failed to connect to any brokers")
+            RightLog.error("Agent failed to connect to any brokers")
             EM.stop
           end
         end
       rescue SystemExit => e
         raise e
       rescue Exception => e
-        RightLinkLog.error("Agent failed startup", e, :trace) unless e.message == "exit"
+        RightLog.error("Agent failed startup", e, :trace) unless e.message == "exit"
         raise e
       end
       true
@@ -261,9 +261,9 @@ module RightScale
     def connect(host, port, alias_id, priority = nil, force = false)
       @connect_requests.update("connect b#{alias_id}")
       even_if = " even if already connected" if force
-      RightLinkLog.info("Connecting to broker at host #{host.inspect} port #{port.inspect} " +
+      RightLog.info("Connecting to broker at host #{host.inspect} port #{port.inspect} " +
                         "alias_id #{alias_id.inspect} priority #{priority.inspect}#{even_if}")
-      RightLinkLog.info("Current broker configuration: #{@broker.status.inspect}")
+      RightLog.info("Current broker configuration: #{@broker.status.inspect}")
       res = nil
       begin
         @broker.connect(host, port, alias_id, priority, force) do |id|
@@ -273,24 +273,24 @@ module RightScale
                 setup_queues([id])
                 remaining = 0
                 @remaining_setup.each_value { |ids| remaining += ids.size }
-                RightLinkLog.info("[setup] Finished subscribing to queues after reconnecting to broker #{id}") if remaining == 0
+                RightLog.info("[setup] Finished subscribing to queues after reconnecting to broker #{id}") if remaining == 0
                 unless update_configuration(:host => @broker.hosts, :port => @broker.ports)
-                  RightLinkLog.warn("Successfully connected to broker #{id} but failed to update config file")
+                  RightLog.warn("Successfully connected to broker #{id} but failed to update config file")
                 end
               else
-                RightLinkLog.error("Failed to connect to broker #{id}, status #{status.inspect}")
+                RightLog.error("Failed to connect to broker #{id}, status #{status.inspect}")
               end
             rescue Exception => e
-              RightLinkLog.error("Failed to connect to broker #{id}, status #{status.inspect}", e)
+              RightLog.error("Failed to connect to broker #{id}, status #{status.inspect}", e)
               @exceptions.track("connect", e)
             end
           end
         end
       rescue Exception => e
-        res = RightLinkLog.format("Failed to connect to broker #{HA_MQ.identity(host, port)}", e)
+        res = RightLog.format("Failed to connect to broker #{HA_MQ.identity(host, port)}", e)
         @exceptions.track("connect", e)
       end
-      RightLinkLog.error(res) if res
+      RightLog.error(res) if res
       res
     end
 
@@ -307,9 +307,9 @@ module RightScale
     # res(String|nil):: Error message if failed, otherwise nil
     def disconnect(host, port, remove = false)
       and_remove = " and removing" if remove
-      RightLinkLog.info("Disconnecting#{and_remove} broker at host #{host.inspect} " +
+      RightLog.info("Disconnecting#{and_remove} broker at host #{host.inspect} " +
                         "port #{port.inspect}")
-      RightLinkLog.info("Current broker configuration: #{@broker.status.inspect}")
+      RightLog.info("Current broker configuration: #{@broker.status.inspect}")
       id = HA_MQ.identity(host, port)
       @connect_requests.update("disconnect #{@broker.alias_(id)}")
       connected = @broker.connected
@@ -328,13 +328,13 @@ module RightScale
             @broker.close_one(id)
           end
         rescue Exception => e
-          res = RightLinkLog.format("Failed to disconnect from broker #{id}", e)
+          res = RightLog.format("Failed to disconnect from broker #{id}", e)
           @exceptions.track("disconnect", e)
         end
       else
         res = "Cannot disconnect from broker #{id} because not configured for this agent"
       end
-      RightLinkLog.error(res) if res
+      RightLog.error(res) if res
       res
     end
 
@@ -352,15 +352,15 @@ module RightScale
       @connect_requests.update("enroll failed #{aliases}")
       res = nil
       begin
-        RightLinkLog.info("Received indication that service initialization for this agent for brokers #{ids.inspect} has failed")
+        RightLog.info("Received indication that service initialization for this agent for brokers #{ids.inspect} has failed")
         connected = @broker.connected
         ignored = connected & ids
-        RightLinkLog.info("Not marking brokers #{ignored.inspect} as unusable because currently connected") if ignored
-        RightLinkLog.info("Current broker configuration: #{@broker.status.inspect}")
+        RightLog.info("Not marking brokers #{ignored.inspect} as unusable because currently connected") if ignored
+        RightLog.info("Current broker configuration: #{@broker.status.inspect}")
         @broker.declare_unusable(ids - ignored)
       rescue Exception => e
-        res = RightLinkLog.format("Failed handling broker connection failure indication for #{ids.inspect}", e)
-        RightLinkLog.error(res)
+        res = RightLog.format("Failed handling broker connection failure indication for #{ids.inspect}", e)
+        RightLog.error(res)
         @exceptions.track("connect failed", e)
       end
       res
@@ -377,13 +377,13 @@ module RightScale
     def terminate(&blk)
       begin
         if @terminating
-          RightLinkLog.info("[stop] Terminating immediately")
+          RightLog.info("[stop] Terminating immediately")
           @termination_timer.cancel if @termination_timer
           if blk then blk.call else EM.stop end
         else
           @terminating = true
           timeout = @options[:grace_timeout]
-          RightScale::RightLinkLog.info("[stop] Agent #{@identity} terminating")
+          RightScale::RightLog.info("[stop] Agent #{@identity} terminating")
           stop_gracefully(timeout) do
             request_count = @mapper_proxy.pending_requests.size
             request_age = @mapper_proxy.request_age
@@ -394,28 +394,28 @@ module RightScale
               reason = "completion of #{request_count} requests initiated as recently as #{request_age} seconds ago" if request_age
               reason += " and " if request_age && dispatch_age
               reason += "requests received as recently as #{dispatch_age} seconds ago" if dispatch_age
-              RightLinkLog.info("[stop] Termination waiting #{wait_time} seconds for #{reason}")
+              RightLog.info("[stop] Termination waiting #{wait_time} seconds for #{reason}")
             end
             @termination_timer = EM::Timer.new(wait_time) do
               begin
-                RightLinkLog.info("[stop] Continuing with termination") if wait_time > 0
+                RightLog.info("[stop] Continuing with termination") if wait_time > 0
                 if request_age = @mapper_proxy.request_age
                   request_count = @mapper_proxy.pending_requests.size
                   request_dump = @mapper_proxy.dump_requests.join("\n  ")
-                  RightLinkLog.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
+                  RightLog.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                                     "seconds ago are being dropped:\n  #{request_dump}")
                 end
                 @broker.close(&blk)
                 EM.stop unless blk
               rescue Exception => e
-                RightLinkLog.error("Failed while finishing termination", e, :trace)
+                RightLog.error("Failed while finishing termination", e, :trace)
                 EM.stop
               end
             end
           end
         end
       rescue Exception => e
-        RightLinkLog.error("Failed to terminate gracefully", e, :trace)
+        RightLog.error("Failed to terminate gracefully", e, :trace)
         EM.stop
       end
       true
@@ -561,19 +561,19 @@ module RightScale
     def load_actors
       return false unless @options[:root]
       actors_dir = @options[:actors_dir] || "#{@options[:root]}/actors"
-      RightLinkLog.warn("Actors dir #{actors_dir} does not exist or is not reachable") unless File.directory?(actors_dir)
+      RightLog.warn("Actors dir #{actors_dir} does not exist or is not reachable") unless File.directory?(actors_dir)
       actors = @options[:actors]
-      RightLinkLog.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
+      RightLog.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
       Dir["#{actors_dir}/*.rb"].each do |actor|
         next if actors && !actors.include?(File.basename(actor, ".rb"))
-        RightLinkLog.info("[setup] loading #{actor}")
+        RightLog.info("[setup] loading #{actor}")
         require actor
       end
       init_path = @options[:initrb] || File.join(@options[:root], 'init.rb')
       if File.exists?(init_path)
         instance_eval(File.read(init_path), init_path)
       else
-        RightLinkLog.warn("init.rb #{init_path} does not exist or is not reachable") unless File.exists?(init_path)
+        RightLog.warn("init.rb #{init_path} does not exist or is not reachable") unless File.exists?(init_path)
       end
       true
     end
@@ -599,7 +599,7 @@ module RightScale
           result = Result.new(token, from, OperationResult.non_delivery(reason), to)
           @mapper_proxy.handle_response(result)
         rescue Exception => e
-          RightLinkLog.error("Failed handling non-delivery for <#{token}>", e, :trace)
+          RightLog.error("Failed handling non-delivery for <#{token}>", e, :trace)
           @exceptions.track("message return", e)
         end
       end
@@ -627,9 +627,9 @@ module RightScale
           end
           @mapper_proxy.message_received
         rescue HA_MQ::NoConnectedBrokers => e
-          RightLinkLog.error("Identity queue processing error", e)
+          RightLog.error("Identity queue processing error", e)
         rescue Exception => e
-          RightLinkLog.error("Identity queue processing error", e, :trace)
+          RightLog.error("Identity queue processing error", e, :trace)
           @exceptions.track("identity queue", e, packet)
         end
       end
@@ -675,7 +675,7 @@ module RightScale
       begin
         finish_setup
       rescue Exception => e
-        RightLinkLog.error("Failed finishing setup", e)
+        RightLog.error("Failed finishing setup", e)
         @exceptions.track("check status", e)
       end
 
@@ -686,7 +686,7 @@ module RightScale
                           :routing_key => @stats_routing_key, :brokers => @check_status_brokers.rotate!)
         end
       rescue Exception => e
-        RightLinkLog.error("Failed publishing stats", e)
+        RightLog.error("Failed publishing stats", e)
         @exceptions.track("check status", e)
       end
 

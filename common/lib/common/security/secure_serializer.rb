@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -80,7 +80,7 @@ module RightScale
           msg = EncryptedDocument.new(msg, certs).encrypted_data(encode_format)
         else
           target = obj.target_for_encryption if obj.respond_to?(:target_for_encryption)
-          RightLinkLog.warn("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
+          RightLog.warn("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
         end
       end
       sig = Signature.new(msg, @cert, @key).data(encode_format)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -49,7 +49,7 @@ module RightScale
           tags = (result.size == 1 ? result[result.keys[0]]['tags'] : [])
           yield tags
         else
-          RightScale::RightLinkLog.error("Failed to get identified server, got: #{res.content}")
+          RightScale::RightLog.error("Failed to get identified server, got: #{res.content}")
         end
       end
       true

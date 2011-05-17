@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -85,8 +85,8 @@ describe "RightScale::Dispatcher" do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::RightLinkLog).should_receive(:error).never.by_default
-    flexmock(RightScale::RightLinkLog).should_receive(:info).by_default
+    flexmock(RightScale::RightLog).should_receive(:error).never.by_default
+    flexmock(RightScale::RightLog).should_receive(:info).by_default
     @now = Time.at(1000000)
     flexmock(Time).should_receive(:now).and_return(@now).by_default
     @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
@@ -209,14 +209,14 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should call the on_exception callback if something goes wrong" do
-    flexmock(RightScale::RightLinkLog).should_receive(:error).once
+    flexmock(RightScale::RightLog).should_receive(:error).once
     req = RightScale::Request.new('/foo/i_kill_you', nil)
     flexmock(@actor).should_receive(:handle_exception).with(:i_kill_you, req, Exception).once
     @dispatcher.dispatch(req)
   end
 
   it "should call on_exception Procs defined in a subclass with the correct arguments" do
-    flexmock(RightScale::RightLinkLog).should_receive(:error).once
+    flexmock(RightScale::RightLog).should_receive(:error).once
     actor = Bar.new
     @registry.register(actor, nil)
     req = RightScale::Request.new('/bar/i_kill_you', nil)
@@ -229,7 +229,7 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should call on_exception Procs defined in a subclass in the scope of the actor" do
-    flexmock(RightScale::RightLinkLog).should_receive(:error).once
+    flexmock(RightScale::RightLog).should_receive(:error).once
     actor = Bar.new
     @registry.register(actor, nil)
     req = RightScale::Request.new('/bar/i_kill_you', nil)
@@ -238,14 +238,14 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should log error if something goes wrong" do
-    RightScale::RightLinkLog.should_receive(:error).once
+    RightScale::RightLog.should_receive(:error).once
     req = RightScale::Request.new('/foo/i_kill_you', nil)
     @dispatcher.dispatch(req)
   end
 
   it "should reject requests whose time-to-live has expired" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED.*TTL 2 sec ago/})
+    flexmock(RightScale::RightLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED.*TTL 2 sec ago/})
     @broker.should_receive(:publish).never
     @dispatcher = RightScale::Dispatcher.new(@agent)
     @dispatcher.em = EMMock
@@ -256,7 +256,7 @@ describe "RightScale::Dispatcher" do
 
   it "should send non-delivery result if Request is rejected because its time-to-live has expired" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
+    flexmock(RightScale::RightLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
     @broker.should_receive(:publish).with(Hash, on {|arg| arg.class == RightScale::Result &&
                                                           arg.results.non_delivery? &&
                                                           arg.results.content == RightScale::OperationResult::TTL_EXPIRATION},
@@ -270,7 +270,7 @@ describe "RightScale::Dispatcher" do
 
   it "should send error result instead of non-delivery if agent does not know about non-delivery" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
+    flexmock(RightScale::RightLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
     @broker.should_receive(:publish).with(Hash, on {|arg| arg.class == RightScale::Result &&
                                                           arg.results.error? &&
                                                           arg.results.content =~ /Could not deliver/},
@@ -305,7 +305,7 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should reject duplicate requests" do
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT DUP/})
+    flexmock(RightScale::RightLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT DUP/})
     EM.run do
       @agent.should_receive(:options).and_return(:dup_check => true)
       @dispatcher = RightScale::Dispatcher.new(@agent)
@@ -317,7 +317,7 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should reject duplicate retry requests" do
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT RETRY DUP/})
+    flexmock(RightScale::RightLog).should_receive(:info).once.with(on {|arg| arg =~ /REJECT RETRY DUP/})
     EM.run do
       @agent.should_receive(:options).and_return(:dup_check => true)
       @dispatcher = RightScale::Dispatcher.new(@agent)

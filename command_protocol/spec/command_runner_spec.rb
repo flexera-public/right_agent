@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -50,13 +50,13 @@ describe RightScale::CommandRunner do
 
   it 'should handle invalid formats' do
     flexmock(RightScale::CommandIO.instance).should_receive(:listen).and_yield(['invalid yaml'])
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once
+    flexmock(RightScale::RightLog).should_receive(:info).once
     RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands={})
   end
 
   it 'should handle non-existent commands' do
     flexmock(RightScale::CommandIO.instance).should_receive(:listen).and_yield(@command_payload)
-    flexmock(RightScale::RightLinkLog).should_receive(:info).once
+    flexmock(RightScale::RightLog).should_receive(:info).once
     RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands={})
   end
 

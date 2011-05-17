@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -123,7 +123,7 @@ module RightScale
           obj = serializer.__send__(action, packet)
         rescue Exception => e
           obj = nil
-          errors << RightLinkLog.format("Failed to #{action} with #{serializer.name}", e, :trace)
+          errors << RightLog.format("Failed to #{action} with #{serializer.name}", e, :trace)
         end
         return obj if obj
       end

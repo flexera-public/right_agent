@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -307,14 +307,14 @@ module RightScale
              [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
             # Log and ignore so that timeout retry mechanism continues
             # Leave purging of associated request until final response, i.e., success response or retry timeout
-            RightLinkLog.info("Non-delivery of <#{token}> because #{result.content}")
+            RightLog.info("Non-delivery of <#{token}> because #{result.content}")
           else
             deliver(response, handler)
           end
         elsif result && result.non_delivery?
-          RightLinkLog.info("Non-delivery of <#{token}> because #{result.content}")
+          RightLog.info("Non-delivery of <#{token}> because #{result.content}")
         else
-          RightLinkLog.debug("No pending request for response #{response.to_s([])}")
+          RightLog.debug("No pending request for response #{response.to_s([])}")
         end
       end
       true
@@ -335,8 +335,8 @@ module RightScale
           @stop_flushing_queue = true
         end
       else
-        RightLinkLog.info("[offline] Disconnect from broker detected, entering offline mode")
-        RightLinkLog.info("[offline] Messages will be queued in memory until connection to broker is re-established")
+        RightLog.info("[offline] Disconnect from broker detected, entering offline mode")
+        RightLog.info("[offline] Messages will be queued in memory until connection to broker is re-established")
         @offlines.update
         @queue = []
         @queueing_mode = :offline
@@ -350,7 +350,7 @@ module RightScale
     # true:: Always return true
     def disable_offline_mode
       if offline? && @queue_running
-        RightLinkLog.info("[offline] Connection to broker re-established")
+        RightLog.info("[offline] Connection to broker re-established")
         @offlines.finish
         @stop_flushing_queue = false
         @flushing_queue = true
@@ -561,7 +561,7 @@ module RightScale
               publish_with_timeout_retry(request, token)
             end
           rescue Exception => e
-            RightLinkLog.error("Failed to send #{type} #{kind.to_s}", e, :trace)
+            RightLog.error("Failed to send #{type} #{kind.to_s}", e, :trace)
             @exceptions.track(kind.to_s, e, request)
           end
         end
@@ -602,7 +602,7 @@ module RightScale
                 publish_with_timeout_retry(request, parent, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed)
                 @retries.update(request.type.split('/').last)
               else
-                RightLinkLog.warn("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.to_s([:tags, :target, :tries])}")
+                RightLog.warn("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.to_s([:tags, :target, :tries])}")
                 result = OperationResult.non_delivery(OperationResult::RETRY_TIMEOUT)
                 @non_deliveries.update(result.content)
                 handle_response(Result.new(request.token, request.reply_to, result, @identity))
@@ -610,7 +610,7 @@ module RightScale
               check_connection(ids.first) if count == 1
             end
           rescue Exception => e
-            RightLinkLog.error("Failed retry for #{request.token}", e, :trace)
+            RightLog.error("Failed retry for #{request.token}", e, :trace)
             @exceptions.track("retry", e, request)
           end
         end
@@ -633,10 +633,10 @@ module RightScale
         ids = @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
                               :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
       rescue HA_MQ::NoConnectedBrokers => e
-        RightLinkLog.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
+        RightLog.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
         ids = []
       rescue Exception => e
-        RightLinkLog.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e, :trace)
+        RightLog.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e, :trace)
         @exceptions.track("publish", e, request)
         ids = []
       end
@@ -668,7 +668,7 @@ module RightScale
           begin
             handler[:response_handler].call(response)
           rescue Exception => e
-            RightLinkLog.error("Failed processing response {response.to_s([])}", e, :trace)
+            RightLog.error("Failed processing response {response.to_s([])}", e, :trace)
             @exceptions.track("response", e, response)
           end
         end
@@ -693,11 +693,11 @@ module RightScale
           begin
             @pings.update("timeout")
             @pending_ping = nil
-            RightLinkLog.warn("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
+            RightLog.warn("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
             host, port, alias_id, priority = @broker.identity_parts(id)
             @agent.connect(host, port, alias_id, priority, force = true)
           rescue Exception => e
-            RightLinkLog.error("Failed to reconnect to broker #{id}", e, :trace)
+            RightLog.error("Failed to reconnect to broker #{id}", e, :trace)
             @exceptions.track("ping timeout", e)
           end
         end
@@ -710,7 +710,7 @@ module RightScale
               @pending_ping = nil
             end
           rescue Exception => e
-            RightLinkLog.error("Failed to cancel mapper ping", e, :trace)
+            RightLog.error("Failed to cancel mapper ping", e, :trace)
             @exceptions.track("cancel ping", e)
           end
         end
@@ -741,7 +741,7 @@ module RightScale
         begin
           check_connection
         rescue Exception => e
-          RightLinkLog.error("Failed connectivity check", e, :trace)
+          RightLog.error("Failed connectivity check", e, :trace)
         end
       end
       true
@@ -789,7 +789,7 @@ module RightScale
         @stop_flushing_queue = false
         @flushing_queue = false
       else
-        RightLinkLog.info("[offline] Starting to flush request queue of size #{@queue.size}") unless @queueing_mode == :initializing
+        RightLog.info("[offline] Starting to flush request queue of size #{@queue.size}") unless @queueing_mode == :initializing
         unless @queue.empty?
           r = @queue.shift
           if r[:callback]
@@ -799,7 +799,7 @@ module RightScale
           end
         end
         if @queue.empty?
-          RightLinkLog.info("[offline] Request queue flushed, resuming normal operations") unless @queueing_mode == :initializing
+          RightLog.info("[offline] Request queue flushed, resuming normal operations") unless @queueing_mode == :initializing
           @queueing_mode = :online
           @flushing_queue = false
         else
