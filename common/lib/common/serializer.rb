@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -21,6 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require 'rubygems'
+require 'date'
 require 'json'
 
 require File.normalize_path(File.join(File.dirname(__FILE__), 'message_pack'))
@@ -119,10 +120,12 @@ module RightScale
     def cascade_serializers(action, packet, serializers)
       errors = []
       serializers.map do |serializer|
+        obj = nil
         begin
           obj = serializer.__send__(action, packet)
+        rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
+          errors << RightLog.format("Failed to #{action} with #{serializer.name}", e)
         rescue Exception => e
-          obj = nil
           errors << RightLog.format("Failed to #{action} with #{serializer.name}", e, :trace)
         end
         return obj if obj

@@ -24,7 +24,7 @@ require File.join(File.dirname(__FILE__), 'spec_helper')
 
 describe RightScale::StaticCertificateStore do
   
-  include RightScale::SpecHelpers
+  include RightScale::SpecHelper
 
   before(:all) do
     @signer, key = issue_cert

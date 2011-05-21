@@ -35,7 +35,7 @@ end
 
 describe RightScale::SecureSerializer do
   
-  include RightScale::SpecHelpers
+  include RightScale::SpecHelper
 
   before(:all) do
     @certificate, @key = issue_cert

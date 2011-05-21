@@ -406,7 +406,7 @@ module RightScale
   end # RightLog
 
   # Helper module to simplify logging calls
-  module RightLogHelpers
+  module RightLogHelper
 
     def log_debug(*args) RightLog.debug(*args) end
     def log_info(*args) RightLog.info(*args) end

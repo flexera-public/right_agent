@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -125,36 +125,35 @@ module RightScale
     
     module InstanceMethods
 
+      # Agents using actors are required to define a Sender class providing linkage
+      # to a class that can perform the following send functions as defined in RightNetClient
+
       # Helper method to send a request to one or more targets with no response expected
-      # See MapperProxy for details
       def send_push(*args)
-        MapperProxy.instance.send_push(*args)
+        Sender.instance.send_push(*args)
       end
 
       # Helper method to send a request to one or more targets with no response expected
       # The request is persisted en route to reduce the chance of it being lost at the expense of some
       # additional network overhead
-      # See MapperProxy for details
       def send_persistent_push(*args)
-        MapperProxy.instance.send_persistent_push(*args)
+        Sender.instance.send_persistent_push(*args)
       end
 
       # Helper method to send a request to a single target with a response expected
       # The request is retried if the response is not received in a reasonable amount of time
       # The request is timed out if not received in time, typically configured to 2 minutes
       # The request is allowed to expire per the agent's configured time-to-live, typically 1 minute
-      # See MapperProxy for details
       def send_retryable_request(*args, &blk)
-        MapperProxy.instance.send_retryable_request(*args, &blk)
+        Sender.instance.send_retryable_request(*args, &blk)
       end
 
       # Helper method to send a request to a single target with a response expected
       # The request is persisted en route to reduce the chance of it being lost at the expense of some
       # additional network overhead
       # The request is never retried if there is the possibility of it being duplicated
-      # See MapperProxy for details
       def send_persistent_request(*args, &blk)
-        MapperProxy.instance.send_persistent_request(*args, &blk)
+        Sender.instance.send_persistent_request(*args, &blk)
       end
 
     end # InstanceMethods

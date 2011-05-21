@@ -71,7 +71,7 @@ TEST_SOCKET_PORT = 80000
 
 module RightScale
 
-  module SpecHelpers
+  module SpecHelper
 
     RIGHT_LINK_SPEC_HELPER_TEMP_PATH = File.normalize_path(File.join(RightScale::RightLinkConfig[:platform].filesystem.temp_dir, 'right_link_spec_helper'))
 
@@ -83,18 +83,19 @@ module RightScale
       InstanceState.const_set(:BOOT_LOG_FILE, log_path)
       InstanceState.const_set(:OPERATION_LOG_FILE, log_path)
       InstanceState.const_set(:DECOMMISSION_LOG_FILE, log_path)
-      DevState.const_set(:STATE_FILE, dev_state_file_path)
       RightScale::ChefState.const_set(:STATE_FILE, chef_file_path) if RightScale.const_defined?(:ChefState)
       RightScale::ChefState.const_set(:SCRIPTS_FILE, past_scripts_path) if RightScale.const_defined?(:ChefState)
       @identity = identity
       @results_factory = ResultsMock.new
-      @mapper_proxy = flexmock('MapperProxy')
-      flexmock(MapperProxy).should_receive(:instance).and_return(@mapper_proxy).by_default
-      @mapper_proxy.should_receive(:send_push).by_default
-      @mapper_proxy.should_receive(:send_persistent_push).by_default
-      @mapper_proxy.should_receive(:send_retryable_request).and_yield(@results_factory.success_results).by_default
-      @mapper_proxy.should_receive(:send_persistent_request).and_yield(@results_factory.success_results).by_default
-      @mapper_proxy.should_receive(:message_received).by_default
+      @right_net_client = flexmock('RightNetClient')
+      flexmock(RightNetClient).should_receive(:instance).and_return(@right_net_client).by_default
+      RightScale.module_eval("Sender = RightNetClient") unless defined?(::RightScale::Sender)
+      @right_net_client.should_receive(:identity).and_return(@identity).by_default
+      @right_net_client.should_receive(:send_push).by_default
+      @right_net_client.should_receive(:send_persistent_push).by_default
+      @right_net_client.should_receive(:send_retryable_request).and_yield(@results_factory.success_results).by_default
+      @right_net_client.should_receive(:send_persistent_request).and_yield(@results_factory.success_results).by_default
+      @right_net_client.should_receive(:message_received).by_default
       yield if block_given?
       InstanceState.init(@identity)
     end
@@ -123,9 +124,6 @@ module RightScale
       File.join(RIGHT_LINK_SPEC_HELPER_TEMP_PATH, '__past_scripts.js')
     end
 
-    # Path to dev state file
-    def dev_state_file_path
-      File.join(RIGHT_LINK_SPEC_HELPER_TEMP_PATH, '__dev_state.js')
     end
 
     # Path to instance boot logs
@@ -170,7 +168,7 @@ module RightScale
       [ Certificate.new(key, dn, dn), key ]
     end
 
-  end # SpecHelpers
+  end # SpecHelper
 
 end # RightScale
 
@@ -247,4 +245,37 @@ EOF
   end
 rescue LoadError
   #do nothing; if Chef isn't loaded, then no need to monkey patch
+end
+
+shared_examples_for 'mocks state' do
+  include RightScale::SpecHelper
+
+  before(:each) do
+    setup_state
+  end
+
+  after(:each) do
+    cleanup_state
+  end
+end
+
+shared_examples_for 'mocks shutdown request' do
+
+  require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agents', 'lib', 'instance'))
+
+  before(:each) do
+    @mock_shutdown_request = ::RightScale::ShutdownRequest.new
+    flexmock(::RightScale::ShutdownRequest).should_receive(:instance).and_return(@mock_shutdown_request)
+  end
+end
+
+shared_examples_for 'mocks shutdown request proxy' do
+
+  require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agents', 'lib', 'instance', 'cook'))
+
+  before(:each) do
+    ::RightScale::ShutdownRequestProxy.init(nil)  # nil command client for unit testing
+    @mock_shutdown_request = ::RightScale::ShutdownRequestProxy.new
+    flexmock(::RightScale::ShutdownRequestProxy).should_receive(:instance).and_return(@mock_shutdown_request)
+  end
 end

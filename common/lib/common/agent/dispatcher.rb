@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -25,6 +25,7 @@ module RightScale
   # Dispatching of payload to specified actor
   class Dispatcher
 
+    include RightLogHelper
     include StatsHelper
 
     # Cache for requests that have been dispatched recently
@@ -109,7 +110,7 @@ module RightScale
     # (String) Identity of associated agent
     attr_reader :identity
 
-    # (HA_MQ) High availability AMQP broker
+    # (HABrokerClient) High availability AMQP broker client
     attr_reader :broker
 
     # (EM) Event machine class (exposed for unit tests)
@@ -160,18 +161,18 @@ module RightScale
       # Determine which actor this request is for
       prefix, method = request.type.split('/')[1..-1]
       method ||= :index
-      actor = registry.actor_for(prefix)
+      actor = @registry.actor_for(prefix)
       token = request.token
       received_at = @requests.update(method, (token if request.kind_of?(Request)))
       if actor.nil?
-        RightLog.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
+        log_error("No actor for dispatching request <#{request.token}> of type #{request.type}")
         return nil
       end
 
       # Reject this request if its TTL has expired
       if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
         @rejects.update("expired (#{method})")
-        RightLog.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{elapsed(received_at.to_i - expires_at)} ago")
+        log_info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{elapsed(received_at.to_i - expires_at)} ago")
         if request.is_a?(Request)
           # For agents that do not know about non-delivery, use error result
           non_delivery = if request.recv_version < 13
@@ -190,13 +191,13 @@ module RightScale
       if @dup_check && !shared && request.kind_of?(Request)
         if @dispatched.fetch(token)
           @rejects.update("duplicate (#{method})")
-          RightLog.info("REJECT DUP <#{token}> of self")
+          log_info("REJECT DUP <#{token}> of self")
           return nil
         end
         request.tries.each do |t|
           if @dispatched.fetch(t)
             @rejects.update("retry duplicate (#{method})")
-            RightLog.info("REJECT RETRY DUP <#{token}> of <#{t}>")
+            log_info("REJECT RETRY DUP <#{token}> of <#{t}>")
             return nil
           end
         end
@@ -225,10 +226,10 @@ module RightScale
             exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @secure}}
             @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
           end
-        rescue HA_MQ::NoConnectedBrokers => e
-          RightLog.error("Failed to publish result of dispatched request #{request.trace}", e)
+        rescue HABrokerClient::NoConnectedBrokers => e
+          log_error("Failed to publish result of dispatched request #{request.trace}", e)
         rescue Exception => e
-          RightLog.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
+          log_error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
           @exceptions.track("publish response", e)
         end
         r # For unit tests
@@ -313,8 +314,8 @@ module RightScale
     # === Return
     # error(String):: Error description for this exception
     def handle_exception(actor, method, request, e)
-      error = RightLog.format("Failed processing #{request.type}", e, :trace)
-      RightLog.error(error)
+      error = log_format("Failed processing #{request.type}", e, :trace)
+      log_error(error)
       begin
         if actor && actor.class.exception_callback
           case actor.class.exception_callback
@@ -326,7 +327,7 @@ module RightScale
         end
         @exceptions.track(request.type, e)
       rescue Exception => e2
-        RightLog.error("Failed handling error for #{request.type}", e2, :trace)
+        log_error("Failed handling error for #{request.type}", e2, :trace)
         @exceptions.track(request.type, e2) rescue nil
       end
       error

@@ -20,7 +20,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 # Current agent protocol version
-protocol_version 13
+protocol_version 15
 
 # Root path to agent files
 root_path File.dirname(File.expand_path(File.join(__FILE__, '..', '..'))))

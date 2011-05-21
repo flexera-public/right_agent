@@ -24,7 +24,7 @@ require File.join(File.dirname(__FILE__), 'spec_helper')
 
 describe RightScale::EncryptedDocument do
   
-  include RightScale::SpecHelpers
+  include RightScale::SpecHelper
 
   before(:all) do
     @test_data = "Test Data to Sign"

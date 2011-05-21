@@ -39,6 +39,6 @@ module RightScale
       [ RightScale::Certificate.new(key, dn, dn), key ]
     end
 
-  end # SpecHelpers
+  end # SpecHelper
 
 end # RightScale

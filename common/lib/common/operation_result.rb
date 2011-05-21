@@ -254,14 +254,15 @@ module RightScale
   end # OperationResult
 
   # Helper module to simplify result construction
-  module OperationResultHelpers
+  module OperationResultHelper
 
     def success_result(*args) OperationResult.success(*args) end
     def error_result(*args) OperationResult.error(*args) end
     def continue_result(*args) OperationResult.continue(*args) end
     def retry_result(*args) OperationResult.retry(*args) end
+    def non_delivery_result(*args) OperationResult.non_delivery(*args) end
     def result_from(*args) OperationResult.from_results(*args) end
 
-  end # OperationResultHelpers
+  end # OperationResultHelper
 
 end # RightScale
