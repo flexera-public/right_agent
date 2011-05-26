@@ -20,26 +20,36 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
+describe RightScale::EncryptedDocument do
   
+  include RightScale::SpecHelper
+
+  before(:all) do
+    @test_data = "Test Data to Sign"
+    @cert, @key = issue_cert
+    @doc = RightScale::EncryptedDocument.new(@test_data, @cert)
+  end
+
+  it 'should create encrypted data' do
+    @doc.encrypted_data.should_not be_nil
+  end
+
+  it 'should create encrypted data using either PEM or DER format' do
+    @doc.encrypted_data(:pem).should_not be_nil
+    @doc.encrypted_data(:der).should_not be_nil
+  end
+
+  it 'should decrypt correctly' do
+    @doc.decrypted_data(@key, @cert).should == @test_data
+  end
+
+  it 'should load correctly with data in either PEM or DER format' do
+    @doc = RightScale::EncryptedDocument.from_data(@doc.encrypted_data(:pem))
+    @doc.decrypted_data(@key, @cert).should == @test_data
+    @doc = RightScale::EncryptedDocument.from_data(@doc.encrypted_data(:der))
+    @doc.decrypted_data(@key, @cert).should == @test_data
+  end
+
 end

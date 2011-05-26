@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -20,26 +20,27 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
+require 'singleton'
+
 module RightScale
 
-  class ResultsMock
+  module Singleton
 
-    def initialize
-      @agent_id = AgentIdentity.generate
+    module ClassMethods
+
+      # Redirect class methods to singleton instance
+      def method_missing(meth, *args, &blk)
+        self.instance.__send__(meth, *args, &blk)
+      end
+
     end
 
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
+    # Upon inclusion, also include standard Singleton mixin
+    def self.included(base)
+      base.__send__(:include, ::Singleton)
+      base.__send__(:extend, ClassMethods)
     end
 
   end
-  
+
 end

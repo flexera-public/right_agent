@@ -20,26 +20,29 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
 
-  class ResultsMock
+describe RightScale::Multiplexer do
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+  before(:all) do
+    @target1 = flexmock('Target 1')
+    @target2 = flexmock('Target 2')
+    @target3 = flexmock('Target 3')
+    @multiplexer = RightScale::Multiplexer.new(@target1, @target2, @target3)
   end
-  
+
+  it 'should multiplex' do
+    @target1.should_receive(:some_method).once.with('arg', 'arg2').once
+    @target2.should_receive(:some_method).once.with('arg', 'arg2').once
+    @target3.should_receive(:some_method).once.with('arg', 'arg2').once
+    @multiplexer.some_method('arg', 'arg2')
+  end
+
+  it 'should retrieve the first result' do
+    @target1.should_receive(:some_method).once.with('arg', 'arg2').and_return('res1').once
+    @target2.should_receive(:some_method).once.with('arg', 'arg2').and_return('res2').once
+    @target3.should_receive(:some_method).once.with('arg', 'arg2').and_return('res3').once
+    @multiplexer.some_method('arg', 'arg2').should == 'res1'
+  end
+
 end

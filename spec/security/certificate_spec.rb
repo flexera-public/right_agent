@@ -20,26 +20,30 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
+describe RightScale::Certificate do
   
+  include RightScale::SpecHelper
+
+  before(:all) do
+    @certificate, key = issue_cert
+  end
+
+  it 'should save' do
+    filename = File.join(File.dirname(__FILE__), "cert.pem")
+    @certificate.save(filename)
+    File.size(filename).should be > 0
+    File.delete(filename)
+  end
+
+  it 'should load' do
+    filename = File.join(File.dirname(__FILE__), "cert.pem")
+    @certificate.save(filename)
+    cert = RightScale::Certificate.load(filename)
+    File.delete(filename)
+    cert.should_not be_nil
+    cert.data.should == @certificate.data
+  end
+
 end

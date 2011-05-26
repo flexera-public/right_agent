@@ -20,26 +20,9 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
-
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
-  
-end
+SERIALIZE_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'serialize'))
+require File.join(SERIALIZE_BASE_DIR, 'message_pack')
+require File.join(SERIALIZE_BASE_DIR, 'secure_serializer')
+require File.join(SERIALIZE_BASE_DIR, 'secure_serializer_initializer')
+require File.join(SERIALIZE_BASE_DIR, 'serializable')
+require File.join(SERIALIZE_BASE_DIR, 'serializer')

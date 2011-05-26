@@ -20,26 +20,33 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
+describe RightScale::StaticCertificateStore do
+  
+  include RightScale::SpecHelper
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
+  before(:all) do
+    @signer, key = issue_cert
+    @recipient, key = issue_cert
+    @cert, @key = issue_cert
+    @store = RightScale::StaticCertificateStore.new(@signer, @recipient)
+  end
 
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
+  it 'should not raise when passed nil objects' do
+    res = nil
+    lambda { res = @store.get_signer(nil) }.should_not raise_error
+    res.should == [ @signer ]
+    lambda { res = @store.get_recipients(nil) }.should_not raise_error
+    res.should == [ @recipient ]
+  end
 
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
+  it 'should return signer certificates' do
+    @store.get_signer('anything').should == [ @signer ]
+  end
 
+  it 'should return recipient certificates' do
+    @store.get_recipients('anything').should == [ @recipient ]
   end
   
 end

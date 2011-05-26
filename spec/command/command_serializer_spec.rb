@@ -20,26 +20,32 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
+describe RightScale::CommandSerializer do
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+  before(:all) do
+    @sample_data = [ 42, 'fourty two', { :haha => 42, 'hoho' => 'fourty_two' }]
   end
-  
+
+  it 'should serialize' do
+    @sample_data.each do |data|
+      RightScale::CommandSerializer.dump(data)
+    end
+  end
+
+  it 'should deserialize' do
+    @sample_data.each do |data|
+      RightScale::CommandSerializer.load(RightScale::CommandSerializer.dump(data)).should == data
+    end
+  end
+
+  it 'should add separators' do
+    serialized = ''
+    @sample_data.each do |data|
+      serialized << RightScale::CommandSerializer.dump(data)
+    end
+    serialized.split(RightScale::CommandSerializer::SEPARATOR).size.should == @sample_data.size
+  end
+
 end

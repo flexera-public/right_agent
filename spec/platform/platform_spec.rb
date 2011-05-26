@@ -20,26 +20,41 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+describe RightScale::Platform do
+  before(:all) do
+    @platform = RightScale::Platform
   end
-  
+
+  context :shell do
+    context :uptime do
+      it 'should be positive' do
+        @platform.shell.uptime.should > 0
+      end
+
+      it 'should be strictly increasing' do
+        u0 = @platform.shell.uptime
+        sleep(1)
+        u1 = @platform.shell.uptime
+        
+        (u1 - u0).should >= 0
+      end
+    end
+
+    context :booted_at do
+      it 'should be some time in the past' do
+        Time.at(@platform.shell.booted_at).to_i.should < Time.now.to_i
+      end
+
+      it 'should be constant' do
+        b0 = @platform.shell.booted_at
+        sleep(1)
+        b1 = @platform.shell.booted_at
+
+        b0.should == b1
+      end
+    end
+  end
 end

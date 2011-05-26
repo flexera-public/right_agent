@@ -1,10 +1,10 @@
 # === Synopsis:
-#   RightScale RightLink Agent Deployer (rad) - (c) 2009 RightScale
+#   RightAgent Deployer (rad) - (c) 2009-2011 RightScale
 #
-#   rad is a command line tool used to build the configuration file for a RightLink agent
+#   rad is a command line tool used to build the configuration file for a RightAgent
 #
 #   The configuration file is generated in:
-#     right_link/generated/<name of agent>/config.yml
+#     right_agent/generated/<name of agent>/config.yml
 #
 # === Examples:
 #   Build configuration for AGENT with default options:
@@ -60,10 +60,9 @@ require 'yaml'
 require 'ftools'
 require 'fileutils'
 require File.join(File.dirname(__FILE__), 'rdoc_patch')
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'right_link_config'))
 require File.join(File.dirname(__FILE__), 'agent_utils')
 require File.join(File.dirname(__FILE__), 'common_parser')
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'common', 'lib', 'common'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent'))
 
 module RightScale
 
@@ -103,7 +102,7 @@ module RightScale
     # Generate configuration files
     def write_config(options, cfg = {})
       cfg[:identity]           = options[:identity] if options[:identity]
-      cfg[:pid_dir]            = options[:pid_dir] || RightScale::RightLinkConfig[:platform].filesystem.pid_dir
+      cfg[:pid_dir]            = options[:pid_dir] || Platform.filesystem.pid_dir
       cfg[:user]               = options[:user] if options[:user]
       cfg[:pass]               = options[:pass] if options[:pass]
       cfg[:vhost]              = options[:vhost] if options[:vhost]
@@ -283,8 +282,7 @@ protected
     def setup_agent_monit(options)
       agent = options[:agent]
       identity = options[:identity]
-      pid_file = PidFile.new(identity, :pid_dir => options[:pid_dir] ||
-                             RightScale::RightLinkConfig[:platform].filesystem.pid_dir)
+      pid_file = PidFile.new(identity, :pid_dir => options[:pid_dir] || Platform.filesystem.pid_dir)
       config = <<-EOF
 check process #{agent}
   with pidfile \"#{pid_file}\"
@@ -299,8 +297,7 @@ check process #{agent}
     # whether the agent is communicating okay and if not, to trigger a re-enroll
     def setup_agent_checker_monit(options)
       identity = "#{options[:identity]}-rchk"
-      pid_file = PidFile.new(identity, :pid_dir => options[:pid_dir] ||
-                             RightScale::RightLinkConfig[:platform].filesystem.pid_dir)
+      pid_file = PidFile.new(identity, :pid_dir => options[:pid_dir] || Platform.filesystem.pid_dir)
       config = <<-EOF
 check process checker
   with pidfile \"#{pid_file}\"
@@ -323,7 +320,7 @@ check process checker
 
     # Version information
     def version
-      "rad #{VERSION.join('.')} - RightScale Agent Deployer (c) 2009 RightScale"
+      "rad #{VERSION.join('.')} - RightAgent Deployer (c) 2009-2011 RightScale"
     end
 
   end

@@ -20,26 +20,27 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
+describe RightScale::DistinguishedName do
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+  before(:all) do
+    test_dn = { 'C'  => 'US',
+                'ST' => 'California',
+                'L'  => 'Santa Barbara',
+                'O'  => 'RightScale',
+                'OU' => 'Certification Services',
+                'CN' => 'rightscale.com/emailAddress=cert@rightscale.com' }
+    @dn = RightScale::DistinguishedName.new(test_dn)
   end
-  
+
+  it 'should convert to string and X509 DN' do
+    @dn.to_s.should_not be_nil
+    @dn.to_x509.should_not be_nil
+  end
+
+  it 'should correctly encode' do
+    @dn.to_s.should == @dn.to_x509.to_s
+  end
+
 end

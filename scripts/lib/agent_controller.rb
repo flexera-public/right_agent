@@ -1,7 +1,7 @@
 # === Synopsis:
-#   RightScale RightLink Agent Controller (rnac) - (c) 2009 RightScale
+#   RightAgent Controller (rnac) - (c) 2009-2011 RightScale
 #
-#   rnac is a command line tool that allows managing RightLink agents
+#   rnac is a command line tool that allows managing RightAgents
 #
 # === Examples:
 #   Start new agent:
@@ -59,20 +59,16 @@
 #      --help               Display help
 
 require 'optparse'
-require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
+require 'rdoc/ri/ri_paths' # For backwards compatibility with ruby 1.8.5
 require 'rdoc/usage'
 require 'yaml'
 require 'ftools'
 require 'fileutils'
 require File.join(File.dirname(__FILE__), 'rdoc_patch')
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'right_link_config'))
 require File.join(File.dirname(__FILE__), 'agent_utils')
 require File.join(File.dirname(__FILE__), 'common_parser')
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'agents', 'lib', 'instance', 'instance_state'))
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'common', 'lib', 'common'))
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'command_protocol', 'lib', 'command_protocol'))
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'payload_types', 'lib', 'payload_types'))
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'actors', 'lib', 'agent_manager'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'actors', 'agent_manager'))
 
 module RightScale
 
@@ -90,7 +86,7 @@ module RightScale
     DEFAULT_OPTIONS =
     {
       :single_threaded => true,
-      :log_dir => RightLinkConfig[:platform].filesystem.log_dir,
+      :log_dir => Platform.filesystem.log_dir,
       :daemonize => true
     }
 
@@ -329,7 +325,7 @@ module RightScale
         @options[:exception_callback] = lambda { |e, msg, _| AgentManager.process_exception(e, msg) }
 
         # Override default status proc for windows instance since "uptime" is not available.
-        if RightLinkConfig[:platform].windows?
+        if Platform.windows?
           @options[:status_proc] = lambda { 1 }
         end
 
@@ -436,7 +432,7 @@ module RightScale
 
     # Determine syslog program name based on options
     def syslog_program_name(options)
-      'RightLink'
+      'RightAgent'
     end
 
     # Enable the use of an HTTP proxy for this process and its subprocesses
@@ -451,7 +447,7 @@ module RightScale
 
     # Version information
     def version
-      "rnac #{VERSION.join('.')} - RightScale RightLink Agent Controller (c) 2009 RightScale"
+      "rnac #{VERSION.join('.')} - RightAgent Controller (c) 2009-2011 RightScale"
     end
 
   end

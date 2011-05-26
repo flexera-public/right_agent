@@ -20,26 +20,12 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
-
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
-  
-end
+SECURITY_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'security'))
+require File.join(SECURITY_BASE_DIR, 'cached_certificate_store_proxy')
+require File.join(SECURITY_BASE_DIR, 'certificate')
+require File.join(SECURITY_BASE_DIR, 'certificate_cache')
+require File.join(SECURITY_BASE_DIR, 'distinguished_name')
+require File.join(SECURITY_BASE_DIR, 'encrypted_document')
+require File.join(SECURITY_BASE_DIR, 'rsa_key_pair')
+require File.join(SECURITY_BASE_DIR, 'signature')
+require File.join(SECURITY_BASE_DIR, 'static_certificate_store')

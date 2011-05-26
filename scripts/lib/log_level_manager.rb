@@ -1,9 +1,7 @@
 # === Synopsis:
-#   RightScale Log Level Manager (rs_log_level)
-#   (c) 2009 RightScale
+#   RightAgent Log Level Manager (rs_log_level) - (c) 2009-2011 RightScale
 #
-#   Log level manager allows setting and retrieving the RightLink agent
-#   log level.
+#   Log level manager allows setting and retrieving the RightAgent log level.
 #
 # === Examples:
 #   Retrieve log level:
@@ -17,12 +15,12 @@
 #    rs_set_log_level [--log-level, -l debug|info|warn|error|fatal]
 #
 #    Options:
-#      --log-level, -l LVL  Set log level of RightLink agent
+#      --log-level, -l LVL  Set log level of agent
 #      --verbose, -v        Display debug information
 #      --help:              Display help
 #      --version:           Display version information
 #
-#    No options prints the current RightLink agent log level
+#    No options prints the current agent log level
 #
 $:.push(File.dirname(__FILE__))
 
@@ -32,8 +30,8 @@ require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
 require 'rdoc_patch'
 require 'agent_utils'
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'command_protocol', 'lib', 'command_protocol'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'actors', 'lib', 'agent_manager'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'command'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'actors', 'agent_manager'))
 
 module RightScale
 
@@ -128,14 +126,14 @@ protected
     # === Return
     # ver(String):: Version information
     def version
-      ver = "run_log_level #{VERSION.join('.')} - RightLink's dynamic log level manager (c) 2009 RightScale"
+      ver = "rs_log_level #{VERSION.join('.')} - RightAgent Log Level Manager (c) 2009-2011 RightScale"
     end
 
   end
 end
 
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the

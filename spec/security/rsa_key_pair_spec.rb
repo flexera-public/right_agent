@@ -20,26 +20,36 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
+describe RightScale::RsaKeyPair do
 
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+  before(:all) do
+    @pair = RightScale::RsaKeyPair.new
   end
-  
+
+  it 'should create a private and a public keys' do
+    @pair.has_private?.should be_true
+  end
+
+  it 'should strip out private key in to_public' do
+    @pair.to_public.has_private?.should be_false
+  end
+
+  it 'should save' do
+    filename = File.join(File.dirname(__FILE__), "key.pem")
+    @pair.save(filename)
+    File.size(filename).should be > 0
+    File.delete(filename)
+  end
+
+  it 'should load' do
+    filename = File.join(File.dirname(__FILE__), "key.pem")
+    @pair.save(filename)
+    key = RightScale::RsaKeyPair.load(filename)
+    File.delete(filename)
+    key.should_not be_nil
+    key.data.should == @pair.data
+  end
+
 end

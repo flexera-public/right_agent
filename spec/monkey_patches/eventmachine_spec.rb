@@ -20,26 +20,43 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-  class ResultsMock
+describe EventMachine do
 
-    def initialize
-      @agent_id = AgentIdentity.generate
+  it "should not repeatedly run deferred task if task raises an exception" do
+    error = nil
+    count = 0
+    EM.error_handler { |e| error = e; raise e if (count += 1) > 1 }
+
+    begin
+      EM.run do
+        EM.add_timer(1) { EM.next_tick { EM.stop } }
+        EM.next_tick { raise 'test' }
+      end
+    rescue Exception => error
+      error.should == nil
     end
 
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
+    EM.error_handler(nil)
 
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
+    error.class.should == RuntimeError
+    error.message.should == 'test'
+    count.should == 1
   end
-  
+
+  it "should end EM loop if deferred task raises an exception and there is no error handler" do
+    count = 0
+    begin
+      EM.run do
+        EM.add_timer(0) { raise 'test' }
+      end
+    rescue Exception => error
+      error.class.should == RuntimeError
+      error.message.should == 'test'
+      count += 1
+    end
+    count.should == 1
+  end
+
 end

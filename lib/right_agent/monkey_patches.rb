@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -20,26 +20,22 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
-module RightScale
+require 'rubygems'
+require 'rbconfig'
 
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
-  
+# Load platform-specific patches before any gem patches
+case (family = RbConfig::CONFIG['host_os'])
+when /mswin|win32|dos|mingw|cygwin/i
+  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'windows'))
+when /linux/i
+  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'linux'))
+when /darwin/i
+  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'darwin'))
+else
+  raise LoadError, "Unsupported platform: #{family}"
 end
+
+MONKEY_PATCHES_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'monkey_patches'))
+
+require File.join(MONKEY_PATCHES_BASE_DIR, 'amqp_patch')
+require File.join(MONKEY_PATCHES_BASE_DIR, 'ruby_patch')

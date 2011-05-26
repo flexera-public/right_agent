@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
@@ -20,26 +19,39 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Mock for request results
+require File.join(File.dirname(__FILE__), 'platform')
+RightScale::Platform.load_platform_specific # To define 'File.normalize_path'
+
 module RightScale
 
-  class ResultsMock
+  # Container for RightAgent configuration data
+  class AgentConfig
 
-    def initialize
-      @agent_id = AgentIdentity.generate
+    # Current agent protocol version
+    def self.protocol_version
+      15
     end
 
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
+    # Root path to agent files
+    def self.root_path
+      File.dirname(File.expand_path(File.join(__FILE__, '..', '..')))
     end
 
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
+    # Path to directory containing the certificates used to sign and encrypt all
+    # outgoing messages as well as to check the signature and decrypt any incoming
+    # messages. This directory should contain at least:
+    #  - The agent private key ('<name of agent>.key')
+    #  - The agent public certificate ('<name of agent>.cert')
+    #  - The mapper public certificate ('mapper.cert')
+    def self.certs_dir
+      File.join(root_path, 'certs')
     end
 
-  end
-  
-end
+    # Host platform configuration
+    def self.platform
+      Platform
+    end
+
+  end # AgentConfig
+
+end # RightScale
