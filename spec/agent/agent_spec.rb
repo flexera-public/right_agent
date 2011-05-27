@@ -37,7 +37,7 @@ describe RightScale::Agent do
   describe "Default Option" do
 
     before(:all) do
-      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
+      flexmock(RightScale::Log).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
@@ -116,7 +116,7 @@ describe RightScale::Agent do
   describe "Passed in Options" do
 
     before(:each) do
-      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
+      flexmock(RightScale::Log).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
@@ -242,7 +242,7 @@ describe RightScale::Agent do
   describe "" do
 
     before(:each) do
-      flexmock(RightScale::RightLog).should_receive(:error).never.by_default
+      flexmock(RightScale::Log).should_receive(:error).never.by_default
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
@@ -261,10 +261,10 @@ describe RightScale::Agent do
       flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
-      @mapper_client = flexmock("sender", :pending_requests => [], :request_age => nil,
-                                   :message_received => true, :stats => "").by_default
-      @mapper_client.should_receive(:terminate).and_return([0, 0]).by_default
-      flexmock(RightScale::MapperClient).should_receive(:new).and_return(@mapper_client)
+      @sender = flexmock("sender", :pending_requests => [], :request_age => nil,
+                         :message_received => true, :stats => "").by_default
+      @sender.should_receive(:terminate).and_return([0, 0]).by_default
+      flexmock(RightScale::Sender).should_receive(:new).and_return(@sender)
       @dispatcher = flexmock("dispatcher", :dispatch_age => nil, :dispatch => true, :stats => "").by_default
       flexmock(RightScale::Dispatcher).should_receive(:new).and_return(@dispatcher)
       @identity = "rs-instance-123-1"
@@ -289,7 +289,7 @@ describe RightScale::Agent do
                                              and_return(@broker_ids.first(1)).once
           @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
           @agent.instance_variable_get(:@remaining_setup).should == {:setup_identity_queue => @broker_ids.last(1)}
-          @mapper_client.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
+          @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
           @agent.__send__(:check_status)
         end
@@ -325,7 +325,7 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
           @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:connection_status).and_yield(:failed)
-          flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to connect to broker/).once
+          flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
           flexmock(@agent).should_receive(:update_configuration).never
           @agent.connect("123", 2, 1, 1)
         end
@@ -365,7 +365,7 @@ describe RightScale::Agent do
           @broker.should_receive(:remove).never
           @broker.should_receive(:close_one).never
           flexmock(@agent).should_receive(:update_configuration).never
-          flexmock(RightScale::RightLog).should_receive(:error).with(/Not disconnecting.*last connected broker/).once
+          flexmock(RightScale::Log).should_receive(:error).with(/Not disconnecting.*last connected broker/).once
           @agent.disconnect("123", 1)
         end
       end
@@ -407,7 +407,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result).once
-          @mapper_client.should_receive(:handle_response).with(result).once
+          @sender.should_receive(:handle_response).with(result).once
           @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
         end
       end
@@ -417,8 +417,8 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result).once
-          @mapper_client.should_receive(:handle_response).with(result).once
-          @mapper_client.should_receive(:message_received).once
+          @sender.should_receive(:handle_response).with(result).once
+          @sender.should_receive(:message_received).once
           @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
         end
       end
@@ -438,7 +438,7 @@ describe RightScale::Agent do
       end
 
       it "should wait to terminate if there are recent unfinished requests" do
-        @mapper_client.should_receive(:terminate).and_return([1, 10]).once
+        @sender.should_receive(:terminate).and_return([1, 10]).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -448,7 +448,7 @@ describe RightScale::Agent do
       end
 
       it "should wait to terminate if there are recent dispatches" do
-        @mapper_client.should_receive(:terminate).and_return([0, 20]).once
+        @sender.should_receive(:terminate).and_return([0, 20]).once
         @dispatcher.should_receive(:dispatch_age).and_return(20).and_return(@timer).once
         flexmock(EM::Timer).should_receive(:new).with(10, Proc).once
         run_in_em do
@@ -459,7 +459,7 @@ describe RightScale::Agent do
       end
 
       it "should wait to terminate if there are recent unfinished requests or recent dispatches" do
-        @mapper_client.should_receive(:terminate).and_return([1, 21]).once
+        @sender.should_receive(:terminate).and_return([1, 21]).once
         @dispatcher.should_receive(:dispatch_age).and_return(22).once
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
@@ -470,54 +470,54 @@ describe RightScale::Agent do
       end
 
       it "should log that terminating and then log the reason for waiting to terminate" do
-        @mapper_client.should_receive(:terminate).and_return([1, 21]).once
+        @sender.should_receive(:terminate).and_return([1, 21]).once
         @dispatcher.should_receive(:dispatch_age).and_return(22).once
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting 9 seconds for/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting 9 seconds for/).once
           @agent.terminate
         end
       end
 
       it "should not log reason for waiting to terminate if no need to wait" do
-        @mapper_client.should_receive(:terminate).and_return([0, nil]).once
+        @sender.should_receive(:terminate).and_return([0, nil]).once
         @dispatcher.should_receive(:dispatch_age).and_return(nil).once
         flexmock(EM::Timer).should_receive(:new).with(0, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting/).never
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).never
           @agent.terminate
         end
       end
 
       it "should continue with termination after waiting and log that continuing" do
-        @mapper_client.should_receive(:terminate).and_return([1, 10]).twice
-        @mapper_client.should_receive(:dump_requests).and_return(["request"]).once
+        @sender.should_receive(:terminate).and_return([1, 10]).twice
+        @sender.should_receive(:dump_requests).and_return(["request"]).once
         @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Termination waiting/).once
-          flexmock(RightScale::RightLog).should_receive(:info).with(/Continuing with termination/).once
-          flexmock(RightScale::RightLog).should_receive(:info).with(/The following 1 request/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/Continuing with termination/).once
+          flexmock(RightScale::Log).should_receive(:info).with(/The following 1 request/).once
           @agent.terminate
         end
       end
 
       it "should execute block after all brokers have been closed" do
-        @mapper_client.should_receive(:terminate).and_return([1, 10]).twice
-        @mapper_client.should_receive(:dump_requests).and_return(["request"]).once
+        @sender.should_receive(:terminate).and_return([1, 10]).twice
+        @sender.should_receive(:dump_requests).and_return(["request"]).once
         @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).and_yield.once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
@@ -531,8 +531,8 @@ describe RightScale::Agent do
       end
 
       it "should stop EM if no block specified" do
-        @mapper_client.should_receive(:terminate).and_return([1, 10]).twice
-        @mapper_client.should_receive(:dump_requests).and_return(["request"]).once
+        @sender.should_receive(:terminate).and_return([1, 10]).twice
+        @sender.should_receive(:dump_requests).and_return(["request"]).once
         @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
@@ -544,7 +544,7 @@ describe RightScale::Agent do
       end
 
       it "should terminate immediately if called a second time but should still execute block" do
-        @mapper_client.should_receive(:terminate).and_return([1, 10]).once
+        @sender.should_receive(:terminate).and_return([1, 10]).once
         @dispatcher.should_receive(:dispatch_age).and_return(10).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).once
         @timer.should_receive(:cancel).once

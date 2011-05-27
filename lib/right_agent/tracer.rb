@@ -31,11 +31,11 @@ end
 
 module RightScale
 
-  class RightTracer
+  class Tracer
 
     NON_TRACEABLE_CLASSES = [ 'Kernel', 'Module', 'Object' , 'SyslogLogger', 'RightSupport::SystemLogger' ] +
-                            [ 'RightScale::RightTracer', 'RightScale::Multiplexer' ] +
-                            [ 'RightScale::RightLog', 'RightScale::RightLog::Formatter' ]
+                            [ 'RightScale::Tracer', 'RightScale::Multiplexer' ] +
+                            [ 'RightScale::Log', 'RightScale::Log::Formatter' ]
 
     NON_TRACEABLE_METHODS = [ :metaclass, :method_missing, :method_added, :blank_slate_method_added, :[], :[]= ]
 
@@ -58,9 +58,9 @@ module RightScale
           klass.module_eval <<-EOM
             alias :o_l_d_#{m} :#{m}
             def #{m}(*args, &blk)
-              RightLog.debug("<<< #{klass}##{m}(" + args.map(&:inspect).join(',') + ")")
+              Log.debug("<<< #{klass}##{m}(" + args.map(&:inspect).join(',') + ")")
               res = o_l_d_#{m}(*args, &blk)
-              RightLog.debug(">>> #{klass}##{m}")
+              Log.debug(">>> #{klass}##{m}")
               res
             end
           EOM
@@ -74,9 +74,9 @@ module RightScale
             class << self
               alias :o_l_d_#{m} :#{m}
               def #{m}(*args, &blk)
-                RightLog.debug("<<< #{klass}.#{m}(" + args.map(&:inspect).join(',') + ")")
+                Log.debug("<<< #{klass}.#{m}(" + args.map(&:inspect).join(',') + ")")
                 res = o_l_d_#{m}(*args, &blk)
-                RightLog.debug(">>> #{klass}.#{m}")
+                Log.debug(">>> #{klass}.#{m}")
                 res
               end
             end

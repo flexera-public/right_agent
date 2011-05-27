@@ -25,7 +25,6 @@ module RightScale
   # Client for multiple AMQP brokers to achieve a high availability service
   class HABrokerClient
 
-    include RightLogHelper
     include StatsHelper
 
     class NoUserData < Exception; end
@@ -116,9 +115,9 @@ module RightScale
     #     e.g., "host_a:0, host_c:2"
     #   :port(String|Integer):: Comma-separated list of AMQP broker port numbers corresponding to :host list;
     #     if only one, it is incremented and applied to successive hosts; if none, defaults to AMQP::PORT
-    #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for the mapper
+    #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for the agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
-    #     if the mapper crashes. Value 0 means unlimited prefetch.
+    #     if the agent crashes. Value 0 means unlimited prefetch.
     #   :islands(IslandData):: RightNet islands with host and port settings for which connections are to be
     #     created (takes precedence over any specified :host and :port option)
     #   :home_island(Integer):: Identifier for home RightNet island for this server usable for accessing
@@ -452,7 +451,7 @@ module RightScale
       identity = self.class.identity(host, port)
       existing = @brokers_hash[identity]
       if existing && existing.usable? && !force
-        log_info("Ignored request to reconnect #{identity} because already #{existing.status.to_s}")
+        Log.info("Ignored request to reconnect #{identity} because already #{existing.status.to_s}")
         false
       else
         @brokers.each do |b|
@@ -469,7 +468,7 @@ module RightScale
         if priority && priority < p
           @brokers.insert(i + priority, broker)
         elsif priority && priority > p
-          log_info("Reduced priority setting for broker #{identity} from #{priority} to #{p} to avoid gap in list")
+          Log.info("Reduced priority setting for broker #{identity} from #{priority} to #{p} to avoid gap in list")
           @brokers.insert(i + p, broker)
         else
           i += p
@@ -745,13 +744,13 @@ module RightScale
     def remove(host, port, &blk)
       identity = self.class.identity(host, port)
       if broker = @brokers_hash[identity]
-        log_info("Removing #{identity}, alias #{broker.alias} from broker list")
+        Log.info("Removing #{identity}, alias #{broker.alias} from broker list")
         broker.close(propagate = true, normal = true, log = false)
         @brokers_hash.delete(identity)
         @brokers.reject! { |b| b.identity == identity }
         yield identity if block_given?
       else
-        log_info("Ignored request to remove #{identity} from broker list because unknown")
+        Log.info("Ignored request to remove #{identity} from broker list because unknown")
         identity = nil
       end
       identity
@@ -795,7 +794,7 @@ module RightScale
             b.close(propagate = false) { handler.completed_one }
           rescue Exception => e
             handler.completed_one
-            log_error("Failed to close broker #{b.alias}", e, :trace)
+            Log.error("Failed to close broker #{b.alias}", e, :trace)
             @exceptions.track("close", e)
           end
         end
@@ -1025,7 +1024,7 @@ module RightScale
           if choice = @brokers_hash[identity]
             choices << choice
           else
-            log_error("Invalid broker identity #{identity.inspect}, check server configuration")
+            Log.error("Invalid broker identity #{identity.inspect}, check server configuration")
           end
         end
       else
@@ -1056,7 +1055,7 @@ module RightScale
       before.push(broker.identity) if !broker.connected? && connected_before
       unless before == after
         island = broker.in_home_island ? " in home island" : " in island #{broker.island_alias}" if broker.island_id
-        log_info("[status] Broker #{broker.alias} is now #{broker.status}, " +
+        Log.info("[status] Broker #{broker.alias} is now #{broker.status}, " +
                  "connected brokers#{island}: [#{aliases(after).join(", ")}]")
       end
       @connection_status.reject! do |k, v|
@@ -1131,7 +1130,7 @@ module RightScale
       persistent = options[:persistent]
       mandatory = true
       remaining = (context.brokers - context.failed) & all_connected
-      log_info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
+      Log.info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
                " connected #{all_connected.inspect} remaining #{remaining.inspect}")
       if remaining.empty?
         if (persistent || one_way) &&
@@ -1141,7 +1140,7 @@ module RightScale
           mandatory = false
         else
           t = token ? " <#{token}>" : ""
-          log_info("NO ROUTE #{aliases(context.brokers).join(", ")} [#{name}]#{t} to #{to}")
+          Log.info("NO ROUTE #{aliases(context.brokers).join(", ")} [#{name}]#{t} to #{to}")
           @non_delivery.call(reason, context.type, token, context.from, to) if @non_delivery
         end
       end
@@ -1150,7 +1149,7 @@ module RightScale
         t = token ? " <#{token}>" : ""
         p = persistent ? ", persistent" : ""
         m = mandatory ? ", mandatory" : ""
-        log_info("RE-ROUTE #{aliases(remaining).join(", ")} [#{context.name}]#{t} to #{to}#{p}#{m}")
+        Log.info("RE-ROUTE #{aliases(remaining).join(", ")} [#{context.name}]#{t} to #{to}#{p}#{m}")
         exchange = {:type => :queue, :name => to, :options => {:no_declare => true}}
         publish(exchange, message, options.merge(:no_serialize => true, :brokers => remaining,
                                                  :persistent => persistent, :mandatory => mandatory))

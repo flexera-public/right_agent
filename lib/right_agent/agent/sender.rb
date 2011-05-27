@@ -26,9 +26,8 @@ module RightScale
   # It is used by Actor.request which is used by actors that need to send requests to remote agents
   # If requested, it will queue requests when there are no broker connections
   # All requests go through the mapper for security purposes
-  class MapperClient
+  class Sender
 
-    include RightLogHelper
     include StatsHelper
 
     # Minimum number of seconds between restarts of the inactivity timer
@@ -52,25 +51,25 @@ module RightScale
     # (Hash) Pending requests; key is request token and value is a hash
     #   :response_handler(Proc):: Block to be activated when response is received
     #   :receive_time(Time):: Time when message was received
-    #   :request_kind(String):: Kind of MapperClient request, optional
+    #   :request_kind(String):: Kind of Sender request, optional
     #   :retry_parent(String):: Token for parent request in a retry situation, optional
     attr_accessor :pending_requests
 
     # (HABrokerClient) High availability AMQP broker client
     attr_accessor :broker
 
-    # (String) Identity of the agent using the mapper proxy
+    # (String) Identity of the associated agent
     attr_reader :identity
 
     # Accessor for use by actor
     #
     # === Return
-    # (MapperClient):: This mapper proxy instance if defined, otherwise nil
+    # (Sender):: This mapper proxy instance if defined, otherwise nil
     def self.instance
       @@instance if defined?(@@instance)
     end
 
-    # Initialize mapper proxy
+    # Initialize sender
     #
     # === Parameters
     # agent(Agent):: Agent using this mapper proxy; uses its identity, broker, and following options:
@@ -317,14 +316,14 @@ module RightScale
              [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
             # Log and ignore so that timeout retry mechanism continues
             # Leave purging of associated request until final response, i.e., success response or retry timeout
-            log_info("Non-delivery of <#{token}> because #{result.content}")
+            Log.info("Non-delivery of <#{token}> because #{result.content}")
           else
             deliver(response, handler)
           end
         elsif result && result.non_delivery?
-          log_info("Non-delivery of <#{token}> because #{result.content}")
+          Log.info("Non-delivery of <#{token}> because #{result.content}")
         else
-          log_debug("No pending request for response #{response.to_s([])}")
+          Log.debug("No pending request for response #{response.to_s([])}")
         end
       end
       true
@@ -345,8 +344,8 @@ module RightScale
           @stop_flushing_queue = true
         end
       else
-        log_info("[offline] Disconnect from broker detected, entering offline mode")
-        log_info("[offline] Messages will be queued in memory until connection to broker is re-established")
+        Log.info("[offline] Disconnect from broker detected, entering offline mode")
+        Log.info("[offline] Messages will be queued in memory until connection to broker is re-established")
         @offlines.update
         @queue ||= []  # ensure queue is valid without losing any messages when going offline
         @queueing_mode = :offline
@@ -360,7 +359,7 @@ module RightScale
     # true:: Always return true
     def disable_offline_mode
       if offline? && @queue_running
-        log_info("[offline] Connection to broker re-established")
+        Log.info("[offline] Connection to broker re-established")
         @offlines.finish
         @stop_flushing_queue = false
         @flushing_queue = true
@@ -422,7 +421,7 @@ module RightScale
       info
     end
 
-    # Get mapper proxy statistics
+    # Get sender statistics
     #
     # === Parameters
     # reset(Boolean):: Whether to reset the statistics after getting the current ones
@@ -594,7 +593,7 @@ module RightScale
               publish_with_timeout_retry(request, token)
             end
           rescue Exception => e
-            log_error("Failed to send #{type} #{kind.to_s}", e, :trace)
+            Log.error("Failed to send #{type} #{kind.to_s}", e, :trace)
             @exceptions.track(kind.to_s, e, request)
           end
         end
@@ -635,7 +634,7 @@ module RightScale
                 publish_with_timeout_retry(request, parent, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed)
                 @retries.update(request.type.split('/').last)
               else
-                log_warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.to_s([:tags, :target, :tries])}")
+                Log.warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.to_s([:tags, :target, :tries])}")
                 result = OperationResult.non_delivery(OperationResult::RETRY_TIMEOUT)
                 @non_deliveries.update(result.content)
                 handle_response(Result.new(request.token, request.reply_to, result, @identity))
@@ -643,7 +642,7 @@ module RightScale
               check_connection(ids.first) if count == 1
             end
           rescue Exception => e
-            log_error("Failed retry for #{request.token}", e, :trace)
+            Log.error("Failed retry for #{request.token}", e, :trace)
             @exceptions.track("retry", e, request)
           end
         end
@@ -666,10 +665,10 @@ module RightScale
         ids = @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
                               :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
       rescue HABrokerClient::NoConnectedBrokers => e
-        log_error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
+        Log.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
         ids = []
       rescue Exception => e
-        log_error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e, :trace)
+        Log.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e, :trace)
         @exceptions.track("publish", e, request)
         ids = []
       end
@@ -701,7 +700,7 @@ module RightScale
           begin
             handler[:response_handler].call(response)
           rescue Exception => e
-            log_error("Failed processing response {response.to_s([])}", e, :trace)
+            Log.error("Failed processing response {response.to_s([])}", e, :trace)
             @exceptions.track("response", e, response)
           end
         end
@@ -726,11 +725,11 @@ module RightScale
           begin
             @pings.update("timeout")
             @pending_ping = nil
-            log_warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
+            Log.warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
             host, port, index, priority, _ = @broker.identity_parts(id)
             @agent.connect(host, port, index, priority, force = true)
           rescue Exception => e
-            log_error("Failed to reconnect to broker #{id}", e, :trace)
+            Log.error("Failed to reconnect to broker #{id}", e, :trace)
             @exceptions.track("ping timeout", e)
           end
         end
@@ -743,7 +742,7 @@ module RightScale
               @pending_ping = nil
             end
           rescue Exception => e
-            log_error("Failed to cancel mapper ping", e, :trace)
+            Log.error("Failed to cancel mapper ping", e, :trace)
             @exceptions.track("cancel ping", e)
           end
         end
@@ -774,7 +773,7 @@ module RightScale
         begin
           check_connection
         rescue Exception => e
-          log_error("Failed connectivity check", e, :trace)
+          Log.error("Failed connectivity check", e, :trace)
         end
       end
       true
@@ -822,17 +821,17 @@ module RightScale
         @stop_flushing_queue = false
         @flushing_queue = false
       else
-        log_info("[offline] Starting to flush request queue of size #{@queue.size}") unless @queueing_mode == :initializing
+        Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless @queueing_mode == :initializing
         unless @queue.empty?
           r = @queue.shift
           if r[:callback]
-            MapperClient.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options]) { |res| r[:callback].call(res) }
+            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options]) { |res| r[:callback].call(res) }
           else
-            MapperClient.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options])
+            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options])
           end
         end
         if @queue.empty?
-          log_info("[offline] Request queue flushed, resuming normal operations") unless @queueing_mode == :initializing
+          Log.info("[offline] Request queue flushed, resuming normal operations") unless @queueing_mode == :initializing
           @queueing_mode = :online
           @flushing_queue = false
         else
@@ -841,6 +840,6 @@ module RightScale
       end
     end
 
-  end # MapperClient
+  end # Sender
 
 end # RightScale

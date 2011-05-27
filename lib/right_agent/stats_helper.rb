@@ -289,7 +289,7 @@ module RightScale
                          "message" => exception.message, "where" => backtrace})
           end
         rescue Exception => e
-          RightLog.error("Failed to track exception '#{exception}' due to: #{e}\n" + e.backtrace.join("\n")) rescue nil
+          Log.error("Failed to track exception '#{exception}' due to: #{e}\n" + e.backtrace.join("\n")) rescue nil
         end
         true
       end

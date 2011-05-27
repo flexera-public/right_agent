@@ -38,7 +38,7 @@ RSpec.configure do |c|
   c.mock_with(:flexmock)
 end
 
-RightScale::RightLog.init
+RightScale::Log.init
 
 $TESTING = true
 $VERBOSE = nil # Disable constant redefined warning
@@ -65,11 +65,11 @@ module RightScale
 
 end # RightScale
 
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent', 'right_log'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent', 'log'))
 
 module RightScale
 
-  class RightLog
+  class Log
     # Monkey path RightAgent logger to not log by default
     # Define env var RS_LOG to override this behavior and have the logger log normally
     class << self

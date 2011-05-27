@@ -50,13 +50,13 @@ describe RightScale::CommandRunner do
 
   it 'should handle invalid formats' do
     flexmock(RightScale::CommandIO.instance).should_receive(:listen).and_yield(['invalid yaml'])
-    flexmock(RightScale::RightLog).should_receive(:info).once
+    flexmock(RightScale::Log).should_receive(:info).once
     RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands={})
   end
 
   it 'should handle non-existent commands' do
     flexmock(RightScale::CommandIO.instance).should_receive(:listen).and_yield(@command_payload)
-    flexmock(RightScale::RightLog).should_receive(:info).once
+    flexmock(RightScale::Log).should_receive(:info).once
     RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands={})
   end
 

@@ -25,7 +25,6 @@ module RightScale
   # Client for accessing AMQP broker
   class BrokerClient
 
-    include RightLogHelper
     include StatsHelper
 
     # Set of possible broker connection status values
@@ -100,9 +99,9 @@ module RightScale
     #   :vhost(String):: Virtual host path name
     #   :insist(Boolean):: Whether to suppress redirection of connection
     #   :reconnect_interval(Integer):: Number of seconds between reconnect attempts
-    #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for the mapper
+    #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for the agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
-    #     if the mapper crashes. Value 0 means unlimited prefetch.
+    #     if the agent crashes. Value 0 means unlimited prefetch.
     #   :home_island(Integer):: Identifier for home island of creator of this client
     #   :exception_on_receive_callback(Proc):: Callback activated on a receive exception with parameters
     #     message(Object):: Message received
@@ -217,7 +216,7 @@ module RightScale
       exchange_options = (exchange && exchange[:options]) || {}
 
       begin
-        log_info("[setup] Subscribing queue #{queue[:name]}#{to_exchange} on broker #{@alias}")
+        Log.info("[setup] Subscribing queue #{queue[:name]}#{to_exchange} on broker #{@alias}")
         q = @mq.queue(queue[:name], queue_options)
         @queues << q
         if exchange
@@ -237,14 +236,14 @@ module RightScale
                 execute_callback(blk, @identity, message)
               elsif message == "nil"
                 # This happens as part of connecting an instance agent to a broker prior to version 13
-                log_debug("RECV #{@alias} nil message ignored")
+                Log.debug("RECV #{@alias} nil message ignored")
               elsif
                 packet = receive(queue[:name], message, options)
                 execute_callback(blk, @identity, packet) if packet
               end
               true
             rescue Exception => e
-              log_error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
+              Log.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
                         "on broker #{@alias}", e, :trace)
               @exceptions.track("receive", e)
               false
@@ -257,14 +256,14 @@ module RightScale
                 execute_callback(blk, @identity, message)
               elsif message == "nil"
                 # This happens as part of connecting an instance agent to a broker
-                log_debug("RECV #{@alias} nil message ignored")
+                Log.debug("RECV #{@alias} nil message ignored")
               elsif
                 packet = receive(queue[:name], message, options)
                 execute_callback(blk, @identity, packet) if packet
               end
               true
             rescue Exception => e
-              log_error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
+              Log.error("Failed executing block for message from queue #{queue.inspect}#{to_exchange} " +
                         "on broker #{@alias}", e, :trace)
               @exceptions.track("receive", e)
               false
@@ -272,7 +271,7 @@ module RightScale
           end
         end
       rescue Exception => e
-        log_error("Failed subscribing queue #{queue.inspect}#{to_exchange} on broker #{@alias}", e, :trace)
+        Log.error("Failed subscribing queue #{queue.inspect}#{to_exchange} on broker #{@alias}", e, :trace)
         @exceptions.track("subscribe", e)
         false
       end
@@ -294,10 +293,10 @@ module RightScale
         @queues.each do |q|
           if queue_names.include?(q.name)
             begin
-              log_info("[stop] Unsubscribing queue #{q.name} on broker #{@alias}")
+              Log.info("[stop] Unsubscribing queue #{q.name} on broker #{@alias}")
               q.unsubscribe { blk.call if blk }
             rescue Exception => e
-              log_error("Failed unsubscribing queue #{q.name} on broker #{@alias}", e, :trace)
+              Log.error("Failed unsubscribing queue #{q.name} on broker #{@alias}", e, :trace)
               @exceptions.track("unsubscribe", e)
               blk.call if blk
             end
@@ -319,12 +318,12 @@ module RightScale
     def declare(type, name, options = {})
       return false unless usable?
       begin
-        log_info("[setup] Declaring #{name} #{type.to_s} on broker #{@alias}")
+        Log.info("[setup] Declaring #{name} #{type.to_s} on broker #{@alias}")
         delete_from_cache(:queue, name)
         @mq.__send__(type, name, options)
         true
       rescue Exception => e
-        log_error("Failed declaring #{type.to_s} #{name} on broker #{@alias}", e, :trace)
+        Log.error("Failed declaring #{type.to_s} #{name} on broker #{@alias}", e, :trace)
         @exceptions.track("declare", e)
         false
       end
@@ -354,19 +353,19 @@ module RightScale
       return false unless connected?
       begin
         exchange_options = exchange[:options] || {}
-        unless (options[:no_log] && RightLog.level != :debug) || options[:no_serialize]
+        unless (options[:no_log] && Log.level != :debug) || options[:no_serialize]
           re = "RE-" if packet.respond_to?(:tries) && !packet.tries.empty?
-          log_filter = options[:log_filter] unless RightLog.level == :debug
-          log_info("#{re}SEND #{@alias} #{packet.to_s(log_filter, :send_version)} " +
+          log_filter = options[:log_filter] unless Log.level == :debug
+          Log.info("#{re}SEND #{@alias} #{packet.to_s(log_filter, :send_version)} " +
                             "#{options[:log_data]}")
         end
-        log_debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
+        Log.debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
                   "type #{exchange[:type]}, options #{exchange[:options].inspect}")
         delete_from_cache(exchange[:type], exchange[:name]) if exchange_options[:declare]
         @mq.__send__(exchange[:type], exchange[:name], exchange_options).publish(message, options)
         true
       rescue Exception => e
-        log_error("Failed publishing to exchange #{exchange.inspect} on broker #{@alias}", e, :trace)
+        Log.error("Failed publishing to exchange #{exchange.inspect} on broker #{@alias}", e, :trace)
         @exceptions.track("publish", e)
         false
       end
@@ -395,10 +394,10 @@ module RightScale
         begin
           to = if info.exchange && !info.exchange.empty? then info.exchange else info.routing_key end
           reason = info.reply_text
-          log_debug("RETURN #{@alias} because #{reason} for #{to}")
+          Log.debug("RETURN #{@alias} because #{reason} for #{to}")
           yield(to, reason, message) if block_given?
         rescue Exception => e
-          log_error("Failed return #{info.inspect} of message from broker #{@alias}", e, :trace)
+          Log.error("Failed return #{info.inspect} of message from broker #{@alias}", e, :trace)
           @exceptions.track("return", e)
         end
       end
@@ -430,7 +429,7 @@ module RightScale
             deleted = true
           end
         rescue Exception => e
-          log_error("Failed deleting queue #{name.inspect} on broker #{@alias}", e, :trace)
+          Log.error("Failed deleting queue #{name.inspect} on broker #{@alias}", e, :trace)
           @exceptions.track("delete", e)
         end
       end
@@ -453,14 +452,14 @@ module RightScale
       final_status = normal ? :closed : :failed
       if ![:closed, :failed].include?(@status)
         begin
-          log_info("[stop] Closed connection to broker #{@alias}") if log
+          Log.info("[stop] Closed connection to broker #{@alias}") if log
           update_status(final_status) if propagate
           @connection.close do
             @status = final_status
             yield if block_given?
           end
         rescue Exception => e
-          log_error("Failed to close broker #{@alias}", e, :trace)
+          Log.error("Failed to close broker #{@alias}", e, :trace)
           @exceptions.track("close", e)
           @status = final_status
           yield if block_given?
@@ -567,7 +566,7 @@ module RightScale
     # true:: Always return true
     def connect(address, reconnect_interval)
       begin
-        log_info("[setup] Connecting to broker #{@identity}, alias #{@alias}")
+        Log.info("[setup] Connecting to broker #{@identity}, alias #{@alias}")
         @status = :connecting
         @connection = AMQP.connect(:user               => @options[:user],
                                    :pass               => @options[:pass],
@@ -583,7 +582,7 @@ module RightScale
       rescue Exception => e
         @status = :failed
         @failures.update
-        log_error("Failed connecting to broker #{@alias}", e, :trace)
+        Log.error("Failed connecting to broker #{@alias}", e, :trace)
         @exceptions.track("connect", e)
         @connection.close if @connection
       end
@@ -607,21 +606,21 @@ module RightScale
       begin
         packet = @serializer.load(message)
         if options.key?(packet.class)
-          unless options[:no_log] && RightLog.level != :debug
+          unless options[:no_log] && Log.level != :debug
             re = "RE-" if packet.respond_to?(:tries) && !packet.tries.empty?
-            log_filter = options[packet.class] unless RightLog.level == :debug
-            log_info("#{re}RECV #{@alias} #{packet.to_s(log_filter, :recv_version)} " +
+            log_filter = options[packet.class] unless Log.level == :debug
+            Log.info("#{re}RECV #{@alias} #{packet.to_s(log_filter, :recv_version)} " +
                               "#{options[:log_data]}")
           end
           packet
         else
           category = options[:category] + " " if options[:category]
-          log_warning("Received invalid #{category}packet type from queue #{queue} on broker #{@alias}: #{packet.class}\n" + caller.join("\n"))
+          Log.warning("Received invalid #{category}packet type from queue #{queue} on broker #{@alias}: #{packet.class}\n" + caller.join("\n"))
           nil
         end
       rescue Exception => e
         trace = e.is_a?(Serializer::SerializationError) ? :caller : :trace
-        log_error("Failed receiving from queue #{queue} on #{@alias}", e, trace)
+        Log.error("Failed receiving from queue #{queue} on #{@alias}", e, trace)
         @exceptions.track("receive", e)
         @options[:exception_on_receive_callback].call(message, e) if @options[:exception_on_receive_callback]
         nil
@@ -643,7 +642,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def update_failure
-      log_error("Failed to connect to broker #{@alias}")
+      Log.error("Failed to connect to broker #{@alias}")
       if @last_failed
         @retries += 1
       else

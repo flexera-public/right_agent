@@ -117,8 +117,8 @@ module RightScale
         file_options = symbolize(YAML.load(IO.read(cfg))) rescue {} || {}
         file_options.merge!(options)
         options = file_options
-        RightLog.program_name = syslog_program_name(options)
-        RightLog.log_to_file_only(options[:log_to_file_only])
+        Log.program_name = syslog_program_name(options)
+        Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
       end 
       options.merge!(FORCED_OPTIONS)
@@ -333,8 +333,8 @@ module RightScale
 
         EM.error_handler do |e|
           msg = "EM block execution failed with exception: #{e.message}"
-          RightLog.error(msg + "\n" + e.backtrace.join("\n"))
-          RightLog.error("\n\n===== Exiting due to EM block exception =====\n\n")
+          Log.error(msg + "\n" + e.backtrace.join("\n"))
+          Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
           EM.stop
         end
 

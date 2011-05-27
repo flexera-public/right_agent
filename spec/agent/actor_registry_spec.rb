@@ -68,7 +68,7 @@ describe RightScale::ActorRegistry do
 
   it "should log info message that actor was registered" do
     importer = WebDocumentImporter.new
-    flexmock(RightScale::RightLog).should_receive(:info).with("[actor] #{importer.class.to_s}").once
+    flexmock(RightScale::Log).should_receive(:info).with("[actor] #{importer.class.to_s}").once
     @registry.register(importer, nil)
   end
 

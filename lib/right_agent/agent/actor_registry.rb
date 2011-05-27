@@ -47,7 +47,7 @@ module RightScale
       raise ArgumentError, "#{actor.inspect} is not a RightScale::Actor subclass instance" unless RightScale::Actor === actor
       log_msg = "[actor] #{actor.class.to_s}"
       log_msg += ", prefix #{prefix}" if prefix && !prefix.empty?
-      RightLog.info(log_msg)
+      Log.info(log_msg)
       prefix ||= actor.class.default_prefix
       actors[prefix.to_s] = actor
     end

@@ -48,7 +48,7 @@ module RightScale
         if process_running? pid
           raise "#{@pid_file} already exists (pid: #{pid})"
         else
-          RightLog.info "removing stale pid file: #{@pid_file}"
+          Log.info "removing stale pid file: #{@pid_file}"
           remove
         end
       end
@@ -65,7 +65,7 @@ module RightScale
         open(@pid_file,'w') { |f| f.write(Process.pid) }
         File.chmod(0644, @pid_file)
       rescue Exception => e
-        RightLog.error "Failed to create PID file: #{e.message}"
+        Log.error "Failed to create PID file: #{e.message}"
         raise
       end
       true

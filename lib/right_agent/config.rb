@@ -25,7 +25,7 @@ RightScale::Platform.load_platform_specific # To define 'File.normalize_path'
 module RightScale
 
   # Container for RightAgent configuration data
-  class AgentConfig
+  class Config
 
     # Current agent protocol version
     def self.protocol_version
@@ -52,6 +52,6 @@ module RightScale
       Platform
     end
 
-  end # AgentConfig
+  end # Config
 
 end # RightScale

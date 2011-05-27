@@ -124,9 +124,9 @@ module RightScale
         begin
           obj = serializer.__send__(action, packet)
         rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
-          errors << RightLog.format("Failed to #{action} with #{serializer.name}", e)
+          errors << Log.format("Failed to #{action} with #{serializer.name}", e)
         rescue Exception => e
-          errors << RightLog.format("Failed to #{action} with #{serializer.name}", e, :trace)
+          errors << Log.format("Failed to #{action} with #{serializer.name}", e, :trace)
         end
         return obj if obj
       end

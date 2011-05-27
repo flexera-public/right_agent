@@ -25,7 +25,6 @@ module RightScale
   # Dispatching of payload to specified actor
   class Dispatcher
 
-    include RightLogHelper
     include StatsHelper
 
     # Cache for requests that have been dispatched recently
@@ -119,7 +118,7 @@ module RightScale
     # Initialize dispatcher
     #
     # === Parameters
-    # agent(Agent):: Agent using this mapper proxy; uses its identity, broker, registry, and following options:
+    # agent(Agent):: Agent using this dispatcher; uses its identity, broker, registry, and following options:
     #   :dup_check(Boolean):: Whether to check for and reject duplicate requests, e.g., due to retries,
     #     but only for requests that are dispatched from non-shared queues
     #   :secure(Boolean):: true indicates to use Security features of RabbitMQ to restrict agents to themselves
@@ -165,14 +164,14 @@ module RightScale
       token = request.token
       received_at = @requests.update(method, (token if request.kind_of?(Request)))
       if actor.nil?
-        log_error("No actor for dispatching request <#{request.token}> of type #{request.type}")
+        Log.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
         return nil
       end
 
       # Reject this request if its TTL has expired
       if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
         @rejects.update("expired (#{method})")
-        log_info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{elapsed(received_at.to_i - expires_at)} ago")
+        Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{elapsed(received_at.to_i - expires_at)} ago")
         if request.is_a?(Request)
           # For agents that do not know about non-delivery, use error result
           non_delivery = if request.recv_version < 13
@@ -191,13 +190,13 @@ module RightScale
       if @dup_check && !shared && request.kind_of?(Request)
         if @dispatched.fetch(token)
           @rejects.update("duplicate (#{method})")
-          log_info("REJECT DUP <#{token}> of self")
+          Log.info("REJECT DUP <#{token}> of self")
           return nil
         end
         request.tries.each do |t|
           if @dispatched.fetch(t)
             @rejects.update("retry duplicate (#{method})")
-            log_info("REJECT RETRY DUP <#{token}> of <#{t}>")
+            Log.info("REJECT RETRY DUP <#{token}> of <#{t}>")
             return nil
           end
         end
@@ -227,9 +226,9 @@ module RightScale
             @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
           end
         rescue HABrokerClient::NoConnectedBrokers => e
-          log_error("Failed to publish result of dispatched request #{request.trace}", e)
+          Log.error("Failed to publish result of dispatched request #{request.trace}", e)
         rescue Exception => e
-          log_error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
+          Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
           @exceptions.track("publish response", e)
         end
         r # For unit tests
@@ -314,8 +313,8 @@ module RightScale
     # === Return
     # error(String):: Error description for this exception
     def handle_exception(actor, method, request, e)
-      error = format_error("Failed processing #{request.type}", e, :trace)
-      log_error(error)
+      error = Log.format("Failed processing #{request.type}", e, :trace)
+      Log.error(error)
       begin
         if actor && actor.class.exception_callback
           case actor.class.exception_callback
@@ -327,7 +326,7 @@ module RightScale
         end
         @exceptions.track(request.type, e)
       rescue Exception => e2
-        log_error("Failed handling error for #{request.type}", e2, :trace)
+        Log.error("Failed handling error for #{request.type}", e2, :trace)
         @exceptions.track(request.type, e2) rescue nil
       end
       error

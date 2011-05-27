@@ -63,13 +63,13 @@ module RightScale
               if commands.include?(cmd_name)
                 commands[cmd_name].call(c, conn)
               else
-                RightLog.warn("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
+                Log.warn("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
               end
             else
-              RightLog.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
+              Log.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
             end
           rescue Exception => e
-            RightLog.warn("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
+            Log.warn("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
           end
         end
 
@@ -81,11 +81,11 @@ module RightScale
           if pid_file.exists?
             pid_file.set_command_options(cmd_options)
           else
-            RightLog.warn("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
+            Log.warn("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
           end
         end
 
-        RightLog.info("[setup] Command server started listening on port #{@listen_port}")
+        Log.info("[setup] Command server started listening on port #{@listen_port}")
       rescue Exceptions::IO
         # Port already taken, increment and retry
         cmd_options = start(socket_port + 1, identity, commands, options)
@@ -101,7 +101,7 @@ module RightScale
     # false:: Otherwise
     def self.stop
       CommandIO.instance.stop_listening
-      RightLog.info("[stop] Command server stopped listening")
+      Log.info("[stop] Command server stopped listening")
     end
 
   end

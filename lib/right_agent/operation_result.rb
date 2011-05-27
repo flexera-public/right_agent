@@ -143,7 +143,7 @@ module RightScale
     # === Return
     # (OperationResult):: Corresponding result
     def self.error(message, exception = nil)
-      OperationResult.new(ERROR, RightLog.format(message, exception))
+      OperationResult.new(ERROR, Log.format(message, exception))
     end
 
     # Create new continue status

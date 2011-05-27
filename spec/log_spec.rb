@@ -22,7 +22,7 @@
 
 require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
 
-describe RightScale::RightLog do
+describe RightScale::Log do
 
   # Count number of lines logged with the specified text
   # Search is case sensitive and regular expression sensitive
@@ -43,22 +43,22 @@ describe RightScale::RightLog do
   end
 
   before(:each) do
-    Singleton.__init__(RightScale::RightLog)
+    Singleton.__init__(RightScale::Log)
   end
 
   after(:all) do
-    Singleton.__init__(RightScale::RightLog)
+    Singleton.__init__(RightScale::Log)
     ENV['RS_LOG'] = nil
   end
 
   it 'should set default level to info' do
-    RightScale::RightLog.level.should == :info
+    RightScale::Log.level.should == :info
   end
 
   it 'should change level to debug when force_debug' do
-    RightScale::RightLog.level.should == :info
-    RightScale::RightLog.force_debug
-    RightScale::RightLog.level.should == :debug
+    RightScale::Log.level.should == :info
+    RightScale::Log.force_debug
+    RightScale::Log.level.should == :debug
   end
 
   context "logging" do
@@ -72,15 +72,15 @@ describe RightScale::RightLog do
       # use a unique name for the test because the file cannot be deleted after
       # the test in the Windows case (until the process exits) and we need to
       # avoid any potential conflicts with other tests, etc.
-      @log_name = "right_log_test-9D9A9CB7-24A1-4093-9F75-D462D373A0D8"
+      @log_name = "log_test-9D9A9CB7-24A1-4093-9F75-D462D373A0D8"
       @log_file = File.join(log_dir, "#{@log_name}.log")
-      RightScale::RightLog.program_name = "tester"
-      RightScale::RightLog.log_to_file_only(true)
-      RightScale::RightLog.init(@log_name, log_dir)
+      RightScale::Log.program_name = "tester"
+      RightScale::Log.log_to_file_only(true)
+      RightScale::Log.init(@log_name, log_dir)
     end
 
     after(:each) do
-      # note that the log is held open in the Windows case by RightLog so we
+      # note that the log is held open in the Windows case by Log so we
       # cannot delete it after each test. on the other hand, we can truncate the
       # log to zero size and continue to the next test (ultimately leaving an
       # empty file after the test, which is acceptable).
@@ -88,23 +88,23 @@ describe RightScale::RightLog do
     end
 
     it 'should log info but not debug by default' do
-      RightScale::RightLog.debug("Test debug")
-      RightScale::RightLog.info("Test info")
+      RightScale::Log.debug("Test debug")
+      RightScale::Log.info("Test info")
       log_count("Test debug$").should == 0
       log_count("Test info$").should == 1
     end
 
     it 'should log debug after adjust level to :debug' do
-      RightScale::RightLog.level = :debug
-      RightScale::RightLog.debug("Test debug")
-      RightScale::RightLog.info("Test info")
+      RightScale::Log.level = :debug
+      RightScale::Log.debug("Test debug")
+      RightScale::Log.info("Test info")
       log_count("Test debug$").should == 1
       log_count("Test info$").should == 1
     end
 
     it 'should log additional error string when given' do
-      RightScale::RightLog.warning("Test warning", "Error")
-      RightScale::RightLog.error("Test error", "Error")
+      RightScale::Log.warning("Test warning", "Error")
+      RightScale::Log.error("Test error", "Error")
       log_count("Test warning \\\(Error\\\)$").should == 1
       log_count("Test error \\\(Error\\\)$").should == 1
     end
@@ -113,8 +113,8 @@ describe RightScale::RightLog do
       begin
         nil + "string"
       rescue Exception => e
-        RightScale::RightLog.warning("Test warning")
-        RightScale::RightLog.error("Test error")
+        RightScale::Log.warning("Test warning")
+        RightScale::Log.error("Test error")
       end
       log_count("Test warning$").should == 1
       log_count("Test error$").should == 1
@@ -124,30 +124,30 @@ describe RightScale::RightLog do
       begin
         nil + "string"
       rescue Exception => e
-        RightScale::RightLog.warning("Test warning", e)
-        RightScale::RightLog.error("Test error", e)
+        RightScale::Log.warning("Test warning", e)
+        RightScale::Log.error("Test error", e)
       end
-      log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*right_log_spec.*\\\)$").should == 1
-      log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*right_log_spec.*\\\)$").should == 1
+      log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*log_spec.*\\\)$").should == 1
+      log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*log_spec.*\\\)$").should == 1
     end
 
     it 'should log with exception class, message, and caller appended when use :caller' do
       begin
         nil + "string"
       rescue Exception => e
-        RightScale::RightLog.warning("Test warning", e, :caller)
-        RightScale::RightLog.error("Test error", e, :caller)
+        RightScale::Log.warning("Test warning", e, :caller)
+        RightScale::Log.error("Test error", e, :caller)
       end
-      log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*right_log_spec.*\\\)$").should == 1
-      log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*right_log_spec.*\\\)$").should == 1
+      log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*log_spec.*\\\)$").should == 1
+      log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in .*log_spec.*\\\)$").should == 1
     end
 
     it 'should log with exception class and message appended when use :no_trace' do
       begin
         nil + "string"
       rescue Exception => e
-        RightScale::RightLog.warning("Test warning", e, :no_trace)
-        RightScale::RightLog.error("Test error", e, :no_trace)
+        RightScale::Log.warning("Test warning", e, :no_trace)
+        RightScale::Log.error("Test error", e, :no_trace)
       end
       log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass\\\)$").should == 1
       log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass\\\)$").should == 1
@@ -157,8 +157,8 @@ describe RightScale::RightLog do
       begin
         nil + "string"
       rescue Exception => e
-        RightScale::RightLog.warning("Test warning", e, :trace)
-        RightScale::RightLog.error("Test error", e, :trace)
+        RightScale::Log.warning("Test warning", e, :trace)
+        RightScale::Log.error("Test error", e, :trace)
       end
       log_count("Test warning \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in$").should == 1
       log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in$").should == 1

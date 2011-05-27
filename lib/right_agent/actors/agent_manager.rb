@@ -47,7 +47,7 @@ class AgentManager
   def ping(_)
     res = RightScale::OperationResult.success(:identity => @agent.options[:identity],
                                               :hostname => Socket.gethostname,
-                                              :version  => RightScale::AgentConfig.protocol_version,
+                                              :version  => RightScale::Config.protocol_version,
                                               :brokers  => @agent.broker.status,
                                               :time     => Time.now.to_i)
   end
@@ -74,7 +74,7 @@ class AgentManager
   def set_log_level(level)
     level = level.to_sym if level.is_a?(String)
     res = if LEVELS.include?(level)
-      RightScale::RightLog.level = level
+      RightScale::Log.level = level
       RightScale::OperationResult.success
     else
       RightScale::OperationResult.error("Invalid log level '#{level.to_s}'")

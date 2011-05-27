@@ -25,8 +25,6 @@ module RightScale
 
   class CommandParser
 
-    include RightLogHelper
-
     # Register callback block
     #
     # === Block
@@ -63,7 +61,7 @@ module RightScale
             # of halting EM. each command is discrete so we need to keep trying
             # so long as there are more commands to process (although subsequent
             # commands may lack context if previous commands failed).
-            log_error("Failed parsing command chunk", e, :trace)
+            Log.error("Failed parsing command chunk", e, :trace)
           end
         end
         commands.each do |cmd|
@@ -72,7 +70,7 @@ module RightScale
               @callback.call(cmd)
             rescue Exception => e
               # log any exceptions raised by callback instead of halting EM.
-              log_error("Failed executing parsed command", e, :trace)
+              Log.error("Failed executing parsed command", e, :trace)
             end
           end
         end
@@ -81,7 +79,7 @@ module RightScale
       do_call
     rescue Exception => e
       # log any other exceptions instead of halting EM.
-      log_error("Failed parsing command chunk", e, :trace)
+      Log.error("Failed parsing command chunk", e, :trace)
     end
 
   end # CommandParser

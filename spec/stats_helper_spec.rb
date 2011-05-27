@@ -275,7 +275,7 @@ describe RightScale::StatsHelper do
     end
 
     it "should catch any exceptions raised internally" do
-      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to track exception/).once
+      flexmock(RightScale::Log).should_receive(:error).with(/Failed to track exception/).once
       flexmock(@exception).should_receive(:backtrace).and_raise(Exception)
       @stats = RightScale::StatsHelper::ExceptionStats.new
       @stats.track("testing", @exception, "message")

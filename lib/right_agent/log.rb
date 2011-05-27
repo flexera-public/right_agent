@@ -30,11 +30,11 @@ require 'singleton'
 module RightScale
 
   # Logs both to syslog and to local file
-  class RightLog
+  class Log
 
     include Singleton
 
-    # Default formatter for a RightLog
+    # Default formatter for a Log
     class Formatter < Logger::Formatter
       @@show_time = true
 
@@ -132,7 +132,7 @@ module RightScale
     # (Object):: Result from singleton
     class << self
       def method_missing(m, *args)
-        RightLog.instance.__send__(m, *args)
+        Log.instance.__send__(m, *args)
       end
     end
 
@@ -242,7 +242,7 @@ module RightScale
     # @logger(RightScale::Multiplexer):: Multiplexer logger
     def add_logger(logger)
       init unless @initialized
-      logger.level = level_from_sym(RightLog.instance.level)
+      logger.level = level_from_sym(Log.instance.level)
       @logger.add(logger)
     end
 
@@ -399,17 +399,6 @@ module RightScale
       @logger
     end
 
-  end # RightLog
-
-  # Helper module to simplify logging calls
-  module RightLogHelper
-
-    def log_debug(*args) RightLog.debug(*args) end
-    def log_info(*args) RightLog.info(*args) end
-    def log_warning(*args) RightLog.warning(*args) end
-    def log_error(*args) RightLog.error(*args) end
-    def format_error(*args) RightLog.format(*args) end
-
-  end # RightLogHelper
+  end # Log
 
 end # RightScale

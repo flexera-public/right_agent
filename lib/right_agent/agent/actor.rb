@@ -87,7 +87,7 @@ module RightScale
           if instance_methods.include?(meth.to_s) or instance_methods.include?(meth.to_sym)
             true
           else
-            RightLog.warn("Exposing non-existing method #{meth} in actor #{name}")
+            Log.warn("Exposing non-existing method #{meth} in actor #{name}")
             false
           end
         end.map {|meth| "/#{prefix}/#{meth}".squeeze('/')}
@@ -126,7 +126,7 @@ module RightScale
     module InstanceMethods
 
       # Agents using actors are required to define a Sender class providing linkage
-      # to a class that can perform the following send functions as defined in MapperClient
+      # to a class that can perform the following send functions
 
       # Helper method to send a request to one or more targets with no response expected
       def send_push(*args)

@@ -79,7 +79,7 @@ module RightScale
                       if 0 == detachable_volume_count
                         # add a timer to resume volume management later and pass the
                         # block for continuation afterward (unless detachment stranded).
-                        log_info("Waiting for volumes to detach for management purposes. "\
+                        Log.info("Waiting for volumes to detach for management purposes. "\
                                  "Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
                         EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
                       end
@@ -90,11 +90,11 @@ module RightScale
             elsif mapping = mappings.find { |mapping| is_detaching_volume?(mapping) }
               # we successfully requested detachment but status has not
               # changed to reflect this yet.
-              log_info("Waiting for volume #{mapping[:volume_id]} to fully detach. "\
+              Log.info("Waiting for volume #{mapping[:volume_id]} to fully detach. "\
                        "Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
               EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
             elsif mapping = mappings.find { |mapping| is_managed_attaching_volume?(mapping) }
-              log_info("Waiting for volume #{mapping[:volume_id]} to fully attach. Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
+              Log.info("Waiting for volume #{mapping[:volume_id]} to fully attach. Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
               EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
             elsif mapping = mappings.find { |mapping| is_managed_attached_unassigned_volume?(mapping) }
               manage_volume_device_assignment(mapping) do
@@ -104,7 +104,7 @@ module RightScale
                   if mapping[:management_status] == 'assigned'
                     EM.next_tick { manage_planned_volumes(&block) }
                   else
-                    log_info("Waiting for volume #{mapping[:volume_id]} to initialize using \"#{mapping[:mount_points].first}\". "\
+                    Log.info("Waiting for volume #{mapping[:volume_id]} to initialize using \"#{mapping[:mount_points].first}\". "\
                              "Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
                     EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
                   end
@@ -115,7 +115,7 @@ module RightScale
                 unless RightScale::InstanceState.value == 'stranded'
                   unless mapping[:attempts]
                     @audit.append_info("Attached volume #{mapping[:volume_id]} using \"#{mapping[:mount_points].first}\".")
-                    log_info("Waiting for volume #{mapping[:volume_id]} to appear using \"#{mapping[:mount_points].first}\". "\
+                    Log.info("Waiting for volume #{mapping[:volume_id]} to appear using \"#{mapping[:mount_points].first}\". "\
                              "Retrying in #{VolumeManagement::VOLUME_RETRY_SECONDS} seconds...")
                   end
                   EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
@@ -131,7 +131,7 @@ module RightScale
             strand(e)
           end
         elsif res.retry?
-          log_info("Received retry for getting planned volume mappings: #{res.content}")
+          Log.info("Received retry for getting planned volume mappings: #{res.content}")
           EM.add_timer(VolumeManagement::VOLUME_RETRY_SECONDS) { manage_planned_volumes(&block) }
         else
           strand("Failed to retrieve planned volume mappings", res)
@@ -145,7 +145,7 @@ module RightScale
     # mapping(Hash):: details of planned volume
     def detach_planned_volume(mapping)
       payload = {:agent_identity => @agent_identity, :device_name => mapping[:device_name]}
-      log_info("Detaching volume #{mapping[:volume_id]} for management purposes.")
+      Log.info("Detaching volume #{mapping[:volume_id]} for management purposes.")
       send_retryable_request("/storage_valet/detach_volume", payload) do |r|
         res = result_from(r)
         if res.success?
@@ -157,8 +157,8 @@ module RightScale
           # volume could already be detaching or have been deleted
           # which we can't see because of latency; go around again
           # and check state of volume later.
-          log_info("Received retry for detaching volume #{mapping[:volume_id]}.") if res.retry?
-          log_error("Failed to detach volume #{mapping[:volume_id]}: #{res.content}") if res.error?
+          Log.info("Received retry for detaching volume #{mapping[:volume_id]}.") if res.retry?
+          Log.error("Failed to detach volume #{mapping[:volume_id]}: #{res.content}") if res.error?
           mapping[:attempts] ||= 0
           mapping[:attempts] += 1
           # retry indefinitely so long as core api instructs us to retry or else fail after max attempts.
@@ -183,7 +183,7 @@ module RightScale
 
       # attach.
       payload = {:agent_identity => @agent_identity, :volume_id => mapping[:volume_id], :device_name => mapping[:device_name]}
-      log_info("Attaching volume #{mapping[:volume_id]}.")
+      Log.info("Attaching volume #{mapping[:volume_id]}.")
       send_retryable_request("/storage_valet/attach_volume", payload) do |r|
         res = result_from(r)
         if res.success?
@@ -195,8 +195,8 @@ module RightScale
           # volume could already be attaching or have been deleted
           # which we can't see because of latency; go around again
           # and check state of volume later.
-          log_info("Received retry for attaching volume #{mapping[:volume_id]}.") if res.retry?
-          log_error("Failed to attach volume #{mapping[:volume_id]}: #{res.content}") if res.error?
+          Log.info("Received retry for attaching volume #{mapping[:volume_id]}.") if res.retry?
+          Log.error("Failed to attach volume #{mapping[:volume_id]}: #{res.content}") if res.error?
           mapping[:attempts] ||= 0
           mapping[:attempts] += 1
           # retry indefinitely so long as core api instructs us to retry or else fail after max attempts.

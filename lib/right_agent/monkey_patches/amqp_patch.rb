@@ -214,7 +214,7 @@ begin
         end
       end
 
-      RightScale::RightLog.warning("Attempting to reconnect to broker " +
+      RightScale::Log.warning("Attempting to reconnect to broker " +
         "#{RightScale::AgentIdentity.new('rs', 'broker', @settings[:port].to_i, @settings[:host].gsub('-', '~')).to_s}")
       log 'reconnecting'
       EM.reconnect(@settings[:host], @settings[:port], self)
@@ -249,7 +249,7 @@ begin
       begin
         orig_receive_data(*args)
       rescue Exception => e
-        RightScale::RightLog.error("Exception caught while processing AMQP frame, closing connection",
+        RightScale::Log.error("Exception caught while processing AMQP frame, closing connection",
                                    e, :trace) unless ENV['IGNORE_AMQP_FAILURES']
         close_connection
       end

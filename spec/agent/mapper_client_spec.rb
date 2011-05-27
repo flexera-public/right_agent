@@ -22,19 +22,19 @@
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
-describe RightScale::MapperClient do
+describe RightScale::Sender do
 
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::RightLog).should_receive(:error).by_default.and_return { |m| raise RightScale::RightLog.format(*m) }
-    flexmock(RightScale::RightLog).should_receive(:warning).by_default.and_return { |m| raise RightScale::RightLog.format(*m) }
+    flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+    flexmock(RightScale::Log).should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
     @timer = flexmock("timer", :cancel => true).by_default
   end
 
   describe "when fetching the instance" do
     before do
-      RightScale::MapperClient.class_eval do
+      RightScale::Sender.class_eval do
         if class_variable_defined?(:@@instance)
           remove_class_variable(:@@instance) 
         end
@@ -42,16 +42,16 @@ describe RightScale::MapperClient do
     end
     
     it "should return nil when the instance is undefined" do
-      RightScale::MapperClient.instance.should == nil
+      RightScale::Sender.instance.should == nil
     end
     
     it "should return the instance if defined" do
       instance = flexmock
-      RightScale::MapperClient.class_eval do
+      RightScale::Sender.class_eval do
         @@instance = "instance"
       end
       
-      RightScale::MapperClient.instance.should_not == nil
+      RightScale::Sender.instance.should_not == nil
     end
   end
 
@@ -66,18 +66,18 @@ describe RightScale::MapperClient do
     it "should start inactivity timer at initialization time" do
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).with(1000, Proc).and_return(@timer).once
-      RightScale::MapperClient.new(@agent)
+      RightScale::Sender.new(@agent)
     end
 
     it "should not start inactivity timer at initialization time if ping disabled" do
       flexmock(EM::Timer).should_receive(:new).never
-      RightScale::MapperClient.new(@agent)
+      RightScale::Sender.new(@agent)
     end
 
     it "should restart inactivity timer only if sufficient time has elapsed since last restart" do
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).with(1000, Proc).and_return(@timer).once
-      instance = RightScale::MapperClient.new(@agent)
+      instance = RightScale::Sender.new(@agent)
       flexmock(instance).should_receive(:restart_inactivity_timer).once
       instance.message_received
       instance.message_received
@@ -86,8 +86,8 @@ describe RightScale::MapperClient do
     it "should check connectivity if the inactivity timer times out" do
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).once.by_default
-      RightScale::MapperClient.new(@agent)
-      instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      instance = RightScale::Sender.instance
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).and_yield.once
       flexmock(instance).should_receive(:check_connection).once
       instance.message_received
@@ -96,39 +96,39 @@ describe RightScale::MapperClient do
     it "should ignore messages received if ping disabled" do
       @agent.should_receive(:options).and_return(:ping_interval => 0)
       flexmock(EM::Timer).should_receive(:new).never
-      RightScale::MapperClient.new(@agent)
-      RightScale::MapperClient.instance.message_received
+      RightScale::Sender.new(@agent)
+      RightScale::Sender.instance.message_received
     end
 
     it "should log an exception if the connectivity check fails" do
-      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed connectivity check/, Exception, :trace).once
+      flexmock(RightScale::Log).should_receive(:error).with(/Failed connectivity check/, Exception, :trace).once
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).once.by_default
-      RightScale::MapperClient.new(@agent)
-      instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      instance = RightScale::Sender.instance
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).and_yield.once
       flexmock(instance).should_receive(:check_connection).and_raise(Exception)
       instance.message_received
     end
 
     it "should attempt to reconnect if mapper ping times out" do
-      flexmock(RightScale::RightLog).should_receive(:warning).with(/Mapper ping via broker/).once
+      flexmock(RightScale::Log).should_receive(:warning).with(/Mapper ping via broker/).once
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       broker_id = "rs-broker-localhost-5672"
       @broker.should_receive(:identity_parts).with(broker_id).and_return(["localhost", 5672, 0, 0, nil]).once
       @agent.should_receive(:connect).with("localhost", 5672, 0, 0, true).once
-      old_ping_timeout = RightScale::MapperClient::PING_TIMEOUT
+      old_ping_timeout = RightScale::Sender::PING_TIMEOUT
       begin
-        RightScale::MapperClient.const_set(:PING_TIMEOUT, 0.5)
+        RightScale::Sender.const_set(:PING_TIMEOUT, 0.5)
         EM.run do
           EM.add_timer(1) { EM.stop }
-          RightScale::MapperClient.new(@agent)
-          instance = RightScale::MapperClient.instance
+          RightScale::Sender.new(@agent)
+          instance = RightScale::Sender.instance
           flexmock(instance).should_receive(:publish).with(RightScale::Request, nil).and_return([broker_id])
           instance.__send__(:check_connection)
         end
       ensure
-        RightScale::MapperClient.const_set(:PING_TIMEOUT, old_ping_timeout)
+        RightScale::Sender.const_set(:PING_TIMEOUT, old_ping_timeout)
       end
     end
   end
@@ -139,8 +139,8 @@ describe RightScale::MapperClient do
       flexmock(EM::Timer).should_receive(:new).and_return(@timer)
       @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
     end
 
@@ -196,8 +196,8 @@ describe RightScale::MapperClient do
       flexmock(EM::Timer).should_receive(:new).and_return(@timer)
       @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
     end
 
@@ -232,8 +232,8 @@ describe RightScale::MapperClient do
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
       @agent.should_receive(:options).and_return({:ping_interval => 0, :time_to_live => 100}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
     end
 
@@ -264,8 +264,8 @@ describe RightScale::MapperClient do
 
     it "should disable time-to-live if disabled in configuration" do
       @agent.should_receive(:options).and_return({:ping_interval => 0, :time_to_live => 0})
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000))
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
@@ -345,8 +345,8 @@ describe RightScale::MapperClient do
       it "should not setup for retry if retry_timeout nil" do
         flexmock(EM).should_receive(:add_timer).never
         @agent.should_receive(:options).and_return({:retry_timeout => nil})
-        RightScale::MapperClient.new(@agent)
-        @instance = RightScale::MapperClient.instance
+        RightScale::Sender.new(@agent)
+        @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
@@ -354,8 +354,8 @@ describe RightScale::MapperClient do
       it "should not setup for retry if retry_interval nil" do
         flexmock(EM).should_receive(:add_timer).never
         @agent.should_receive(:options).and_return({:retry_interval => nil})
-        RightScale::MapperClient.new(@agent)
-        @instance = RightScale::MapperClient.instance
+        RightScale::Sender.new(@agent)
+        @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
@@ -363,8 +363,8 @@ describe RightScale::MapperClient do
       it "should not setup for retry if publish failed" do
         flexmock(EM).should_receive(:add_timer).never
         @agent.should_receive(:options).and_return({:retry_timeout => 60, :retry_interval => 60})
-        RightScale::MapperClient.new(@agent)
-        @instance = RightScale::MapperClient.instance
+        RightScale::Sender.new(@agent)
+        @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return([]).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
@@ -372,8 +372,8 @@ describe RightScale::MapperClient do
       it "should setup for retry if retry_timeout and retry_interval not nil and publish successful" do
         flexmock(EM).should_receive(:add_timer).with(60, any).once
         @agent.should_receive(:options).and_return({:retry_timeout => 60, :retry_interval => 60})
-        RightScale::MapperClient.new(@agent)
-        @instance = RightScale::MapperClient.instance
+        RightScale::Sender.new(@agent)
+        @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return(@broker_ids).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
@@ -388,8 +388,8 @@ describe RightScale::MapperClient do
           result = RightScale::OperationResult.non_delivery(RightScale::OperationResult::RETRY_TIMEOUT)
           flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return(token).twice
           @agent.should_receive(:options).and_return({:retry_timeout => 0.3, :retry_interval => 0.1})
-          RightScale::MapperClient.new(@agent)
-          @instance = RightScale::MapperClient.instance
+          RightScale::Sender.new(@agent)
+          @instance = RightScale::Sender.instance
           flexmock(@instance).should_receive(:check_connection).once
           @broker.should_receive(:publish).and_return(@broker_ids).twice
           @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
@@ -411,10 +411,10 @@ describe RightScale::MapperClient do
         pending 'Too difficult to get timing right for Windows' if RightScale::Platform.windows?
         EM.run do
           result = RightScale::OperationResult.success
-          flexmock(RightScale::RightLog).should_receive(:warning).once
+          flexmock(RightScale::Log).should_receive(:warning).once
           @agent.should_receive(:options).and_return({:retry_timeout => 0.6, :retry_interval => 0.1})
-          RightScale::MapperClient.new(@agent)
-          @instance = RightScale::MapperClient.instance
+          RightScale::Sender.new(@agent)
+          @instance = RightScale::Sender.instance
           flexmock(@instance).should_receive(:check_connection).once
           @broker.should_receive(:publish).and_return(@broker_ids).times(3)
           @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
@@ -436,8 +436,8 @@ describe RightScale::MapperClient do
           expires_at = nil
           flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return(token).twice
           @agent.should_receive(:options).and_return({:retry_timeout => 0.5, :retry_interval => 0.1})
-          RightScale::MapperClient.new(@agent)
-          @instance = RightScale::MapperClient.instance
+          RightScale::Sender.new(@agent)
+          @instance = RightScale::Sender.instance
           flexmock(@instance).should_receive(:check_connection).once
           @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
             request.expires_at.should == (expires_at ||= request.expires_at)
@@ -481,7 +481,7 @@ describe RightScale::MapperClient do
         end
 
         it "should try to reconnect if ping times out" do
-          flexmock(RightScale::RightLog).should_receive(:warning).once
+          flexmock(RightScale::Log).should_receive(:warning).once
           flexmock(EM::Timer).should_receive(:new).and_yield.once
           flexmock(@agent).should_receive(:connect).once
           @instance.__send__(:check_connection, @broker_id)
@@ -489,8 +489,8 @@ describe RightScale::MapperClient do
         end
 
         it "should log error if attempt to reconnect fails" do
-          flexmock(RightScale::RightLog).should_receive(:warning).once
-          flexmock(RightScale::RightLog).should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
+          flexmock(RightScale::Log).should_receive(:warning).once
+          flexmock(RightScale::Log).should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
           flexmock(@agent).should_receive(:connect).and_raise(Exception)
           flexmock(EM::Timer).should_receive(:new).and_yield.once
           @instance.__send__(:check_connection, @broker_id)
@@ -510,8 +510,8 @@ describe RightScale::MapperClient do
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker,
                         :options => {:ping_interval => 0, :time_to_live => 100}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
     end
 
@@ -564,8 +564,8 @@ describe RightScale::MapperClient do
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {:ping_interval => 0}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
     end
 
@@ -596,7 +596,7 @@ describe RightScale::MapperClient do
     end
 
     it "should log non-delivery if there is no response handler" do
-      flexmock(RightScale::RightLog).should_receive(:info).with(/Non-delivery of/).once
+      flexmock(RightScale::Log).should_receive(:info).with(/Non-delivery of/).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::NO_ROUTE_TO_TARGET)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
@@ -604,7 +604,7 @@ describe RightScale::MapperClient do
     end
 
     it "should log a debug message if request no longer pending" do
-      flexmock(RightScale::RightLog).should_receive(:debug).with(/No pending request for response/).once
+      flexmock(RightScale::Log).should_receive(:debug).with(/No pending request for response/).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       @instance.pending_requests['token2'].should be_nil
@@ -620,8 +620,8 @@ describe RightScale::MapperClient do
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {:ping_interval => 0}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
     end
 
@@ -654,8 +654,8 @@ describe RightScale::MapperClient do
 
     it "should defer the response handler call if not single threaded" do
       @agent.should_receive(:options).and_return({:single_threaded => false})
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       called = 0
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response| called += 1}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
@@ -667,8 +667,8 @@ describe RightScale::MapperClient do
 
     it "should not defer the response handler call if single threaded" do
       @agent.should_receive(:options).and_return({:single_threaded => true})
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       called = 0
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response| called += 1}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
@@ -680,7 +680,7 @@ describe RightScale::MapperClient do
 
     it "should log an error if the response handler raises an exception but still delete pending request" do
       @agent.should_receive(:options).and_return({:single_threaded => true})
-      flexmock(RightScale::RightLog).should_receive(:error).with(/Failed processing response/, Exception, :trace).once
+      flexmock(RightScale::Log).should_receive(:error).with(/Failed processing response/, Exception, :trace).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_| raise Exception}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
@@ -694,30 +694,30 @@ describe RightScale::MapperClient do
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {}).by_default
-      RightScale::MapperClient.new(@agent)
-      @instance = RightScale::MapperClient.instance
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
     end
 
     it 'should not flush queued requests until back online' do
-      old_flush_delay = RightScale::MapperClient::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
       begin
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
           EM.add_timer(0.5) { EM.stop }
         end
       ensure
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
 
     it 'should flush queued requests once back online' do
-      old_flush_delay = RightScale::MapperClient::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
       @broker.should_receive(:publish).once.and_return { EM.stop }
       begin
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
@@ -725,14 +725,14 @@ describe RightScale::MapperClient do
           EM.add_timer(1) { EM.stop }
         end
       ensure
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
 
     it 'should stop flushing when going back to offline mode' do
-      old_flush_delay = RightScale::MapperClient::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
       begin
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
@@ -752,7 +752,7 @@ describe RightScale::MapperClient do
           end
         end
       ensure
-        RightScale::MapperClient.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
   end
