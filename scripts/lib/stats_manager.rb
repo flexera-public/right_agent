@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightScale RightNet Statistics Manager (rstat) - (c) 2010 RightScale
+#   RightAgent Statistics Manager (rstat) - (c) 2010-2011 RightScale
 #
 #   rstat is a command line tool that displays operation statistics for a RightLink instance agent
 #
@@ -166,7 +166,7 @@ module RightScale
 
     # Version information
     def version
-      "rstat #{VERSION.join('.')} - RightScale RightNet Statistics Manager (c) 2010 RightScale"
+      "rstat #{VERSION.join('.')} - RightAgent Statistics Manager (c) 2010-2011 RightScale"
     end
 
   end

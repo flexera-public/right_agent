@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -73,13 +73,13 @@ module RightScale
     # (Integer) Number of attempts to connect after failure
     attr_reader :retries
 
-    # (Integer) Identifier for RightNet island containing this broker
+    # (Integer) Identifier for island containing this broker
     attr_reader :island_id
 
-    # (Integer) RightNet island alias, used in logs
+    # (Integer) Island alias, used in logs
     attr_reader :island_alias
 
-    # (Boolean) Whether this broker is in the same RightNet island as the creator of this client
+    # (Boolean) Whether this broker is in the same island as the creator of this client
     attr_reader :in_home_island
 
     # Create broker client
@@ -109,7 +109,7 @@ module RightScale
     #   :update_status_callback(Proc):: Callback activated on a connection status change with parameters
     #     broker(BrokerClient):: Broker client
     #     connected_before(Boolean):: Whether was connected prior to this status change
-    # island(IslandData|nil):: RightNet island containing this broker, or nil if unknown
+    # island(IslandData|nil):: Island containing this broker, or nil if unknown
     # existing(BrokerClient|nil):: Existing broker client for this address, or nil if none
     def initialize(identity, address, serializer, exceptions, options, island = nil, existing = nil)
       @options         = options

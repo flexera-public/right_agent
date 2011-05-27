@@ -1,4 +1,4 @@
-# Copyright (c) 2009 RightScale, Inc, All Rights Reserved Worldwide.
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
 #
 # THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
 # AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
