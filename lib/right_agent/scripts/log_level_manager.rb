@@ -1,22 +1,22 @@
 # === Synopsis:
-#   RightAgent Log Level Manager (rs_log_level) - (c) 2009-2011 RightScale
+#   RightAgent Log Level Manager (rlog) - (c) 2009-2011 RightScale
 #
-#   rs_log_level is a command line tool for retrieving and setting the log level
+#   rlog is a command line tool for retrieving and setting the log level
 #   for a RightAgent
 #
 # === Examples:
 #   Retrieve log level for all configured agents:
-#     rs_log_level
+#     rlog
 #
 #   Retrieve log level for a specific agent:
-#     rs_log_level AGENT
+#     rlog AGENT
 #
 #   Set log level to debug for all configured agents:
-#     rs_log_level [AGENT] --log-level debug
-#     rs_log_level [AGENT] -l debug
+#     rlog [AGENT] --log-level debug
+#     rlog [AGENT] -l debug
 #
 #   Set log level to debug for a specific agent:
-#     rs_log_level AGENT -l debug
+#     rlog AGENT -l debug
 #
 # === Usage
 #    rs_set_log_level [AGENT] [--log-level, -l debug|info|warn|error|fatal]
@@ -128,7 +128,7 @@ module RightScale
         opts.parse!(ARGV)
       rescue Exception => e
         exit 0 if e.is_a?(SystemExit)
-        fail(e.message + "\nUse 'rs_log_level --help' for additional information")
+        fail(e.message + "\nUse 'rlog --help' for additional information")
       end
       options
     end
@@ -180,7 +180,7 @@ module RightScale
     # === Return
     # ver(String):: Version information
     def version
-      ver = "rs_log_level #{VERSION.join('.')} - RightAgent Log Level Manager (c) 2009-2011 RightScale"
+      ver = "rlog #{VERSION.join('.')} - RightAgent Log Level Manager (c) 2009-2011 RightScale"
     end
 
   end

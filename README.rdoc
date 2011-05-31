@@ -1,116 +1,62 @@
-= RightLink
+= RightAgent
 
 = DESCRIPTION
 
 == Synopsis
 
-RightLink automates servers configuration and monitoring. It uses RabbitMQ as
-message bus and relies on Chef[2] for configuring. RightLink uses RightPopen[3]
-to monitor the stdout and stderr streams of scripted processes. Servers running
-the RightLink agent configures themselves on startup an register with the 
-mapper so that operational recipes and scripts can be run at a later time.
+RightAgent provides a foundation for running an agent on a server to interface
+in a secure fashion with other agents in the RightScale system. A RightAgent
+uses RabbitMQ as the message bus and the RightScale mapper as the routing node.
+Servers running a RightAgent establish a queue on startup for receiving packets
+routed to it via the mapper. The packets are structured to invoke services in
+the agent represented by actors and methods. The RightAgent may respond to these
+requests with a result packet that the mapper then routes to the originator.
+Similarly a RightAgent can also make requests of other RightAgents in the
+RightScale system.
 
-Refer to the wiki (https://github.com/rightscale/right_link/wikis) for up-to-date
+Refer to the wiki (https://github.com/rightscale/right_agent/wikis) for up-to-date
 documentation.
 
-Also use the built-in issues tracker (https://github.com/rightscale/right_link/issues)
+Also use the built-in issues tracker (https://github.com/rightscale/right_agent/issues)
 to report issues.
 
 == Interface
 
-The RightLink agent exposes actors and methods used to schedule the execution
-of Chef recipes and RightScripts (shell scripts). These actors are:
+A RightAgent exposes its services via actors and methods that are invoked by requests
+packets it receives via its message queue. All RightAgents have a general purpose actor
+named agent_manager that provides the following services:
 
-* <b>instance_setup/report_state</b>: Retrieve the current state of the instance (boot, operational, etc.)
-* <b>instance_scheduler/schedule_bundle</b>: Schedule the execution of a Chef recipe or RightScript
+* <b>agent_manager/ping</b>: Respond with basic status information to indicate that active
+* <b>agent_manager/stats</b>: Retrieve statistics about agent operation
+* <b>agent_manager/set_log_level</b>: Change log level of agent
+* <b>agent_manager/execute</b>: Eval code in context of agent
+* <b>agent_manager/connect</b>: Connect agent to additional broker or reconnect it to one
+* <b>agent_manager/disconnect</b>: Disconnect agent from broker
 
-RightLink retrieves the <i>execution bundles</i> containing all the information
-required to run the Chef recipe or RightScript from other agents. An execution 
-bundle consists of a sequence of Chef recipes and/or RightScripts together with
-any required data (Chef attributes, RightScript parameters, packages etc.). The
-exact definition can be found in the <i>lib/payload_types</i> library.
+RightAgent comes with several library modules for forming basic command line tools:
 
-The agents RightLink relies on for operation are expected to provide the following actors and methods:
-
-* booter actor:
-  * booter/set_r_s_version: Set the RightLink version number
-  * booter/get_repositories: Retrieve the repositories bundle used to configure the server
-  * booter/get_boot_bundle: Retrieve the boot execution bundle
-  * booter/get_decommission_bundle: Retrieve the decommission execution bundle
-
-* auditor actor:
-  * auditor/create_new_section: Create a new audit section
-  * auditor/update_status: Update the current audit summary
-  * auditor/append_info: Append information text to the audit
-  * auditor/append_error: Append error message to the audit
-  * auditor/append_output: Append script output to the audit
-  * auditor/append_raw_output: Same as above but don't append newline character
-
-* forwarder actor:
-  * forwarder/schedule_recipe: Request a Chef recipe to be scheduled on this instance
-  * forwarder/schedule_right_script: Request a RightScript to be scheduled on this instance
-
-* state recorder actor:
-  * state_recorder/record: Record instance state transitions (e.g. <i>boot</i>-><i>operational</i>)
-
-Upon startup the instance agent will first request the boot execution bundle
-and run it. If the execution is successful it will then tell the state recorder
-actor to transition to the operational state. At that point the agent is ready
-to receive requests.
-
-RightLink comes with two command line tools <i>rs_run_recipe</i> and
-<i>rs_run_right_script</i> which allow triggering the execution of operational
-Chef recipes or RighScript respecively from within the instance itself. These
-two command line tools tell the RightLink agent to send a
-<i>forwarder/schedule_recipe</i> or <i>forwarder/schedule_right_script</i>
-request to the agents that provide these operations. These agents should in
-turn call the <i>instance_scheduler/schedule_bundle</i> operation of the
-RightLink agent with the right execution bundle.
-
-= INSTALLATION
-
-The <i>scripts</i> folder contains a set of scripts that can be used to
-configure and manage the agent. Install these scripts by running the provided
-<i>install.sh</i> bash script from the <i>scripts</i> folder.
-
-Installing the agent can then be done using the <b>rad</b> command line tool as
-follows:
-
-  rad instance --identity 1 --user right_link --password testing --vhost /right_link  --host localhost
-
-(see <tt>rad --help</tt> for information on the parameters).
-
-This will create the file <i>generated/instance/config.yml</i> which is the
-agent configuration file. Running the agent is then done using the <b>rnac</b>
-command line tool:
-
-  rnac --start instance
-
-(again <tt>rnac --help</tt> for more details on the rnac tool)
-
-This requires that a RabbitMQ broker is running on localhost and has a /right_link
-vhost configured with a Nanite mapper running and setup to use the Nanite
-secure serializer.
+* <b>agent_deployer</b>: Build a configuration file for running the agent (rad tool)
+* <b>agent_controller</b>: Manage an agent that has been configured (rnac tool)
+* <b>stats_manager</b>: Gather and display operation statistics for an agent (rstat tool)
+* <b>log_level_manager</b>: Retrieve and set log level for an agent (rlog tool)
 
 == Supported Configuration
 
-RightLink has been tested on EC2 instances running CentOS 5.2 and Ubuntu 8.10.
+RightAgent has been tested on EC2 instances running CentOS 5.2 and Ubuntu 8.10.
 
 == Work in Progress
 
-RightLink is work in progress, expect more documentation and examples in the near
-future. 
+RightAgent is work in progress, expect more documentation and examples in the near future.
 
 = ADDITIONAL RESOURCES
 
-* [1] Chef is http://wiki.opscode.com/display/chef/Home
-* [2] RightPopen is http://gemcutter.org/gems/right_popen
+* [1] RabbitMQ is http://www.rabbitmq.com/documentation.html
 
 = LICENSE
 
-<b>RightLink</b>
+<b>RightAgent</b>
 
-Copyright:: Copyright (c) 2009-2011 RightScale, Inc.
+Copyright:: Copyright (c) 2011 RightScale, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
