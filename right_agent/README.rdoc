@@ -1,0 +1,78 @@
+= RightAgent
+
+= DESCRIPTION
+
+== Synopsis
+
+RightAgent provides a foundation for running an agent on a server to interface
+in a secure fashion with other agents in the RightScale system. A RightAgent
+uses RabbitMQ as the message bus and the RightScale mapper as the routing node.
+Servers running a RightAgent establish a queue on startup for receiving packets
+routed to it via the mapper. The packets are structured to invoke services in
+the agent represented by actors and methods. The RightAgent may respond to these
+requests with a result packet that the mapper then routes to the originator.
+Similarly a RightAgent can also make requests of other RightAgents in the
+RightScale system.
+
+Refer to the wiki (https://github.com/rightscale/right_agent/wikis) for up-to-date
+documentation.
+
+Also use the built-in issues tracker (https://github.com/rightscale/right_agent/issues)
+to report issues.
+
+== Interface
+
+A RightAgent exposes its services via actors and methods that are invoked by requests
+packets it receives via its message queue. All RightAgents have a general purpose actor
+named agent_manager that provides the following services:
+
+* <b>agent_manager/ping</b>: Respond with basic status information to indicate that active
+* <b>agent_manager/stats</b>: Retrieve statistics about agent operation
+* <b>agent_manager/set_log_level</b>: Change log level of agent
+* <b>agent_manager/execute</b>: Eval code in context of agent
+* <b>agent_manager/connect</b>: Connect agent to additional broker or reconnect it to one
+* <b>agent_manager/disconnect</b>: Disconnect agent from broker
+
+RightAgent comes with several library modules for forming basic command line tools:
+
+* <b>agent_deployer</b>: Build a configuration file for running the agent (rad tool)
+* <b>agent_controller</b>: Manage an agent that has been configured (rnac tool)
+* <b>stats_manager</b>: Display operation statistics for an agent (rstat tool)
+* <b>log_level_manager</b>: Retrieve and set log level for an agent (rlog tool)
+
+== Supported Configuration
+
+RightAgent has been tested on EC2 instances running CentOS 5.2 and Ubuntu 8.10.
+
+== Work in Progress
+
+RightAgent is work in progress, expect more documentation and examples in the near future.
+
+= ADDITIONAL RESOURCES
+
+* [1] RabbitMQ is http://www.rabbitmq.com/documentation.html
+
+= LICENSE
+
+<b>RightAgent</b>
+
+Copyright:: Copyright (c) 2011 RightScale, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
