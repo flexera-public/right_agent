@@ -8,6 +8,7 @@ gem "eventmachine",  "0.12.10"
 gem "right_popen",   "1.0.11"
 gem "msgpack",       "0.4.4"
 gem "rake",          "0.8.7"
+gem "actionmailer",  "2.3.5"
 
 group :test do
   gem "rspec",       "~> 2.5"

@@ -402,7 +402,7 @@ describe RightScale::Agent do
         end
       end
 
-      it "should use mapper proxy to handle results" do
+      it "should use sender to handle results" do
         run_in_em do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
@@ -412,7 +412,7 @@ describe RightScale::Agent do
         end
       end
 
-      it "should notify mapper proxy when a message is received" do
+      it "should notify sender when a message is received" do
         run_in_em do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).

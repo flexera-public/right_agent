@@ -1,4 +1,4 @@
-# Copyright (c) 2009 RightScale, Inc, All Rights Reserved Worldwide.
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
 #
 # THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
 # AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
@@ -8,8 +8,6 @@
 # including confidentiality obligations, set forth in the applicable
 # License Agreement between RightScale.com, Inc. and
 # the licensee.
-
-require File.join(File.dirname(__FILE__), 'infrastructure_packets')
 
 module RightScale
 
@@ -74,13 +72,13 @@ module RightScale
           case packet
           when Advertise     then advertise_services unless @terminating
           when Push, Request then @dispatcher.dispatch(packet) unless @terminating
-          when Result        then @mapper_proxy.handle_response(packet)
+          when Result        then @sender.handle_response(packet)
           end
-          @mapper_proxy.message_received
+          @sender.message_received
         rescue HABrokerClient::NoConnectedBrokers => e
-          RightLinkLog.error("Identity queue processing error", e)
+          Log.error("Identity queue processing error", e)
         rescue Exception => e
-          RightLinkLog.error("Identity queue processing error", e, :trace)
+          Log.error("Identity queue processing error", e, :trace)
           @exceptions.track("identity queue", e, packet)
         end
       end
@@ -103,11 +101,11 @@ module RightScale
       ids = @broker.subscribe(queue, exchange, options) do |_, request|
         begin
           @dispatcher.dispatch(request, shared = true)
-          @mapper_proxy.message_received
+          @sender.message_received
         rescue HABrokerClient::NoConnectedBrokers => e
-          RightLinkLog.error("Shared queue processing error", e)
+          Log.error("Shared queue processing error", e)
         rescue Exception => e
-          RightLinkLog.error("Shared queue processing error", e, :trace)
+          Log.error("Shared queue processing error", e, :trace)
           @exceptions.track("shared queue", e, request)
         end
       end
@@ -127,9 +125,9 @@ module RightScale
             after += (@remaining_setup[setup] -= self.__send__(setup, ids)).size
           end
         end
-        RightLinkLog.info("[setup] Finished subscribing to queues") if before > 0 && after == 0
+        Log.info("[setup] Finished subscribing to queues") if before > 0 && after == 0
       rescue Exception => e
-        RightLinkLog.error("Failed finishing subscribing to queues", e)
+        Log.error("Failed finishing subscribing to queues", e)
         @exceptions.track("check status", e)
       end
 
@@ -141,7 +139,7 @@ module RightScale
       begin
         advertise_services if ((@check_status_count + @advertise_offset) % @advertise_modulus) == 0
       rescue Exception => e
-        RightLinkLog.error("Failed advertising services", e)
+        Log.error("Failed advertising services", e)
         @exceptions.track("check status", e)
       end
       true
@@ -196,7 +194,7 @@ module RightScale
       begin
         @broker.publish(exchange, packet, :mandatory => true)
       rescue Exception => e
-        RightLinkLog.error("Failed to publish #{packet.class} to #{exchange[:name]} exchange", e) unless @terminating
+        Log.error("Failed to publish #{packet.class} to #{exchange[:name]} exchange", e) unless @terminating
         @exceptions.track("publish", e, packet)
       end
       true

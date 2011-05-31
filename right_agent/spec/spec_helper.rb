@@ -62,13 +62,8 @@ module RightScale
 
   end # SpecHelper
 
-end # RightScale
-
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent', 'log'))
-
-module RightScale
-
   class Log
+
     # Monkey path RightAgent logger to not log by default
     # Define env var RS_LOG to override this behavior and have the logger log normally
     class << self
@@ -78,6 +73,7 @@ module RightScale
     def self.method_missing(m, *args)
       original_method_missing(m, *args) unless [:debug, :info, :warn, :warning, :error, :fatal].include?(m) && ENV['RS_LOG'].nil?
     end
-  end
+
+  end # Log
 
 end

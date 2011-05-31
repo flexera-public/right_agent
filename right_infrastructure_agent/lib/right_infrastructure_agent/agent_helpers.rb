@@ -1,31 +1,20 @@
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
 #
-# Copyright (c) 2009 RightScale Inc
-#
-# Permission is hereby granted, free of charge, to any person obtaining
-# a copy of this software and associated documentation files (the
-# "Software"), to deal in the Software without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Software, and to
-# permit persons to whom the Software is furnished to do so, subject to
-# the following conditions:
-#
-# The above copyright notice and this permission notice shall be
-# included in all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
+# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
+# reproduction, modification, or disclosure of this program is
+# strictly prohibited.  Any use of this program by an authorized
+# licensee is strictly subject to the terms and conditions,
+# including confidentiality obligations, set forth in the applicable
+# License Agreement between RightScale.com, Inc. and
+# the licensee.
 
 module RightScale
 
   # Helper methods for all agents
   module AgentHelpers
-    include RightLinkLogHelpers
-    include OperationResultHelpers
+
+    include OperationResultHelper
 
     # Retrieve database object
     # Audit and/or log error if given block returns nil or raises, return block result otherwise
@@ -45,11 +34,11 @@ module RightScale
       begin
         unless item = yield
           @last_error = "Could not find #{description}"
-          log_warning(@last_error) if log
+          Log.warning(@last_error) if log
         end
       rescue Exception => e
         description = "Failed to retrieve #{description}"
-        log_error(description, e, :trace)
+        Log.error(description, e, :trace)
         @last_error = format_error(description, e)
         item = nil
       end
@@ -75,7 +64,7 @@ module RightScale
         yield
       rescue Exception => e
         description = "Failed to create #{description}"
-        log_error(description, e, :trace)
+        Log.error(description, e, :trace)
         @last_error = format_error(description, e)
         audit.append(AuditFormatter.error(@last_error)) if audit
         nil
@@ -102,7 +91,7 @@ module RightScale
         ModelsImporter.instance.run_query(&blk)
       rescue Exception => e
         description = "Failed to #{description}"
-        log_error(description, e, :trace)
+        Log.error(description, e, :trace)
         if options[:include_backtrace_in_last_error]
           @last_error = format_error(description, e, :trace)
         else
@@ -111,7 +100,7 @@ module RightScale
         audit.append(AuditFormatter.error(@last_error)) if audit
 
         if(options[:email_errors])
-          RightScale::ExceptionMailer.deliver_notification(description, e.message, e)
+          ExceptionMailer.deliver_notification(description, e.message, e)
         end
 
         nil
@@ -133,7 +122,7 @@ module RightScale
         begin
           yield
         rescue Exception => e
-          log_error("Failed time-delayed task", e, :trace)
+          Log.error("Failed time-delayed task", e, :trace)
         end
       end
       true

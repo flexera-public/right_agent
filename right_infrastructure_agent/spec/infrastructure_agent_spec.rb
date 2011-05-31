@@ -1,28 +1,15 @@
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
 #
-# Copyright (c) 2009-2011 RightScale Inc
-#
-# Permission is hereby granted, free of charge, to any person obtaining
-# a copy of this software and associated documentation files (the
-# "Software"), to deal in the Software without restriction, including
-# without limitation the rights to use, copy, modify, merge, publish,
-# distribute, sublicense, and/or sell copies of the Software, and to
-# permit persons to whom the Software is furnished to do so, subject to
-# the following conditions:
-#
-# The above copyright notice and this permission notice shall be
-# included in all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
+# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
+# reproduction, modification, or disclosure of this program is
+# strictly prohibited.  Any use of this program by an authorized
+# licensee is strictly subject to the terms and conditions,
+# including confidentiality obligations, set forth in the applicable
+# License Agreement between RightScale.com, Inc. and
+# the licensee.
 
-require File.join(File.dirname(__FILE__), '..', '..', '..', 'spec', 'spec_helper')
-require File.join(File.dirname(__FILE__), '..', 'lib', 'infrastructure_agent')
-require 'tmpdir'
+require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
 
 def run_in_em(stop_event_loop = true)
   EM.run do
@@ -36,7 +23,7 @@ describe RightScale::InfrastructureAgent do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::RightLinkLog).should_receive(:error).and_return { |m| raise m[1] }.by_default
+    flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
     flexmock(EM).should_receive(:add_timer).and_yield
     flexmock(EM).should_receive(:add_periodic_timer)
     flexmock(EM).should_receive(:next_tick).and_yield
@@ -54,9 +41,9 @@ describe RightScale::InfrastructureAgent do
     flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
     flexmock(RightScale::PidFile).should_receive(:new).
             and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
-    @mapper_proxy = flexmock("mapper_proxy", :pending_requests => [], :request_age => nil,
-                             :message_received => true, :terminate => [0, 0], :stats => "").by_default
-    flexmock(RightScale::MapperProxy).should_receive(:new).and_return(@mapper_proxy)
+    @sender = flexmock("sender", :pending_requests => [], :request_age => nil,
+                       :message_received => true, :terminate => [0, 0], :stats => "").by_default
+    flexmock(RightScale::Sender).should_receive(:new).and_return(@sender)
     @dispatcher = flexmock("dispatcher", :dispatch_age => nil, :dispatch => true, :stats => "").by_default
     flexmock(RightScale::Dispatcher).should_receive(:new).and_return(@dispatcher)
     @identity = "rs-core-123-1"
@@ -209,12 +196,12 @@ describe RightScale::InfrastructureAgent do
       end
     end
 
-    it "should use mapper proxy to handle results" do
+    it "should use sender to handle results" do
       run_in_em do
         result = RightScale::Result.new("token", "to", "results", "from")
         @broker.should_receive(:subscribe).with(hsh(:name => @identity), hsh(:name => @identity), Hash, Proc).
                                            and_return(@broker_ids).and_yield(@broker_id, result).once
-        @mapper_proxy.should_receive(:handle_response).with(result).once
+        @sender.should_receive(:handle_response).with(result).once
         @agent = RightScale::InfrastructureAgent.start(:user => "tester", :identity => @identity)
       end
     end
@@ -229,18 +216,18 @@ describe RightScale::InfrastructureAgent do
       end
     end
 
-    it "should notify mapper proxy when a message is received on identity queue" do
+    it "should notify sender when a message is received on identity queue" do
       run_in_em do
         result = RightScale::Result.new("token", "to", "results", "from")
         @broker.should_receive(:subscribe).with(hsh(:name => @identity), hsh(:name => @identity), Hash, Proc).
                                            and_return(@broker_ids).and_yield(@broker_id, result).once
-        @mapper_proxy.should_receive(:handle_response).with(result).once
-        @mapper_proxy.should_receive(:message_received).once
+        @sender.should_receive(:handle_response).with(result).once
+        @sender.should_receive(:message_received).once
         @agent = RightScale::InfrastructureAgent.start(:user => "tester", :identity => @identity)
       end
     end
 
-    it "should notify mapper proxy when a message is received on shared queue" do
+    it "should notify sender when a message is received on shared queue" do
       run_in_em do
         request = RightScale::Push.new("/foo/bar", "payload")
         @broker.should_receive(:subscribe).with(hsh(:name => @identity), hsh(:name => @identity), Hash, Proc).
@@ -248,7 +235,7 @@ describe RightScale::InfrastructureAgent do
         @broker.should_receive(:subscribe).with(hsh(:name => "shared"), hsh(:name => "shared"), Hash, Proc).
                                            and_return(@broker_ids).and_yield(@broker_id, request).once
         @dispatcher.should_receive(:dispatch).with(request, true).once
-        @mapper_proxy.should_receive(:message_received).once
+        @sender.should_receive(:message_received).once
         @agent = RightScale::InfrastructureAgent.start(:user => "tester", :identity => @identity, :shared_queue => "shared")
       end
     end

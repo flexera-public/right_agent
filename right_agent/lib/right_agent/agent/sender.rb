@@ -64,7 +64,7 @@ module RightScale
     # Accessor for use by actor
     #
     # === Return
-    # (Sender):: This mapper proxy instance if defined, otherwise nil
+    # (Sender):: This sender instance if defined, otherwise nil
     def self.instance
       @@instance if defined?(@@instance)
     end
@@ -72,7 +72,7 @@ module RightScale
     # Initialize sender
     #
     # === Parameters
-    # agent(Agent):: Agent using this mapper proxy; uses its identity, broker, and following options:
+    # agent(Agent):: Agent using this sender; uses its identity, broker, and following options:
     #   :exception_callback(Proc):: Callback with following parameters that is activated on exception events:
     #     exception(Exception):: Exception
     #     message(Packet):: Message being processed
