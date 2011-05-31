@@ -85,7 +85,7 @@ describe "RightScale::Dispatcher" do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::Log).should_receive(:error).never.by_default
+    flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
     flexmock(RightScale::Log).should_receive(:info).by_default
     @now = Time.at(1000000)
     flexmock(Time).should_receive(:now).and_return(@now).by_default

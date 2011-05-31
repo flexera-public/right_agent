@@ -23,46 +23,68 @@
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 require 'json/ext'
 
+class TestClass1
+
+  include RightScale::Serializable
+
+  attr_accessor :name, :array, :date
+
+  def initialize(*args)
+    @name  = args[0] if args.size > 0
+    @array = args[1] if args.size > 1
+    @date  = args[2] if args.size > 2
+  end
+
+  def serialized_members
+    [@name, @array, @date]
+  end
+end
+
+class TestClass2
+
+  include RightScale::Serializable
+
+  attr_accessor :attr1, :attr2
+
+  def initialize(*args)
+    attr1 = args[0]
+    attr2 = args[1] if args.size > 1
+  end
+
+  def serialized_members
+    [@attr1, @attr2]
+  end
+
+end
+
 describe RightScale::Serializable do
 
   it 'should serialize using MessagePack' do
-    fsi1 = RightScale::SoftwareRepositoryInstantiation.new
-    fsi1.name = "Yum::CentOS::Base"
-    fsi1.base_urls = ["http://ec2-us-east-mirror.rightscale.com/centos",
-                     "http://ec2-us-east-mirror1.rightscale.com/centos",
-                     "http://ec2-us-east-mirror2.rightscale.com/centos",
-                     "http://ec2-us-east-mirror3.rightscale.com/centos"]
+    a1 = TestClass1.new
+    a1.name = "Test1"
+    a1.array = ["some", "stuff" ]
 
-    fsi2 = RightScale::SoftwareRepositoryInstantiation.new
-    fsi2.name = "Gems::RubyGems"
-    fsi2.base_urls = ["http://ec2-us-east-mirror.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror1.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror2.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror3.rightscale.com/rubygems"]
+    b1 = TestClass1.new
+    b1.name = "Test2"
+    b1.array = ["some", "more", "stuff"]
 
-    b = RightScale::ExecutableBundle.new([fsi1, fsi2], 1234)
-    fsi1.to_msgpack
-    b.to_msgpack
+    c = TestClass2.new([a1, b1], 1234)
+    a1.to_msgpack
+    TestClass2.msgpack_create(c.to_msgpack).should == c
   end
 
   it 'should serialize using JSON' do
-    fsi1 = RightScale::SoftwareRepositoryInstantiation.new
-    fsi1.name = "Yum::CentOS::Base"
-    fsi1.base_urls = ["http://ec2-us-east-mirror.rightscale.com/centos",
-                     "http://ec2-us-east-mirror1.rightscale.com/centos",
-                     "http://ec2-us-east-mirror2.rightscale.com/centos",
-                     "http://ec2-us-east-mirror3.rightscale.com/centos"]
+    a1 = TestClass1.new
+    a1.name = "Test1"
+    a1.array = ["some", "stuff" ]
 
-    fsi2 = RightScale::SoftwareRepositoryInstantiation.new
-    fsi2.name = "Gems::RubyGems"
-    fsi2.base_urls = ["http://ec2-us-east-mirror.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror1.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror2.rightscale.com/rubygems",
-                     "http://ec2-us-east-mirror3.rightscale.com/rubygems"]
+    b1 = TestClass1.new
+    b1.name = "Test2"
+    b1.array = ["some", "more", "stuff"]
 
-    b = RightScale::ExecutableBundle.new([fsi1, fsi2], 1234)
-    fsi1.to_json
-    b.to_json
+    c = TestClass2.new([a1, b1], 1234)
+    a1.to_json
+    TestClass2.json_create(c.to_msgpack).should == c
   end
 
 end

@@ -47,7 +47,7 @@ class AgentManager
   def ping(_)
     res = RightScale::OperationResult.success(:identity => @agent.options[:identity],
                                               :hostname => Socket.gethostname,
-                                              :version  => RightScale::Config.protocol_version,
+                                              :version  => RightScale::AgentConfig.protocol_version,
                                               :brokers  => @agent.broker.status,
                                               :time     => Time.now.to_i)
   end

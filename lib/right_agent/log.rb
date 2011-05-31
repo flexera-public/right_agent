@@ -22,7 +22,7 @@
 
 require 'logger'
 require 'right_support'
-require File.join(File.dirname(__FILE__), 'config')
+require File.join(File.dirname(__FILE__), 'agent_config')
 require File.join(File.dirname(__FILE__), 'multiplexer')
 require File.join(File.dirname(__FILE__), 'exceptions')
 require 'singleton'

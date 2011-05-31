@@ -23,7 +23,7 @@
 require 'uri'
 require 'tmpdir'
 
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'common', 'lib', 'common', 'agent', 'agent_identity'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agent', 'agent_identity'))
 
 # Common options parser
 module RightScale
@@ -50,7 +50,7 @@ module RightScale
         options[:token] = t
       end
 
-      opts.on("-r", "--prefix PREFIX") do |p|
+      opts.on("--prefix PREFIX") do |p|
         options[:prefix] = p
       end
 
@@ -83,8 +83,8 @@ module RightScale
         options[:host] = host
       end
 
-      opts.on('--alias ALIAS') do |a|
-        options[:alias] = a
+      opts.on('--type TYPE') do |t|
+        options[:agent_type] = t
       end
 
       opts.on_tail("--help") do

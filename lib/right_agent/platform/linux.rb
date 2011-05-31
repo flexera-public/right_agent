@@ -103,6 +103,11 @@ module RightScale
         return nil
       end
 
+      # Path to directory containing generated agent configuration files
+      def cfg_dir
+        '/etc/right_agent'
+      end
+
       def right_scale_state_dir
         '/etc/rightscale.d'
       end

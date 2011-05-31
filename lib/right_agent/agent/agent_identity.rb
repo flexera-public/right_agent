@@ -26,7 +26,7 @@ module RightScale
   class AgentIdentity
 
     # Cutover time at which agents began using new separator
-    SEPARATOR_EPOCH = Time.at(1256702400) unless defined?(SEPARATOR_EPOCH) #Tue Oct 27 21:00:00 -0700 2009
+    SEPARATOR_EPOCH = Time.at(1256702400) unless defined?(SEPARATOR_EPOCH) # Tue Oct 27 21:00:00 -0700 2009
 
     # Separator used to differentiate between identity components when serialized
     ID_SEPARATOR = '-' unless defined?(ID_SEPARATOR)
@@ -35,26 +35,26 @@ module RightScale
     ID_SEPARATOR_OLD = '*' unless defined?(ID_SEPARATOR_OLD)
 
     # Identity components
-    attr_reader :prefix, :agent_name, :token, :base_id
+    attr_reader :prefix, :agent_type, :token, :base_id
 
     # Generate new id
     #
     # === Parameters
     # prefix(String):: Prefix used to scope identity
-    # agent_name(String):: Name of agent (e.g. 'core', 'instance')
+    # agent_type(String):: Agent type (e.g. 'core', 'instance')
     # base_id(Integer):: Unique integer value
     # token(String):: Unique identity token, will be generated randomly if not provided
     # separator(String):: Character used to separate identity components, defaults to ID_SEPARATOR
     #
     # === Raise
     # RightScale::Exceptions::Argument:: Invalid argument
-    def initialize(prefix, agent_name, base_id, token=nil, separator=nil)
+    def initialize(prefix, agent_type, base_id, token=nil, separator=nil)
       err = "Prefix cannot contain '#{ID_SEPARATOR}'" if prefix && prefix.include?(ID_SEPARATOR)
       err = "Prefix cannot contain '#{ID_SEPARATOR_OLD}'" if prefix && prefix.include?(ID_SEPARATOR_OLD)
-      err = "Agent name cannot contain '#{ID_SEPARATOR}'" if agent_name.include?(ID_SEPARATOR)
-      err = "Agent name cannot contain '#{ID_SEPARATOR_OLD}'" if agent_name.include?(ID_SEPARATOR_OLD)
-      err = "Agent name cannot be nil" if agent_name.nil?
-      err = "Agent name cannot be empty" if agent_name.size == 0
+      err = "Agent type cannot contain '#{ID_SEPARATOR}'" if agent_type.include?(ID_SEPARATOR)
+      err = "Agent type cannot contain '#{ID_SEPARATOR_OLD}'" if agent_type.include?(ID_SEPARATOR_OLD)
+      err = "Agent type cannot be nil" if agent_type.nil?
+      err = "Agent type cannot be empty" if agent_type.size == 0
       err = "Base ID must be a positive integer" unless base_id.kind_of?(Integer) && base_id >= 0
       err = "Token cannot contain '#{ID_SEPARATOR}'" if token && token.include?(ID_SEPARATOR)
       err = "Token cannot contain '#{ID_SEPARATOR_OLD}'" if token && token.include?(ID_SEPARATOR_OLD)
@@ -62,7 +62,7 @@ module RightScale
 
       @separator  = separator || ID_SEPARATOR
       @prefix     = prefix
-      @agent_name = agent_name
+      @agent_type = agent_type
       @token      = token || self.class.generate
       @base_id    = base_id
     end
@@ -100,12 +100,12 @@ module RightScale
     # (RightScale::Exceptions::Argument):: Serialized agent identity is incorrect
     def self.parse(serialized_id)
       serialized_id = self.compatible_serialized(serialized_id)
-      prefix, agent_name, token, bid, separator = parts(serialized_id)
-      raise RightScale::Exceptions::Argument, "Invalid agent identity token" unless prefix && agent_name && token && bid
+      prefix, agent_type, token, bid, separator = parts(serialized_id)
+      raise RightScale::Exceptions::Argument, "Invalid agent identity token" unless prefix && agent_type && token && bid
       base_id = bid.to_i
       raise RightScale::Exceptions::Argument, "Invalid agent identity token (Base ID)" unless base_id.to_s == bid
 
-      AgentIdentity.new(prefix, agent_name, base_id, token, separator)
+      AgentIdentity.new(prefix, agent_type, base_id, token, separator)
     end
 
     # Convert serialized agent identity to format valid for given protocol version
@@ -131,7 +131,7 @@ module RightScale
     # === Return
     # (Boolean):: true if id corresponds to an instance agent, otherwise false
     def instance_agent?
-      agent_name == 'instance'
+      agent_type == 'instance'
     end
 
     # Check whether identity corresponds to an instance agent
@@ -150,7 +150,7 @@ module RightScale
     # === Return
     # (String):: Serialized identity
     def to_s
-      "#{@prefix}#{@separator}#{@agent_name}#{@separator}#{@token}#{@separator}#{@base_id}"
+      "#{@prefix}#{@separator}#{@agent_type}#{@separator}#{@token}#{@separator}#{@base_id}"
     end
 
     # Comparison operator
@@ -163,7 +163,7 @@ module RightScale
     def ==(other)
       other.kind_of?(::RightScale::AgentIdentity) &&
       prefix     == other.prefix     &&
-      agent_name == other.agent_name &&
+      agent_type == other.agent_type &&
       token      == other.token      &&
       base_id    == other.base_id
     end
@@ -176,17 +176,17 @@ module RightScale
     # serialized_id(String):: Valid serialized agent identity (use 'valid?' to check first)
     #
     # === Return
-    # (Array):: Array of parts: prefix, agent name, token, base id and separator
+    # (Array):: Array of parts: prefix, agent type, token, base id and separator
     def self.parts(serialized_id)
-      prefix = agent_name = token = bid = separator = nil
+      prefix = agent_type = token = bid = separator = nil
       if serialized_id.include?(ID_SEPARATOR)
-        prefix, agent_name, token, bid = serialized_id.split(ID_SEPARATOR)
+        prefix, agent_type, token, bid = serialized_id.split(ID_SEPARATOR)
         separator = ID_SEPARATOR
       elsif serialized_id.include?(ID_SEPARATOR_OLD)
-        prefix, agent_name, token, bid = serialized_id.split(ID_SEPARATOR_OLD)
+        prefix, agent_type, token, bid = serialized_id.split(ID_SEPARATOR_OLD)
         separator = ID_SEPARATOR_OLD
       end
-      [ prefix, agent_name, token, bid, separator ]
+      [ prefix, agent_type, token, bid, separator ]
     end
 
     # Check that given serialized identity has valid parts

@@ -31,7 +31,6 @@ require 'eventmachine'
 require 'fileutils'
 
 require File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent')
-require File.join(File.dirname(__FILE__), '..', 'payload_types', 'lib', 'payload_types')
 require File.join(File.dirname(__FILE__), 'results_mock')
 
 RSpec.configure do |c|

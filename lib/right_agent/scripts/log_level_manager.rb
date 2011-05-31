@@ -1,68 +1,91 @@
 # === Synopsis:
 #   RightAgent Log Level Manager (rs_log_level) - (c) 2009-2011 RightScale
 #
-#   Log level manager allows setting and retrieving the RightAgent log level.
+#   rs_log_level is a command line tool for retrieving and setting the log level
+#   for a RightAgent
 #
 # === Examples:
-#   Retrieve log level:
+#   Retrieve log level for all configured agents:
 #     rs_log_level
 #
-#   Set log level to debug:
-#     rs_log_level --log-level debug
-#     rs_log_level -l debug
+#   Retrieve log level for a specific agent:
+#     rs_log_level AGENT
+#
+#   Set log level to debug for all configured agents:
+#     rs_log_level [AGENT] --log-level debug
+#     rs_log_level [AGENT] -l debug
+#
+#   Set log level to debug for a specific agent:
+#     rs_log_level AGENT -l debug
 #
 # === Usage
-#    rs_set_log_level [--log-level, -l debug|info|warn|error|fatal]
+#    rs_set_log_level [AGENT] [--log-level, -l debug|info|warn|error|fatal]
 #
 #    Options:
 #      --log-level, -l LVL  Set log level of agent
+#      --cfg-dir, -c DIR    Set directory containing configuration for all agents
 #      --verbose, -v        Display debug information
 #      --help:              Display help
 #      --version:           Display version information
 #
 #    No options prints the current agent log level
 #
-$:.push(File.dirname(__FILE__))
 
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'right_link_config'))
 require 'optparse'
 require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
 require 'rdoc_patch'
-require 'agent_utils'
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'command'))
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'actors', 'agent_manager'))
+require File.join(File.dirname(__FILE__), 'rdoc_patch')
+require File.join(File.dirname(__FILE__), 'common_parser')
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 
 module RightScale
 
   class LogLevelManager
 
-    include Utils
+    include AgentFileHelper
 
     VERSION = [0, 1]
 
-    # Set log level
-    #
-    # === Parameters
-    # options(Hash):: Hash of options as defined in +parse_args+
+    # Convenience wrapper for creating and running log level manager
     #
     # === Return
     # true:: Always return true
-    def run(options)
+    def self.run
+      m = LogLevelManager.new
+      m.manage(m.parse_args)
+    end
+
+    # Handle log level request
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def manage(options)
+      # Initialize AgentFileHelper
+      cfg_dir = options[:cfg_dir]
+
+      # Determine command
       level = options[:level]
       cmd = { :name => (level ? 'set_log_level' : 'get_log_level') }
       cmd[:level] = level.to_sym if level
-      config_options = agent_options('instance')
-      listen_port = config_options[:listen_port]
-      fail('Could not retrieve agent listen port') unless listen_port
-      client = CommandClient.new(listen_port, config_options[:cookie])
-      begin
-        client.send_command(cmd, options[:verbose]) do |lvl|
-          puts "Agent log level: #{lvl.to_s.upcase}"
-        end
-      rescue Exception => e
-        fail(e.message)
+
+      # Determine candidate agents
+      agent_names = if options[:agent_name]
+        [options[:agent_name]]
+      else
+        configured_agents
       end
+      fail("No agents configured") if agent_names.empty?
+
+      # Perform command for each agent
+      count = 0
+      agent_names.each do |agent_name|
+        count += 1 if request_log_level(agent_name)
+      end
+      puts("No agents running") if count == 0
       true
     end
 
@@ -72,12 +95,17 @@ module RightScale
     # options(Hash):: Hash of options as defined by the command line
     def parse_args
       options = { :verbose => false }
+      options[:agent_name] = ARGV[0] unless ARGV[0] =~ /^-/
 
       opts = OptionParser.new do |opts|
 
         opts.on('-l', '--log-level LEVEL') do |l|
           fail("Invalid log level '#{l}'") unless AgentManager::LEVELS.include?(l.to_sym)
           options[:level] = l
+        end
+
+        opts.on("-c", "--cfg-dir DIR") do |d|
+          options[:cfg_dir] = d
         end
 
         opts.on('-v', '--verbose') do
@@ -99,24 +127,50 @@ module RightScale
       begin
         opts.parse!(ARGV)
       rescue Exception => e
-        puts e.message + "\nUse --help for additional information"
-        exit(1)
+        exit 0 if e.is_a?(SystemExit)
+        fail(e.message + "\nUse 'rs_log_level --help' for additional information")
       end
       options
     end
 
-protected
+    protected
+
+    # Send log level request to agent
+    #
+    # === Parameters
+    # agent_name(String):: Agent name
+    #
+    # === Return
+    # (Boolean):: true if agent running, otherwise false
+    def request_log_level(agent_name)
+      res = false
+      config_options = agent_options(agent_name)
+      unless config_options.empty?
+        listen_port = config_options[:listen_port]
+        fail("Could not retrieve agent #{agent_name} listen port") unless listen_port
+        client = CommandClient.new(listen_port, config_options[:cookie])
+        begin
+          client.send_command(cmd, options[:verbose]) do |level|
+            puts "Agent #{agent_name} log level: #{level.to_s.upcase}"
+          end
+          res = true
+        rescue Exception => e
+          puts "Command to agent #{agent_name} failed (#{e})"
+        end
+      end
+      res
+    end
 
     # Print error on console and exit abnormally
     #
     # === Parameter
-    # msg(String):: Error message, default to nil (no message printed)
+    # message(String):: Error message, default to nil (no message printed)
     # print_usage(Boolean):: Whether script usage should be printed, default to false
     #
     # === Return
     # R.I.P. does not return
-    def fail(msg=nil, print_usage=false)
-      puts "** #{msg}" if msg
+    def fail(message = nil, print_usage = false)
+      puts "** #{message}" if message
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
     end
@@ -130,6 +184,7 @@ protected
     end
 
   end
+
 end
 
 #

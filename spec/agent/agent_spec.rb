@@ -37,7 +37,7 @@ describe RightScale::Agent do
   describe "Default Option" do
 
     before(:all) do
-      flexmock(RightScale::Log).should_receive(:error).never.by_default
+      flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
@@ -474,7 +474,6 @@ describe RightScale::Agent do
         @dispatcher.should_receive(:dispatch_age).and_return(22).once
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
@@ -488,7 +487,6 @@ describe RightScale::Agent do
         @dispatcher.should_receive(:dispatch_age).and_return(nil).once
         flexmock(EM::Timer).should_receive(:new).with(0, Proc).and_return(@timer).once
         run_in_em do
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
@@ -504,7 +502,6 @@ describe RightScale::Agent do
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 with actors/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once

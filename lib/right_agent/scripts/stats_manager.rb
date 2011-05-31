@@ -1,32 +1,43 @@
 # === Synopsis:
 #   RightAgent Statistics Manager (rstat) - (c) 2010-2011 RightScale
 #
-#   rstat is a command line tool that displays operation statistics for a RightLink instance agent
+#   rstat is a command line tool for displaying operation statistics for a RightAgent
+#
+# === Examples:
+#   Retrieve statistics for all agents:
+#     rstat
+#
+#   Retrieve statistics for a specific agent:
+#     rstat AGENT
+#
+#   Retrieve statistics for a specific agent in JSON format:
+#     rstat AGENT --json
+#     rstat AGENT --j
 #
 # === Usage:
-#    rstat [options]
+#    rstat [AGENT] [options]
 #
-#    options:
+#    Options:
 #      --reset, -r        As part of gathering the stats from a server also reset the stats
 #      --timeout, -t SEC  Override default timeout in seconds to wait for a response from a server
 #      --json, -j         Dump the stats data in JSON format
+#      --cfg-dir, -c DIR  Set directory containing configuration for all agents
 #      --version          Display version information
 #      --help             Display help
 
 require 'optparse'
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'config', 'right_link_config'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'common', 'lib', 'common'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'payload_types', 'lib', 'payload_types'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'command_protocol', 'lib', 'command_protocol'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'scripts', 'lib', 'agent_utils'))
+require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'scripts', 'lib', 'rdoc_patch'))
+require 'rdoc/usage'
+require File.join(File.dirname(__FILE__), 'rdoc_patch')
+require File.join(File.dirname(__FILE__), 'common_parser')
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 
 module RightScale
 
   class StatsManager
 
-    include Utils
+    include AgentFileHelper
     include StatsHelper
 
     VERSION = [0, 1, 0]
@@ -35,26 +46,51 @@ module RightScale
 
     SERVERS = ["instance"]
 
-    # Convenience wrapper
+    # Convenience wrapper for creating and running manager
     def self.run
-      begin
-        c = StatsManager.new
-        options = c.parse_args
-        if options[:key]
-          c.receive_stats(options)
-        else
-          options[:timeout] ||= DEFAULT_TIMEOUT
-          c.request_stats(options)
-        end
-      rescue Exception => e
-        puts "\nFailed with: #{e}\n#{e.backtrace.join("\n")}" unless e.is_a?(SystemExit)
-      end
+      m = StatsManager.new
+      m.manage(m.parse_args)
     end
 
-    # Parse arguments
+    # Handle stats request
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def manage(options)
+      # Initialize AgentFileHelper
+      cfg_dir = options[:cfg_dir]
+
+      # Determine candidate agents
+      agent_names = if options[:agent_name]
+        [options[:agent_name]]
+      else
+        configured_agents
+      end
+      fail("No agents configured") if agent_names.empty?
+
+      # Request stats from agents
+      count = 0
+      agent_names.each do |agent_name|
+        begin
+          count += 1 if request_stats(agent_name, options)
+        rescue Exception => e
+          puts "Command to agent #{agent_name} failed (#{e})"
+        end
+      end
+      puts("No agents running") if count == 0
+      true
+    end
+
+    # Create options hash from command line arguments
+    #
+    # === Return
+    # options(Hash):: Parsed options
     def parse_args
-      # The options specified in the command line will be collected in 'options'
-      options = {:servers => [], :reset => false}
+      options = {:reset => false, :timeout => DEFAULT_TIMEOUT}
+      options[:agent_name] = ARGV[0] unless ARGV[0] =~ /^-/
 
       opts = OptionParser.new do |opts|
 
@@ -68,6 +104,10 @@ module RightScale
 
         opts.on('-j', '--json') do
           options[:json] = true
+        end
+
+        opts.on("-c", "--cfg-dir DIR") do |d|
+          options[:cfg_dir] = d
         end
 
         opts.on_tail('--help') do
@@ -92,36 +132,31 @@ module RightScale
       options
     end
 
-    # Request and display statistics from instance agents on this machine
+    # Request and display statistics from agent
     #
     # === Parameters
+    # agent_name(String):: Agent name
     # options(Hash):: Configuration options
     #
     # === Return
-    # true:: Always return true
-    def request_stats(options)
-      count = 0
-      SERVERS.each do |s|
-        if options[:servers].empty? || options[:servers].include?(s)
-          config_options = agent_options(s)
-          if config_options.empty?
-            puts("No #{s} running on this machine")
-          else
-            count += 1
-            listen_port = config_options[:listen_port]
-            fail("Could not retrieve #{s} listen port") unless listen_port
-            client = CommandClient.new(listen_port, config_options[:cookie])
-            command = {:name => :stats, :reset => options[:reset]}
-            begin
-              client.send_command(command, options[:verbose], options[:timeout]) { |r| display(s, r, options) }
-            rescue Exception => e
-              fail("Failed to retrieve #{s} stats: #{e}\n" + e.backtrace.join("\n"))
-            end
-          end
+    # (Boolean):: true if agent running, otherwise false
+    def request_stats(agent_name, options)
+      res = false
+      config_options = agent_options(agent_name)
+      unless config_options.empty?
+        count += 1
+        listen_port = config_options[:listen_port]
+        fail("Could not retrieve #{s} listen port") unless listen_port
+        client = CommandClient.new(listen_port, config_options[:cookie])
+        command = {:name => :stats, :reset => options[:reset]}
+        begin
+          client.send_command(command, options[:verbose], options[:timeout]) { |r| display(s, r, options) }
+          res = true
+        rescue Exception => e
+          fail("Failed to retrieve #{s} stats: #{e}\n" + e.backtrace.join("\n"))
         end
       end
-      puts("No instance agents running on this machine") if count == 0 && options[:servers].empty?
-      true
+      res
     end
 
     protected

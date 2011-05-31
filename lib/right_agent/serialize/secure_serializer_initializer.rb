@@ -28,15 +28,15 @@ module RightScale
     # Initialize serializer
     #
     # === Parameters
-    # agent_name(String):: Name of agent used to build filename of certificate and key
+    # agent_type(String):: Agent type used to build filename of certificate and key
     # agent_id(String):: Serialized agent identity
     # certs_dir(String):: Path to directory containing agent private key and certificates
     #
     # === Return
     # true:: Always return true
-    def self.init(agent_name, agent_id, certs_dir)
-      cert = Certificate.load(File.join(certs_dir, "#{agent_name}.cert"))
-      key = RsaKeyPair.load(File.join(certs_dir, "#{agent_name}.key"))
+    def self.init(agent_type, agent_id, certs_dir)
+      cert = Certificate.load(File.join(certs_dir, "#{agent_type}.cert"))
+      key = RsaKeyPair.load(File.join(certs_dir, "#{agent_type}.key"))
       mapper_cert = Certificate.load(File.join(certs_dir, "mapper.cert"))
       store = StaticCertificateStore.new(mapper_cert, mapper_cert)
       SecureSerializer.init(Serializer.new, agent_id, cert, key, store)

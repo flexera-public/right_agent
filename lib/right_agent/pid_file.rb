@@ -31,9 +31,12 @@ module RightScale
   #     the command protocol
   class PidFile
 
+    attr_reader :identity
+
     # Initialize pid file location from given options and agent identity
     def initialize(identity, options)
-      @pid_dir = File.normalize_path(options[:pid_dir] || options[:root] || Dir.pwd)
+      @identity = identity
+      @pid_dir = File.normalize_path(options[:pid_dir] || Platform.filesystem.pid_dir)
       @pid_file = File.join(@pid_dir, "#{identity}.pid")
       @cookie_file = File.join(@pid_dir, "#{identity}.cookie")
     end

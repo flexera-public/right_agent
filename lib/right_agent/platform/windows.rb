@@ -181,6 +181,11 @@ module RightScale
         return nil
       end
 
+      # Directory containing generated agent configuration files
+      def cfg_dir
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))
+      end
+
       # RightScale state directory for the current platform
       def right_scale_state_dir
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d'))

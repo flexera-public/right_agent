@@ -41,7 +41,7 @@ module RightScale
   class Packet
 
     # Current version of protocol
-    VERSION = Config.protocol_version
+    VERSION = AgentConfig.protocol_version
 
     # Default version for packet senders unaware of this versioning
     DEFAULT_VERSION = 0

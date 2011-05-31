@@ -31,6 +31,7 @@ module RightScale
 
     include ConsoleHelper
     include DaemonizeHelper
+    include AgentFileHelper
     include StatsHelper
 
     # (String) Identity of this agent
@@ -81,15 +82,18 @@ module RightScale
     # application runs on.
     #
     # === Parameters
-    # options(Hash):: Configuration options:
-    #   :identity(String):: Identity of this agent
-    #   :root(String):: Application root for this agent. Defaults to Dir.pwd.
+    # opts(Hash):: Configuration options:
+    #   :identity(String):: Identity of this agent, no default
+    #   :name(String):: Name of this type of agent
+    #   :root_dir(String):: Application root for this agent containing subdirectories actors, agent, and certs,
+    #     defaults to Dir.pwd
+    #   :cfg_file(String):: Path to this agent's configuration file
+    #   :pid_dir(String):: Path to the directory where the agent stores its pid file (only if daemonized).
+    #     Defaults to the root or the current working directory.
     #   :log_dir(String):: Log file path. Defaults to the current working directory.
     #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal.
     #   :console(Boolean):: true indicates to start interactive console
     #   :daemonize(Boolean):: true indicates to daemonize
-    #   :pid_dir(String):: Path to the directory where the agent stores its pid file (only if daemonized).
-    #     Defaults to the root or the current working directory.
     #   :retry_interval(Numeric):: Number of seconds between request retries
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
@@ -123,7 +127,6 @@ module RightScale
     #     to successive ports; if none, defaults to 'localhost'
     #   :port(Integer):: Comma-separated list of AMQP broker ports corresponding to hosts; if only one,
     #     it is incremented and applied to successive hosts; if none, defaults to AMQP::HOST
-    #   :actors_dir(String):: Directory containing actor classes
     #
     # On start config.yml is read, so it is common to specify options in the YAML file. However, when both
     # Ruby code options and YAML file specify options, Ruby code options take precedence.
@@ -203,7 +206,7 @@ module RightScale
                 EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
                 EM.add_periodic_timer(interval) { check_status }
               rescue Exception => e
-                Log("Agent failed startup", e, :trace) unless e.message == "exit"
+                Log.error("Agent failed startup", e, :trace) unless e.message == "exit"
                 EM.stop
               end
             end
@@ -441,7 +444,7 @@ module RightScale
       reset = options[:reset]
       result = OperationResult.success("identity"        => @identity,
                                        "hostname"        => Socket.gethostname,
-                                       "version"         => Config.protocol_version,
+                                       "version"         => AgentConfig.protocol_version,
                                        "brokers"         => @broker.stats(reset),
                                        "agent stats"     => agent_stats(reset),
                                        "receive stats"   => @dispatcher.stats(reset),
@@ -501,38 +504,26 @@ module RightScale
     # (String):: Serialized agent identity
     def set_configuration(opts)
       @options = DEFAULT_OPTIONS.clone
-      root = opts[:root] || @options[:root]
-      custom_config = if root
-        file = File.normalize_path(File.join(root, 'config.yml'))
-        File.exists?(file) ? (YAML.load(IO.read(file)) || {}) : {}
-      else
-        {}
-      end
-      opts.delete(:identity) unless opts[:identity]
-      @options.update(custom_config.merge(opts))
+      @options.update(opts)
       @options[:log_path] = false
       if @options[:daemonize] || @options[:log_dir]
-        @options[:log_path] = (@options[:log_dir] || @options[:root] || Dir.pwd)
+        @options[:log_path] = (@options[:log_dir] || Dir.pwd)
 
-        # create the path if is does not exist.  Added for windows, but is a good practice.
+        # Create the path if is does not exist.  Added for windows, but is a good practice.
         FileUtils.mkdir_p(@options[:log_dir])
       end
 
-      if @options[:identity]
-        @identity = @options[:identity]
-        agent_identity = AgentIdentity.parse(@identity) rescue nil
-        @stats_routing_key = "stats.#{agent_identity.agent_name}.#{agent_identity.base_id}" rescue nil
-      else
-        token = AgentIdentity.generate
-        @identity = "agent-#{token}"
-        File.open(File.normalize_path(File.join(@options[:root], 'config.yml')), 'w') do |fd|
-          fd.write(YAML.dump(custom_config.merge(:identity => token)))
-        end
-      end
+      # Initialize AgentFileHelper
+      root_dir = @options[:root_dir]
+
+      @identity = @options[:identity]
+      parsed_identity = AgentIdentity.parse(@identity)
+      @agent_type = parsed_identity.agent_type
+      @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
 
       @remaining_setup = {}
       @all_setup = [:setup_identity_queue]
-      return @identity
+      @identity
     end
 
     # Update agent's persisted configuration
@@ -545,29 +536,28 @@ module RightScale
     # (Boolean):: true if successful, otherwise false
     def update_configuration(opts)
       res = false
-      root = opts[:root] || @options[:root]
-      config = if root
-        file = File.normalize_path(File.join(root, 'config.yml'))
-        File.exists?(file) ? (YAML.load(IO.read(file)) || nil) : nil
-      end
-      if config
-        File.open(File.normalize_path(File.join(root, 'config.yml')), 'w') do |fd|
-          fd.write(YAML.dump(config.merge(opts)))
-        end
+      cfg_file = @options[:cfg_file] || cfg_file(@agent_type)
+      if File.exists?(cfg_file) && cfg = YAML.load(IO.read(cfg_file))
+        opts.each { |k, v| cfg[k] = v if cfg.has_key?(k) }
+        File.open(cfg_file, 'w') { |fd| fd.write(YAML.dump(cfg)) }
         res = true
       end
       res
+    rescue Exception => e
+      Log.error("Failed updating configuration file #{cfg_file}", e, :trace)
+      false
     end
 
-    # Load the ruby code for the actors
+    # Load the agent's ruby code for the actors
+    # Also load the standard agent_manager actor
     #
     # === Return
-    # false:: If there is no :root option
-    # true:: Otherwise
+    # true:: Always return true
     def load_actors
-      return false unless @options[:root]
-      actors_dir = @options[:actors_dir] || "#{@options[:root]}/actors"
-      Log.warning("Actors dir #{actors_dir} does not exist or is not reachable") unless File.directory?(actors_dir)
+      return false unless @options[:root_dir]
+      Log.error("Actors dir #{actors_dir} does not exist or is not reachable") unless File.directory?(actors_dir)
+
+      # Load agent's configured actors
       actors = @options[:actors]
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
       Dir["#{actors_dir}/*.rb"].each do |actor|
@@ -575,11 +565,19 @@ module RightScale
         Log.info("[setup] loading #{actor}")
         require actor
       end
-      init_path = @options[:initrb] || File.join(@options[:root], 'init.rb')
+
+      # Always load standard agent_manager actor
+      require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors', 'agent_manager'))
+      @agent_manager = AgentManager.new
+      Log.info("[setup] loading agent_manager.rb")
+
+      # Perform agent-specific initialization including actor creation and registration
+      init_path = File.join(init_dir, "#{@agent_type}.rb")
       if File.exists?(init_path)
         instance_eval(File.read(init_path), init_path)
+        register @agent_manager
       else
-        Log.warning("init.rb #{init_path} does not exist or is not reachable") unless File.exists?(init_path)
+        Log.error("Agent initialization file #{init_path.inspect} does not exist") unless File.exists?(init_path)
       end
       true
     end

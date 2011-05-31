@@ -28,7 +28,7 @@ require 'yaml'
 require 'openssl'
 
 # Cannot use File.normalize because not yet defined
-require File.join(File.dirname(__FILE__), 'right_agent', 'config')
+require File.join(File.dirname(__FILE__), 'right_agent', 'agent_config')
 
 RIGHT_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_agent'))
 require File.join(RIGHT_AGENT_BASE_DIR, 'packets')
