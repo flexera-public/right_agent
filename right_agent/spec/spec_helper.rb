@@ -22,7 +22,7 @@
 
 require 'rubygems'
 
-require File.join(File.dirname(__FILE__), '..', 'lib', 'bundler_support')
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'bundler_support'))
 RightScale::BundlerSupport.activate
 
 require 'flexmock'
@@ -30,8 +30,8 @@ require 'rspec'
 require 'eventmachine'
 require 'fileutils'
 
-require File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent')
-require File.join(File.dirname(__FILE__), 'results_mock')
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'results_mock'))
 
 RSpec.configure do |c|
   c.mock_with(:flexmock)

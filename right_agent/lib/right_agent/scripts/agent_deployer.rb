@@ -4,14 +4,14 @@
 #   rad is a command line tool for building the configuration file for a RightAgent
 #
 #   The configuration file is generated in:
-#     <name of agent>/config.yml
-#   in platform-specific RightAgent directory
+#     <agent name>/config.yml
+#   in platform-specific RightAgent configuration directory
 #
 # === Examples:
-#   Build configuration for AGENT with default options:
+#   Build configuration for agent named AGENT with default options:
 #     rad AGENT
 #
-#   Build configuration for AGENT so it uses given AMQP settings:
+#   Build configuration for agent named AGENT so it uses given AMQP settings:
 #     rad AGENT --user USER --pass PASSWORD --vhost VHOST --port PORT --host HOST
 #     rad AGENT -u USER -p PASSWORD -v VHOST -P PORT -h HOST
 #
@@ -22,21 +22,23 @@
 #      --root-dir, -r DIR       Set agent root directory (containing actors, certs, and init subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
+#      --actors-dirs, -a DIRS   Set comma-separated list of directories to search for actors in addition to
+#                               default location in agent root directory
 #      --identity, -i ID        Use base id ID to build agent's identity
 #      --token, -t TOKEN        Use token TOKEN to build agent's identity
-#      --prefix PREFIX          Prefix agent's identity with PREFIX
+#      --prefix, -x PREFIX      Use prefix PREFIX to build agent's identity
+#      --type TYPE              Use agent type TYPE to build agent's' identity,
+#                               defaults to AGENT with any trailing '_[0-9]+' removed
 #      --secure-identity, -S    Derive actual token from given TOKEN and ID
 #      --url                    Set agent AMQP connection URL (host, port, user, pass, vhost)
 #      --user, -u USER          Set agent AMQP username
 #      --password, -p PASS      Set agent AMQP password
 #      --vhost, -v VHOST        Set agent AMQP virtual host
-#      --port, -P PORT          Set AMQP broker port
 #      --host, -h HOST          Set AMQP broker host
-#      --type TYPE              Set agent type in agent identity and agent initialization file names,
-#                               defaults to AGENT with any trailing '_[0-9]+' removed
-#      --options, -o KEY=VAL    Pass-through options
+#      --port, -P PORT          Set AMQP broker port
+#      --prefetch COUNT         Set maximum requests AMQP broker is to prefetch before current is ack'd
 #      --http-proxy PROXY       Use a proxy for all agent-originated HTTP traffic
-#      --http-no-proxy          Comma-separated list of proxy exceptions (e.g. metadata server)
+#      --http-no-proxy NOPROXY  Comma-separated list of proxy exceptions (e.g. metadata server)
 #      --time-to-live SEC       Set maximum age in seconds before a request times out and is rejected
 #      --retry-timeout SEC      Set maximum number of seconds to retry request before give up
 #      --retry-interval SEC     Set number of seconds before initial request retry, increases exponentially
@@ -46,7 +48,8 @@
 #      --reconnect-interval SEC Set number of seconds between broker reconnect attempts
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
-#      --prefetch COUNT         Set maximum requests AMQP broker is to prefetch before current is ack'd
+#      --options, -o KEY=VAL    Set options that act as final override for any persisted configuration settings
+#      --monit, -m              Generate monit configuration file
 #      --test                   Build test deployment using default test settings
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
@@ -58,8 +61,8 @@ require 'rdoc/usage'
 require 'yaml'
 require 'ftools'
 require 'fileutils'
-require File.join(File.dirname(__FILE__), 'rdoc_patch')
-require File.join(File.dirname(__FILE__), 'common_parser')
+require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 
 module RightScale
@@ -71,7 +74,7 @@ module RightScale
 
     VERSION = [0, 2]
 
-    # Convenience wrapper for creating and running deployer
+    # Create and run deployer
     #
     # === Return
     # true:: Always return true
@@ -85,64 +88,26 @@ module RightScale
     #
     # === Parameters
     # options(Hash):: Command line options
-    # cfg(Hash):: Configurations options with which specified options are to be merged
     #
     # === Return
     # true:: Always return true
-    def deploy(options, cfg = {})
+    def deploy(options)
       # Initialize AgentFileHelper
       root_dir = options[:root_dir]
       cfg_dir = options[:cfg_dir]
       pid_dir = options[:pid_dir]
 
-      agent_type = agent_type(options[:agent_type], options[:agent_name])
-      cfg.merge!(load_base_config(agent_type))
-      options[:actors] = check_agent(agent_type, options[:identity], cfg.delete(:actors))
-      options[:ping_interval] ||= 4 * 60 * 60
-      write_config(options, cfg)
-      true
-    end
+      # Configure agent
+      cfg = load_init_config
+      cfg[:actors_dirs] = options[:actor_dirs] if options[:actors_dirs]
+      check_agent(options, cfg)
+      cfg = configure(options, cfg)
 
-    # Write configuration options to file
-    #
-    # === Parameters
-    # options(Hash):: Command line options
-    # cfg(Hash):: Configurations options with which specified options are to be merged
-    #
-    # === Return
-    # true:: Always return true
-    def write_config(options, cfg = {})
-      cfg[:root_dir]           = root_dir
-      cfg[:pid_dir]            = pid_dir
-      cfg[:identity]           = options[:identity] if options[:identity]
-      cfg[:user]               = options[:user] if options[:user]
-      cfg[:pass]               = options[:pass] if options[:pass]
-      cfg[:vhost]              = options[:vhost] if options[:vhost]
-      cfg[:port]               = options[:port] if options[:port]
-      cfg[:host]               = options[:host] if options[:host]
-      cfg[:actors]             = options[:actors] if options[:actors]
-      cfg[:prefetch]           = options[:prefetch] || 1
-      cfg[:time_to_live]       = options[:time_to_live] || 60
-      cfg[:retry_timeout]      = options[:retry_timeout] || 2 * 60
-      cfg[:retry_interval]     = options[:retry_interval] || 15
-      cfg[:ping_interval]      = options[:ping_interval] if options[:ping_interval]
-      cfg[:check_interval]     = options[:check_interval] if options[:check_interval]
-      cfg[:reconnect_interval] = options[:reconnect_interval] if options[:reconnect_interval]
-      cfg[:grace_timeout]      = options[:grace_timeout] if options[:grace_timeout]
-      cfg[:dup_check]          = options[:dup_check].nil? ? true : options[:dup_check]
-      cfg[:http_proxy]         = options[:http_proxy] if options[:http_proxy]
-      cfg[:http_no_proxy]      = options[:http_no_proxy] if options[:http_no_proxy]
-      options[:options].each { |k, v| cfg[k] = v } if options[:options]
+      # Persist configuration
+      persist(options[:agent_name], options[:options], cfg)
 
-      cfg_file = cfg_file(options[:agent_name])
-      FileUtils.mkdir_p(Dir(cfg_file))
-      File.delete(cfg_file) if File.exists?(cfg_file)
-      File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
-      File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
-      unless options[:quiet]
-        puts "Generated configuration file for agent #{options[:agent_name]}:"
-        puts "  - config: #{cfg_file}"
-      end
+      # Setup agent monitoring
+      monitor(options) if options[:monit]
       true
     end
 
@@ -171,6 +136,10 @@ module RightScale
 
         opts.on('-z', '--pid-dir DIR') do |d|
           options[:pid_dir] = d
+        end
+
+        opts.on('-a', '--actors-dirs DIRS') do |d|
+          options[:actors_dirs] = d.split(',')
         end
 
         opts.on('-S', '--secure-identity') do
@@ -245,6 +214,8 @@ module RightScale
       options
     end
 
+  protected
+
     # Parse any other arguments used by agent
     #
     # === Parameters
@@ -257,7 +228,132 @@ module RightScale
       true
     end
 
-  protected
+    # Load initial configuration for agent, if any
+    #
+    # === Return
+    # cfg(Hash):: Initial agent configuration options
+    def load_init_config
+      cfg = {}
+      cfg_file = File.normalize_path(File.join(init_dir, "config.yml"))
+      if File.exists?(cfg_file)
+        cfg = symbolize(YAML.load(IO.read(cfg_file))) rescue nil
+        fail("Cannot read configuration for agent #{cfg_file.inspect}") unless cfg
+      end
+      cfg
+    end
+
+    # Check agent type consistency and existence of initialization file and actors directory
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    # cfg(Hash):: Initial configuration settings
+    #
+    # === Return
+    # true:: Always return true
+    def check_agent(options, cfg)
+      identity = options[:identity]
+      agent_type = options[:agent_type]
+      type = AgentIdentity.parse(identity).agent_type if identity
+      fail("Agent type #{agent_type.inspect} and identity #{identity.inspect} are inconsistent") if agent_type != type
+      init_file = File.normalize_path(File.join(init_dir, "init.rb"))
+      fail("Cannot find agent initialization file #{init_file.inspect}") unless File.exists?(init_file)
+
+      actors = cfg[:actors]
+      actors_dirs = cfg[:actors_dirs] || []
+      fail("Cannot find actors directory #{actors_dir.inspect}") unless File.directory?(actors_dir)
+      fail('Agent configuration is missing actors') unless actors && actors.respond_to?(:each)
+      actors.each do |actor|
+        found = File.exists?(File.normalize_path(File.join(actors_dir, "#{actor}.rb")))
+        unless found
+          actors_dirs.each do |dir|
+            found = File.exist?(File.normalize_path(File.join(dir, "#{actor}.rb")))
+            break if found
+          end
+          fail("Cannot find source for actor #{actor.inspect} in #{actors_dir} or in #{actors_dirs.inspect}") unless found
+        end
+      end
+      true
+    end
+
+    # Determine configuration settings to be persisted
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    # cfg(Hash):: Initial configuration settings
+    #
+    # === Return
+    # cfg(Hash):: Configuration settings
+    def configure(options, cfg)
+      cfg[:root_dir]           = root_dir
+      cfg[:pid_dir]            = pid_dir
+      cfg[:identity]           = options[:identity] if options[:identity]
+      cfg[:user]               = options[:user] if options[:user]
+      cfg[:pass]               = options[:pass] if options[:pass]
+      cfg[:vhost]              = options[:vhost] if options[:vhost]
+      cfg[:port]               = options[:port] if options[:port]
+      cfg[:host]               = options[:host] if options[:host]
+      cfg[:prefetch]           = options[:prefetch] || 1
+      cfg[:time_to_live]       = options[:time_to_live] || 60
+      cfg[:retry_timeout]      = options[:retry_timeout] || 2 * 60
+      cfg[:retry_interval]     = options[:retry_interval] || 15
+      cfg[:ping_interval]      = options[:ping_interval] ||= 4 * 60 * 60
+      cfg[:check_interval]     = options[:check_interval] if options[:check_interval]
+      cfg[:reconnect_interval] = options[:reconnect_interval] if options[:reconnect_interval]
+      cfg[:grace_timeout]      = options[:grace_timeout] if options[:grace_timeout]
+      cfg[:dup_check]          = options[:dup_check].nil? ? true : options[:dup_check]
+      cfg[:http_proxy]         = options[:http_proxy] if options[:http_proxy]
+      cfg[:http_no_proxy]      = options[:http_no_proxy] if options[:http_no_proxy]
+      cfg
+    end
+
+    # Write configuration options to file after applying any overrides
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    # cfg(Hash):: Configurations options with which specified options are to be merged
+    #
+    # === Return
+    # true:: Always return true
+    def persist(agent_name, overrides, cfg)
+      overrides = options[:options]
+      overrides.each { |k, v| cfg[k] = v } if overrides
+      agent_name = options[:agent_name]
+      cfg_file = cfg_file(agent_name)
+      FileUtils.mkdir_p(Dir(cfg_file))
+      File.delete(cfg_file) if File.exists?(cfg_file)
+      File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
+      File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
+      unless options[:quiet]
+        puts "Generated configuration file for agent #{agent_name.inspect}:"
+        puts "  - config: #{cfg_file}"
+      end
+      true
+    end
+
+    # Setup agent monitoring
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def monitor(options)
+      agent_name = options[:agent_name]
+      identity = options[:identity]
+      pid_file = PidFile.new(identity, pid_dir)
+      cfg = <<-EOF
+check process #{agent_name}
+  with pidfile \"#{pid_file}\"
+  start program \"/opt/rightscale/bin/rnac --start #{agent_name}\"
+  stop program \"/opt/rightscale/bin/rnac --stop #{agent_name}\"
+  mode manual
+      EOF
+      cfg_file = File.join(cfg_dir, agent_name, "#{identity}.conf")
+      File.open(cfg_file, 'w') { |f| f.puts(cfg) }
+      File.chmod(0600, cfg_file) # monit requires strict perms on this file
+      puts "  - agent monit config: #{cfg_file}" unless options[:quiet]
+      true
+    end
 
     # Print error on console and exit abnormally
     #
@@ -271,63 +367,6 @@ module RightScale
       puts "** #{message}" if message
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
-    end
-
-    # Load base configuration for agent
-    #
-    # === Parameters
-    # agent_type(String):: Type of agent
-    #
-    # === Return
-    # cfg(Hash):: Agent configuration options
-    def load_base_config(agent_type)
-      cfg_file = File.normalize_path(File.join(init_dir, "#{agent_type}.yml"))
-      cfg = if File.exists?(cfg_file)
-        symbolize(YAML.load(IO.read(cfg_file)))
-      end
-      fail("Cannot read configuration for agent #{agent_type}") unless cfg
-      cfg
-    end
-
-    # Check agent type consistency and existence of initialization and actors files
-    #
-    # === Parameters
-    # agent_type(String):: Type of agent
-    # identity(String):: Unique identity for agent
-    # actors(Array):: Name of actors configured for this agent
-    #
-    # === Return
-    # actors(Array):: Name of configured actors that have associated code in agent
-    def check_agent(agent_type, identity, actors)
-      type = AgentIdentity.parse(identity).agent_type if identity
-      fail("Agent type #{agent_type.inspect} and identity #{options[:identity].inspect} are inconsistent") if agent_type != type
-      init_file = File.normalize_path(File.join(init_dir, "#{agent_type}.rb"))
-      fail("Cannot find agent initialization file '#{init_file}'") unless File.exists?(init_file)
-      fail('Agent configuration does not define actors') unless actors && actors.respond_to?(:each)
-      actors.each do |actor|
-        actor_file = File.normalize_path(File.join(actors_dir, "#{actor}.rb"))
-        fail("Cannot find actor file '#{actor_file}'") unless File.exists?(actor_file)
-      end
-      actors
-    end
-
-    # Determine agent type
-    #
-    # === Parameters
-    # type(String):: Agent type
-    # name(String):: Agent name
-    #
-    # === Return
-    # (String):: Agent type
-    def agent_type(type, name)
-      unless type
-        if name =~ /^(.*)_[0-9]+$/
-          type = Regexp.last_match(1)
-        else
-          type = name || "instance"
-        end
-      end
-      type
     end
 
     # Version information

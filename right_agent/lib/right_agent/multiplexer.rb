@@ -29,7 +29,7 @@ module RightScale
     attr_reader :targets
 
     # Undefine warn to prevent Kernel#warn from being called
-    undef warn
+    undef warn rescue nil
 
     # Initialize multiplexer targets
     #

@@ -45,63 +45,25 @@ directory gemtask.package_dir
 
 CLEAN.include(gemtask.package_dir)
 
-# == Unit specs == #
+# == Unit tests == #
 
-RIGHT_BOT_ROOT = File.dirname(__FILE__)
+RSPEC_OPTS = ['--options', "\"#{File.dirname(__FILE__)}/spec/spec.opts\""]
 
-# Allows for debugging of order of spec files by reading a specific ordering of
-# files from a text file, if present. All too frequently, success or failure
-# depends on the order in which tests execute.
-RAKE_SPEC_ORDER_FILE_PATH = ::File.join(RIGHT_BOT_ROOT, "rake_spec_order_list.txt")
-
-# Setup path to spec files and spec options
-#
-# === Parameters
-# t(RSpec::Core::RakeTask):: Task instance to be configured
-#
-# === Return
-# t(RSpec::Core::RakeTask):: Configured task
-def setup_spec(t)
-  t.rspec_opts = ['--options', "\"#{RIGHT_BOT_ROOT}/spec/spec.opts\""]
-
-  # Optionally read or write spec order for debugging purposes
-  # Use a stubbed file with the text "FILL ME" to get the spec ordering
-  # for the current machine
-  if ::File.file?(RAKE_SPEC_ORDER_FILE_PATH)
-    if ::File.read(RAKE_SPEC_ORDER_FILE_PATH).chomp == "FILL ME"
-      ::File.open(RAKE_SPEC_ORDER_FILE_PATH, "w") do |f|
-        f.puts t.spec_files.to_a.join("\n")
-      end
-    else
-      t.spec_files = FileList.new
-      ::File.open(RAKE_SPEC_ORDER_FILE_PATH, "r") do |f|
-        while (line = f.gets) do
-          line = line.chomp
-          (t.spec_files << line) if not line.empty?
-        end
-      end
-    end
-  end
-  t
-end
-
-desc 'Run all specs in all specs directories'
-RSpec::Core::RakeTask.new(:spec) do |t|
-  setup_spec(t)
+RSpec::Core::RakeTask.new do |t|
+  t.rspec_opts = RSPEC_OPTS
 end
 
 namespace :spec do
-  desc 'Run all specs with RCov'
+  desc 'Run unit tests with RCov'
   RSpec::Core::RakeTask.new(:rcov) do |t|
-    setup_spec(t)
+    t.rspec_opts = RSPEC_OPTS
     t.rcov = true
-    t.rcov_opts = lambda { IO.readlines("#{RIGHT_BOT_ROOT}/spec/rcov.opts").map {|l| l.chomp.split ' '}.flatten }
+    t.rcov_opts = %q[--exclude "spec"]
   end
 
-  desc 'Print Specdoc for all specs (excluding plugin specs)'
+  desc 'Print Specdoc for all unit tests'
   RSpec::Core::RakeTask.new(:doc) do |t|
-    setup_spec(t)
-    t.spec_opts = ['--format', 'specdoc', '--dry-run']
+    t.rspec_opts = ["--format", "documentation"]
   end
 end
 
@@ -117,7 +79,7 @@ CLEAN.include('doc/rdocs')
 
 # == Emacs integration ==
 
-desc 'Rebuild TAGS file'
+desc 'Rebuild TAGS file for emacs'
 task :tags do
   sh 'rtags -R lib spec'
 end

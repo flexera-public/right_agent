@@ -59,7 +59,7 @@ module RightScale
 
     # Path to actors source files
     def actors_dir
-      @actors_dir ||= File.normalize_path(File.join(root_dir, "actors", "lib"))
+      @actors_dir ||= File.normalize_path(File.join(root_dir, "actors"))
     end
 
     # Path to agent directory containing <agent>.yml and <agent>.rb initialization files
@@ -77,12 +77,12 @@ module RightScale
       @pid_dir = dir
     end
 
-    # Path to directory containing generated agent configuration files
-    def cfg_dir
+    # Path to directory containing agent process id files
+    def pid_dir
       @pid_dir || Platform.filesystem.pid_dir
     end
 
-    # Retrieve agent pid file
+    # Retrieve agent process id file
     #
     # === Parameters
     # agent_name(String):: Agent name
@@ -102,6 +102,7 @@ module RightScale
     end
 
     # Retrieve agent options from generated agent configuration file
+    # and agent process id file if it exists
     #
     # === Parameters
     # agent_name(String):: Agent name

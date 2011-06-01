@@ -4,26 +4,26 @@
 #   rnac is a command line tool for managing a RightAgent
 #
 # === Examples:
-#   Start new agent:
+#   Start new agent named AGENT:
 #     rnac --start AGENT
 #     rnac -s AGENT
 #
-#   Stop running agent:
+#   Stop running agent named AGENT:
 #     rnac --stop AGENT
 #     rnac -p AGENT
 #
 #   Stop agent with given serialized ID:
 #     rnac --stop-agent ID
 #
-#   Terminate all agents:
+#   Terminate all agents on local machine:
 #     rnac --killall
 #     rnac -K
 #
-#   List running agents on /right_net vhost on local machine:
-#     rnac --status --vhost /right_net
-#     rnac -U -v /right_net
+#   List running agents on local machine:
+#     rnac --status
+#     rnac -U
 #
-#   Start new agent in foreground:
+#   Start new agent named AGENT in foreground:
 #     rnac --start AGENT --foreground
 #     rnac -s AGENT -f
 #
@@ -31,28 +31,29 @@
 #    rnac [options]
 #
 #    Options:
-#      --start, -s AGENT    Start agent AGENT
-#      --stop, -p AGENT     Stop agent AGENT
+#      --start, -s AGENT    Start agent named AGENT
+#      --stop, -p AGENT     Stop agent named AGENT
 #      --stop-agent ID      Stop agent with serialized identity ID
-#      --kill, -k PIDFILE   Kill process with given pid file
+#      --kill, -k PIDFILE   Kill process with given process id file
 #      --killall, -K        Stop all running agents
 #      --decommission, -d   Send decommission signal to agent
 #      --shutdown, -S       Send a terminate request to agent
 #      --status, -U         List running agents on local machine
 #      --identity, -i ID    Use base id ID to build agent's identity
 #      --token, -t TOKEN    Use token TOKEN to build agent's identity
-#      --prefix PREFIX      Prefix agent's identity with PREFIX
+#      --prefix, -x PREFIX  Use prefix PREFIX to build agent's identity
+#      --type TYPE          Use agent type TYPE to build agent's' identity,
+#                           defaults to AGENT with any trailing '_[0-9]+' removed
 #      --list, -l           List all configured agents
 #      --user, -u USER      Set AMQP user
 #      --pass, -p PASS      Set AMQP password
 #      --vhost, -v VHOST    Set AMQP vhost
 #      --host, -h HOST      Set AMQP server hostname
 #      --port, -P PORT      Set AMQP server port
-#      --log-level LVL      Log level (debug, info, warning, error or fatal)
 #      --cfg-dir, -c DIR    Set directory containing configuration for all agents
 #      --pid-dir, -z DIR    Set directory containing agent process id files
 #      --log-dir DIR        Set log directory
-#      --alias ALIAS        Run as alias of given agent (i.e. use different config but same name as alias)
+#      --log-level LVL      Log level (debug, info, warning, error or fatal)
 #      --foreground, -f     Run agent in foreground
 #      --interactive, -I    Spawn an irb console after starting agent
 #      --test               Use test settings
@@ -65,8 +66,8 @@ require 'rdoc/usage'
 require 'yaml'
 require 'ftools'
 require 'fileutils'
-require File.join(File.dirname(__FILE__), 'rdoc_patch')
-require File.join(File.dirname(__FILE__), 'common_parser')
+require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 
 module RightScale
@@ -77,8 +78,6 @@ module RightScale
     include AgentFileHelper
 
     VERSION = [0, 2]
-
-    YAML_EXT = %w{ yml yaml }
 
     FORCED_OPTIONS =
     {
@@ -94,7 +93,7 @@ module RightScale
 
     @@agent = nil
 
-    # Convenience wrapper for creating and running controller
+    # Create and run controller
     #
     # === Return
     # true:: Always return true
@@ -103,7 +102,7 @@ module RightScale
       c.control(c.parse_args)
     end
 
-    # Parse arguments and run
+    # Parse arguments and execute request
     #
     # === Parameters
     # options(Hash):: Command line options
@@ -136,7 +135,7 @@ module RightScale
       end 
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
 
-      # Start processing
+      # Execute request
       success = case action
       when /show|killall/
         action = 'stop' if action == 'killall'
@@ -248,6 +247,8 @@ module RightScale
       options
     end
 
+    protected
+
     # Parse any other arguments used by agent
     #
     # === Parameters
@@ -257,9 +258,8 @@ module RightScale
     # === Return
     # true:: Always return true
     def parse_other_args(opts, options)
+      true
     end
-
-    protected
 
     # Dispatch action
     #
@@ -313,20 +313,6 @@ module RightScale
       true
     end
 
-    # Print error on console and exit abnormally
-    #
-    # === Parameters
-    # message(String):: Error message to be displayed
-    # print_usage(Boolean):: Whether to display usage information
-    #
-    # === Return
-    # never
-    def fail(message, print_usage = false)
-      puts "** #{message}"
-      RDoc::usage_from_file(__FILE__) if print_usage
-      exit(1)
-    end
-
     # Trigger execution of given command in instance agent and wait for it to be done
     #
     # === Parameters
@@ -355,9 +341,12 @@ module RightScale
 
     # Start agent
     #
+    # === Parameters
+    # agent(Agent):: Agent class
+    #
     # === Return
     # true:: Always return true
-    def start_agent
+    def start_agent(agent = Agent)
       begin
         # Register exception handler
         @options[:exception_callback] = lambda { |e, msg, _| AgentManager.process_exception(e, msg) }
@@ -375,7 +364,7 @@ module RightScale
         end
 
         EM.run do
-          @@agent = Agent.start(@options)
+          @@agent = agent.start(@options)
         end
 
       rescue SystemExit
@@ -466,18 +455,46 @@ module RightScale
     end
 
     # Determine syslog program name based on options
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # (String):: Program name
     def syslog_program_name(options)
       'RightAgent'
     end
 
     # Enable the use of an HTTP proxy for this process and its subprocesses
+    #
+    # === Parameters
+    # proxy_setting(String):: Proxy to use
+    # exceptions(String):: Comma-separated list of proxy exceptions (e.g. metadata server)
+    #
+    # === Return
+    # true:: Always return true
     def configure_proxy(proxy_setting, exceptions)
       ENV['HTTP_PROXY'] = proxy_setting
       ENV['http_proxy'] = proxy_setting
       ENV['HTTPS_PROXY'] = proxy_setting
       ENV['https_proxy'] = proxy_setting
-      ENV['NO_PROXY']   = exceptions
-      ENV['no_proxy']   = exceptions
+      ENV['NO_PROXY'] = exceptions
+      ENV['no_proxy'] = exceptions
+      true
+    end
+
+    # Print error on console and exit abnormally
+    #
+    # === Parameters
+    # message(String):: Error message to be displayed
+    # print_usage(Boolean):: Whether to display usage information
+    #
+    # === Return
+    # never
+    def fail(message, print_usage = false)
+      puts "** #{message}"
+      RDoc::usage_from_file(__FILE__) if print_usage
+      exit(1)
     end
 
     # Version information

@@ -27,9 +27,17 @@ require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agent', 'ag
 
 # Common options parser
 module RightScale
+
   module CommonParser
 
     # Parse common options between rad and rnac
+    #
+    # === Parameters
+    # opts(OptionParser):: Options parser with options to be parsed
+    # options(Hash):: Storage for options that are parsed
+    #
+    # === Return
+    # true:: Always return true
     def parse_common(opts, options)
 
       opts.on("--test") do 
@@ -50,7 +58,7 @@ module RightScale
         options[:token] = t
       end
 
-      opts.on("--prefix PREFIX") do |p|
+      opts.on("-x", "--prefix PREFIX") do |p|
         options[:prefix] = p
       end
 
@@ -96,6 +104,7 @@ module RightScale
         puts version
         exit
       end
+      true
     end
 
     # Generate agent or mapper identity from options
@@ -113,13 +122,33 @@ module RightScale
           puts "** Identity needs to be a positive integer"
           exit(1)
         end
-        name = options[:alias] || options[:agent] || 'mapper'
-        puts "NAME: #{name}"
+        options[:agent_type] = agent_type(options[:agent_type], options[:agent_name])
         token = options[:token]
         token = RightScale::SecureIdentity.derive(base_id, options[:token]) if options[:secure_identity]
-        options[:identity] = AgentIdentity.new(options[:prefix] || 'rs', name, base_id, token).to_s
+        options[:identity] = AgentIdentity.new(options[:prefix] || 'rs', options[:agent_type], base_id, token).to_s
+        puts "NAME: #{options[:agent_name]}, TYPE: #{options[:agent_type]}, ID: #{options[:identity]}"
       end
     end
 
-  end
-end
+    # Determine agent type
+    #
+    # === Parameters
+    # type(String):: Agent type
+    # name(String):: Agent name
+    #
+    # === Return
+    # (String):: Agent type
+    def agent_type(type, name)
+      unless type
+        if name =~ /^(.*)_[0-9]+$/
+          type = Regexp.last_match(1)
+        else
+          type = name || "instance"
+        end
+      end
+      type
+    end
+
+  end # CommonParser
+
+end # RightScale

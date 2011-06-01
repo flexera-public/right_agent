@@ -92,6 +92,7 @@ module RightScale
     #     Defaults to the root or the current working directory.
     #   :log_dir(String):: Log file path. Defaults to the current working directory.
     #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal.
+    #   :actors_dirs(Array):: Directories to search for actors in addition to default location in root_dir
     #   :console(Boolean):: true indicates to start interactive console
     #   :daemonize(Boolean):: true indicates to daemonize
     #   :retry_interval(Numeric):: Number of seconds between request retries
@@ -548,36 +549,40 @@ module RightScale
       false
     end
 
-    # Load the agent's ruby code for the actors
-    # Also load the standard agent_manager actor
+    # Load the agent's ruby code for the actors using the following search path:
+    #  - default actors_dir in root_dir
+    #  - actors directory in this gem
+    #  - options[:actors_dirs} directories
     #
     # === Return
     # true:: Always return true
     def load_actors
-      return false unless @options[:root_dir]
-      Log.error("Actors dir #{actors_dir} does not exist or is not reachable") unless File.directory?(actors_dir)
+      return false unless @options[:root_dir] # TODO Fix this, only here because of specs
 
       # Load agent's configured actors
-      actors = @options[:actors]
+      actors = @options[:actors].clone
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
-      Dir["#{actors_dir}/*.rb"].each do |actor|
-        next if actors && !actors.include?(File.basename(actor, ".rb"))
-        Log.info("[setup] loading #{actor}")
-        require actor
+      actors_dirs = []
+      actors_dirs << actors_dir if File.directory?(actors_dir)
+      actors_dirs += @options[:actors_dirs] if @options[:actors_dirs]
+      actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors'))
+      @options[:actors_dirs].each do |dir|
+        Dir["#{dir}/*.rb"].each do |file|
+          actor = File.basename(file, ".rb")
+          next if actors && !actors.include?(actor)
+          Log.info("[setup] loading actor #{file}")
+          require file
+          actors.delete(actor)
+        end
       end
-
-      # Always load standard agent_manager actor
-      require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors', 'agent_manager'))
-      @agent_manager = AgentManager.new
-      Log.info("[setup] loading agent_manager.rb")
+      Log.error("Actors #{actors.inspect} not found in #{actors_dirs.inspect}") unless actors.empty?
 
       # Perform agent-specific initialization including actor creation and registration
-      init_path = File.join(init_dir, "#{@agent_type}.rb")
+      init_path = File.normalize_path(File.join(init_dir, "init.rb"))
       if File.exists?(init_path)
         instance_eval(File.read(init_path), init_path)
-        register @agent_manager
       else
-        Log.error("Agent initialization file #{init_path.inspect} does not exist") unless File.exists?(init_path)
+        Log.error("Agent initialization file #{init_path.inspect} does not exist")
       end
       true
     end

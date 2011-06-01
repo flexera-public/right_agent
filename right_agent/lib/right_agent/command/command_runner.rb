@@ -63,13 +63,13 @@ module RightScale
               if commands.include?(cmd_name)
                 commands[cmd_name].call(c, conn)
               else
-                Log.warn("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
+                Log.warning("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
               end
             else
               Log.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
             end
           rescue Exception => e
-            Log.warn("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
+            Log.warning("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
           end
         end
 
@@ -81,7 +81,7 @@ module RightScale
           if pid_file.exists?
             pid_file.set_command_options(cmd_options)
           else
-            Log.warn("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
+            Log.warning("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
           end
         end
 

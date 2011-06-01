@@ -29,8 +29,8 @@ require 'optparse'
 require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
 require 'rdoc/usage'
-require File.join(File.dirname(__FILE__), 'rdoc_patch')
-require File.join(File.dirname(__FILE__), 'common_parser')
+require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 
 module RightScale

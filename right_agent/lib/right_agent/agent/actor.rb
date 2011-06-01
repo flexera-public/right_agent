@@ -87,7 +87,7 @@ module RightScale
           if instance_methods.include?(meth.to_s) or instance_methods.include?(meth.to_sym)
             true
           else
-            Log.warn("Exposing non-existing method #{meth} in actor #{name}")
+            Log.warning("Exposing non-existing method #{meth} in actor #{name}")
             false
           end
         end.map {|meth| "/#{prefix}/#{meth}".squeeze('/')}

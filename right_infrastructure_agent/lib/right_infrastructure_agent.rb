@@ -10,11 +10,9 @@
 # the licensee.
 
 require 'rubygems'
-#require 'right_agent' # TODO Fix this
-require File.join(File.dirname(__FILE__), '..', '..', 'right_agent', 'lib', 'right_agent')
+require 'right_agent'
 
 RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_infrastructure_agent'))
-require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'agent_helpers')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'exception_mailer.rb')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'infrastructure_packets')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'infrastructure_agent')

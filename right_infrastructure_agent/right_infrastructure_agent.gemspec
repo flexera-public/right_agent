@@ -40,6 +40,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency('ruby-debug', [">= 0.10"])
   spec.add_development_dependency('rspec', ["~> 2.5"])
   spec.add_development_dependency('flexmock', ["~> 0.9"])
+  spec.add_development_dependency("actionmailer", ["~> 2.3.5"])
   #spec.add_development_dependency('right_agent', :git => 'git@github.com:rightscale/right_support.git')
 
   spec.description = <<-EOF
