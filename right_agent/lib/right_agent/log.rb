@@ -24,6 +24,10 @@ require 'logger'
 require 'right_support'
 require 'singleton'
 
+require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'multiplexer'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'exceptions'))
+
 module RightScale
 
   # Logs both to syslog and to local file
