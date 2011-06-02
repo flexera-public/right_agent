@@ -93,9 +93,9 @@ module RightScale
     # true:: Always return true
     def deploy(options)
       # Initialize AgentFileHelper
-      set_root_dir(options[:root_dir])
-      set_cfg_dir(options[:cfg_dir])
-      set_pid_dir(options[:pid_dir])
+      init_root_dir(options[:root_dir])
+      init_cfg_dir(options[:cfg_dir])
+      init_pid_dir(options[:pid_dir])
 
       # Configure agent
       cfg = load_init_config

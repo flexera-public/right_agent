@@ -79,7 +79,7 @@ module RightScale
       c = InfrastructureAgentController.new
       options = c.parse_args
       options[:user] = 'mapper' if options[:agent_type] == 'mapper' && options[:test]
-      set_root_dir(options[:root_dir])
+      init_root_dir(options[:root_dir])
       c.control(options.merge(:debug => debug))
     end
 

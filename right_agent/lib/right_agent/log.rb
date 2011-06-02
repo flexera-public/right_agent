@@ -22,9 +22,6 @@
 
 require 'logger'
 require 'right_support'
-require File.expand_path(File.join(File.dirname(__FILE__), 'agent_config'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'multiplexer'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'exceptions'))
 require 'singleton'
 
 module RightScale

@@ -515,7 +515,7 @@ module RightScale
       end
 
       # Initialize AgentFileHelper
-      set_root_dir(@options[:root_dir])
+      init_root_dir(@options[:root_dir])
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)

@@ -27,27 +27,32 @@ module RightScale
 
   module AgentFileHelper
 
-    # Set path to root directory of agent
-    def set_root_dir(dir)
+    # Initialize path to root directory of agent
+    def init_root_dir(dir)
       @root_dir = dir
     end
 
-    # Set path to directory containing generated agent configuration files
-    def set_cfg_dir(dir)
+    # Initialize path to directory containing generated agent configuration files
+    def init_cfg_dir(dir)
       @cfg_dir = dir
     end
 
-    # Set path to directory containing agent process id files
-    def set_pid_dir(dir)
+    # Initialize path to directory containing agent process id files
+    def init_pid_dir(dir)
       @pid_dir = dir
     end
 
-    # Path to root directory of agent
+    # Path to root directory of agent that contains at least the following directories:
+    #   init   - initialization code
+    #   actors - actors code
+    #   certs  - security certificates and private keys
     def root_dir
       @root_dir || Dir.pwd
     end
 
-    # Path to directory containing generated agent configuration files
+    # Path to directory containing a directory for each agent configured on the local
+    # machine (e.g., core, core_2, core_3). Each agent directory contains a 'config.yml'
+    # file generated to contain that agent's current configuration
     def cfg_dir
       @cfg_dir || Platform.filesystem.cfg_dir
     end
@@ -62,17 +67,26 @@ module RightScale
       Dir.glob(File.join(cfg_dir, "**", "*.{#{YAML_EXT.join(',')}}"))
     end
 
-    # Path to actors source files
+    # Path to directory containing actor source files
     def actors_dir
       @actors_dir ||= File.normalize_path(File.join(root_dir, "actors"))
     end
 
-    # Path to agent directory containing <agent>.yml and <agent>.rb initialization files
+    # Path to agent directory containing initialization files:
+    #   config.yml - static configuration settings for the agent
+    #   init.rb    - code that registers the agent's actors and performs any other
+    #                agent specific initialization such as initializing its
+    #                secure serializer and its command protocol server
     def init_dir
       @init_dir ||= File.normalize_path(File.join(root_dir, "init"))
     end
 
-    # Path to certs directory
+    # Path to directory containing the certificates used to sign and encrypt all
+    # outgoing messages as well as to check the signature and decrypt any incoming
+    # messages. This directory should contain at least:
+    #   <agent name>.key  - agent's' private key
+    #   <agent name>.cert - agent's' public certificate
+    #   mapper.cert       - mapper's' public certificate
     def certs_dir
       @certs_dir ||= File.normalize_path(File.join(root_dir, "certs"))
     end
@@ -123,7 +137,7 @@ module RightScale
         options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity], options)
         options.merge!(pid_file.read_pid) if pid_file.exists?
-        set_root_dir(options[:root_dir])
+        init_root_dir(options[:root_dir])
       end
       options
     end
@@ -136,7 +150,7 @@ module RightScale
       Dir.glob(File.join(cfg_dir, "*"))
     end
 
-    # Produces a hash with keys as symbols from given hash
+    # Produce a hash with keys as symbols from given hash
     #
     # === Parameters
     # hash(Hash):: Hash to be symbolized
