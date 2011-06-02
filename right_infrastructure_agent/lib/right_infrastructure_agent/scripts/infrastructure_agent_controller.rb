@@ -51,7 +51,6 @@
 #      --host, -h HOST      Set AMQP server hostname for agent
 #      --port, -P PORT      Set AMQP server port for agent
 #      --cfg-dir, -c DIR    Set directory containing configuration for all agents
-#      --root-dir DIR       Set root directory for agent source (only required for mapper)
 #      --pid-dir, -z DIR    Set directory containing agent process id files
 #      --log-dir DIR        Set log directory
 #      --log-level LVL      Log level (debug, info, warning, error or fatal)
@@ -80,8 +79,7 @@ module RightScale
       c = InfrastructureAgentController.new
       options = c.parse_args
       options[:user] = 'mapper' if options[:agent_type] == 'mapper' && options[:test]
-      # Initialize AgentFileHelper
-      root_dir = options[:root_dir]
+      set_root_dir(options[:root_dir])
       c.control(options.merge(:debug => debug))
     end
 
@@ -96,10 +94,6 @@ module RightScale
     def parse_other_args(opts, options)
       opts.on("-D", "--debugger PORT") do |port|
         options[:debug] = port
-      end
-
-      opts.on('-r', '--root-dir DIR') do |d|
-        options[:root_dir] = d
       end
     end
 
@@ -149,7 +143,7 @@ module RightScale
     def start_mapper
       @options = agent_options(@options[:agent_name]).merge(@options)
 
-      Dir["#{root_dir}/lib/*.rb"].each do |file|
+      Dir["#{root_dir}/lib/mapper/*.rb"].each do |file|
         require file
       end
 

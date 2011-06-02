@@ -28,18 +28,23 @@ module RightScale
   module AgentFileHelper
 
     # Set path to root directory of agent
-    def root_dir=(dir)
+    def set_root_dir(dir)
       @root_dir = dir
+    end
+
+    # Set path to directory containing generated agent configuration files
+    def set_cfg_dir(dir)
+      @cfg_dir = dir
+    end
+
+    # Set path to directory containing agent process id files
+    def set_pid_dir(dir)
+      @pid_dir = dir
     end
 
     # Path to root directory of agent
     def root_dir
       @root_dir || Dir.pwd
-    end
-
-    # Set path to directory containing generated agent configuration files
-    def cfg_dir=(dir)
-      @cfg_dir = dir
     end
 
     # Path to directory containing generated agent configuration files
@@ -70,11 +75,6 @@ module RightScale
     # Path to certs directory
     def certs_dir
       @certs_dir ||= File.normalize_path(File.join(root_dir, "certs"))
-    end
-
-    # Set path to directory containing agent process id files
-    def pid_dir=(dir)
-      @pid_dir = dir
     end
 
     # Path to directory containing agent process id files
@@ -123,6 +123,7 @@ module RightScale
         options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity], options)
         options.merge!(pid_file.read_pid) if pid_file.exists?
+        set_root_dir(options[:root_dir])
       end
       options
     end

@@ -61,7 +61,7 @@ module RightScale
     # true:: Always return true
     def manage(options)
       # Initialize AgentFileHelper
-      cfg_dir = options[:cfg_dir]
+      set_cfg_dir(options[:cfg_dir])
 
       # Determine candidate agents
       agent_names = if options[:agent_name]

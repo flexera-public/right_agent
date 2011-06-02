@@ -64,7 +64,7 @@ module RightScale
       :log_level          => :info,
       :daemonize          => false,
       :console            => false,
-      :root               => Dir.pwd,
+      :root_dir           => Dir.pwd,
       :time_to_live       => 0,
       :retry_interval     => nil,
       :retry_timeout      => nil,
@@ -84,14 +84,14 @@ module RightScale
     # === Parameters
     # opts(Hash):: Configuration options:
     #   :identity(String):: Identity of this agent, no default
-    #   :name(String):: Name of this type of agent
-    #   :root_dir(String):: Application root for this agent containing subdirectories actors, agent, and certs,
+    #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init,
     #     defaults to Dir.pwd
     #   :cfg_file(String):: Path to this agent's configuration file
-    #   :pid_dir(String):: Path to the directory where the agent stores its pid file (only if daemonized).
-    #     Defaults to the root or the current working directory.
-    #   :log_dir(String):: Log file path. Defaults to the current working directory.
-    #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal.
+    #   :pid_dir(String):: Path to the directory where the agent stores its process id file (only if daemonized),
+    #     defaults to the current working directory
+    #   :log_dir(String):: Log file path, defaults to the current working directory
+    #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal
+    #   :actors(Array):: List of actors to load
     #   :actors_dirs(Array):: Directories to search for actors in addition to default location in root_dir
     #   :console(Boolean):: true indicates to start interactive console
     #   :daemonize(Boolean):: true indicates to daemonize
@@ -515,7 +515,7 @@ module RightScale
       end
 
       # Initialize AgentFileHelper
-      root_dir = @options[:root_dir]
+      set_root_dir(@options[:root_dir])
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
@@ -549,24 +549,22 @@ module RightScale
       false
     end
 
-    # Load the agent's ruby code for the actors using the following search path:
+    # Load the ruby code for the actors using the following search path:
     #  - default actors_dir in root_dir
-    #  - actors directory in this gem
     #  - options[:actors_dirs} directories
+    #  - actors directory in RightAgent gem
     #
     # === Return
     # true:: Always return true
     def load_actors
-      return false unless @options[:root_dir] # TODO Fix this, only here because of specs
-
       # Load agent's configured actors
-      actors = @options[:actors].clone
+      actors = (@options[:actors] || []).clone
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
       actors_dirs = []
       actors_dirs << actors_dir if File.directory?(actors_dir)
       actors_dirs += @options[:actors_dirs] if @options[:actors_dirs]
       actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors'))
-      @options[:actors_dirs].each do |dir|
+      actors_dirs.each do |dir|
         Dir["#{dir}/*.rb"].each do |file|
           actor = File.basename(file, ".rb")
           next if actors && !actors.include?(actor)

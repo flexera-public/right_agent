@@ -65,7 +65,7 @@ module RightScale
     # true:: Always return true
     def manage(options)
       # Initialize AgentFileHelper
-      cfg_dir = options[:cfg_dir]
+      set_cfg_dir(options[:cfg_dir])
 
       # Determine command
       level = options[:level]

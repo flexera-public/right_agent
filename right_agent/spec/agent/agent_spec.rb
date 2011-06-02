@@ -52,11 +52,13 @@ describe RightScale::Agent do
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @identity = "rs-instance-123-1"
-      @agent = RightScale::Agent.start(:identity => @identity)
+      @agent = RightScale::Agent.new(:identity => @identity)
+      flexmock(@agent).should_receive(:load_actors).and_return(true)
+      @agent.run
     end
 
     after(:each) do
-      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root], 'config.yml'))) if @agent
+      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root_dir], 'config.yml'))) if @agent
     end
 
     it "for daemonize is false" do
@@ -94,9 +96,9 @@ describe RightScale::Agent do
       @agent.options[:vhost].should == "/right_net"
     end
 
-    it "for root is #{Dir.pwd}" do
-      @agent.options.should include(:root)
-      @agent.options[:root].should == Dir.pwd
+    it "for root_dir is #{Dir.pwd}" do
+      @agent.options.should include(:root_dir)
+      @agent.options[:root_dir].should == Dir.pwd
     end
 
   end
@@ -104,11 +106,13 @@ describe RightScale::Agent do
   describe "Options from config.yml" do
 
     before(:all) do
-      @agent = RightScale::Agent.start
+      @agent = RightScale::Agent.new(:identity => @identity)
+      flexmock(@agent).should_receive(:load_actors).and_return(true)
+      @agent.run
     end
 
     after(:each) do
-      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root], 'config.yml'))) if @agent
+      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root_dir], 'config.yml'))) if @agent
     end
  
   end
@@ -135,43 +139,29 @@ describe RightScale::Agent do
     end
 
     after(:each) do
-      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root], 'config.yml'))) if @agent
+      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root_dir], 'config.yml'))) if @agent
     end
 
-    # TODO figure out how to stub call to daemonize
-    # it "for daemonize should override default (false)" do
-    #   agent = RightScale::Agent.start(:daemonize => true)
-    #   agent.options.should include(:daemonize)
-    #   agent.options[:daemonize].should == true
-    # end
-
-    # TODO figure out how to avoid console output
-    # it "for console should override default (false)" do
-    #   @agent = RightScale::Agent.start(:console => true, :identity => @identity)
-    #   @agent.options.should include(:console)
-    #   @agent.options[:console].should == true
-    # end
-
     it "for user should override default (agent)" do
-      @agent = RightScale::Agent.start(:user => "me", :identity => @identity)
+      @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
       @agent.options.should include(:user)
       @agent.options[:user].should == "me"
     end
 
     it "for pass(word) should override default (testing)" do
-      @agent = RightScale::Agent.start(:pass => "secret", :identity => @identity)
+      @agent = RightScale::Agent.new(:pass => "secret", :identity => @identity)
       @agent.options.should include(:pass)
       @agent.options[:pass].should == "secret"
     end
 
     it "for secure should override default (false)" do
-      @agent = RightScale::Agent.start(:secure => true, :identity => @identity)
+      @agent = RightScale::Agent.new(:secure => true, :identity => @identity)
       @agent.options.should include(:secure)
       @agent.options[:secure].should == true
     end
 
     it "for host should override default (localhost)" do
-      @agent = RightScale::Agent.start(:host => "127.0.0.1", :identity => @identity)
+      @agent = RightScale::Agent.new(:host => "127.0.0.1", :identity => @identity)
       @agent.options.should include(:host)
       @agent.options[:host].should == "127.0.0.1"
     end
@@ -182,8 +172,8 @@ describe RightScale::Agent do
       test_log_path = File.normalize_path(File.join(Dir.tmpdir, "right_net", "testing"))
       FileUtils.rm_rf(test_log_path)
 
-      @agent = RightScale::Agent.start(:log_dir => File.normalize_path(File.join(Dir.tmpdir, "right_net", "testing")),
-                                       :identity => @identity)
+      @agent = RightScale::Agent.new(:log_dir => File.normalize_path(File.join(Dir.tmpdir, "right_net", "testing")),
+                                    :identity => @identity)
 
       # passing log_dir will cause log_path to be set to the same value and the
       # directory wil be created
@@ -197,43 +187,45 @@ describe RightScale::Agent do
     end
 
     it "for log_level should override default (info)" do
-      @agent = RightScale::Agent.start(:log_level => :debug, :identity => @identity)
+      @agent = RightScale::Agent.new(:log_level => :debug, :identity => @identity)
       @agent.options.should include(:log_level)
       @agent.options[:log_level].should == :debug
     end
 
     it "for vhost should override default (/right_net)" do
-      @agent = RightScale::Agent.start(:vhost => "/virtual_host", :identity => @identity)
+      @agent = RightScale::Agent.new(:vhost => "/virtual_host", :identity => @identity)
       @agent.options.should include(:vhost)
       @agent.options[:vhost].should == "/virtual_host"
     end
 
     it "for ping_time should override default (15)" do
-      @agent = RightScale::Agent.start(:ping_time => 5, :identity => @identity)
+      @agent = RightScale::Agent.new(:ping_time => 5, :identity => @identity)
       @agent.options.should include(:ping_time)
       @agent.options[:ping_time].should == 5
     end
 
-    it "for root should override default (#{File.normalize_path(File.join(File.dirname(__FILE__), '..'))})" do
-      @agent = RightScale::Agent.start(:root => File.normalize_path(File.dirname(__FILE__)),
-                                       :identity => @identity)
-      @agent.options.should include(:root)
-      @agent.options[:root].should == File.normalize_path(File.dirname(__FILE__))
+    it "for root_dir should override default (#{File.dirname(__FILE__)})" do
+      root_dir = File.normalize_path(File.join(File.dirname(__FILE__), '..', '..'))
+      @agent = RightScale::Agent.new(:root_dir => root_dir, :identity => @identity)
+      @agent.options.should include(:root_dir)
+      @agent.options[:root_dir].should == root_dir
     end
 
     it "for a single tag should result in the agent's tags being set" do
-      @agent = RightScale::Agent.start(:tag => "sample_tag", :identity => @identity)
+      @agent = RightScale::Agent.new(:tag => "sample_tag", :identity => @identity)
       @agent.tags.should include("sample_tag")
     end
 
     it "for multiple tags should result in the agent's tags being set" do
-      @agent = RightScale::Agent.start(:tag => ["sample_tag_1", "sample_tag_2"], :identity => @identity)
+      @agent = RightScale::Agent.new(:tag => ["sample_tag_1", "sample_tag_2"], :identity => @identity)
       @agent.tags.should include("sample_tag_1")
       @agent.tags.should include("sample_tag_2")
     end
     
     it "for threadpool_size" do
-      @agent = RightScale::Agent.start(:threadpool_size => 5, :identity => @identity)
+      @agent = RightScale::Agent.new(:threadpool_size => 5, :identity => @identity)
+      flexmock(@agent).should_receive(:load_actors).and_return(true)
+      @agent.run
       @agent.dispatcher.em.threadpool_size.should == 5
     end
     
@@ -242,7 +234,7 @@ describe RightScale::Agent do
   describe "" do
 
     before(:each) do
-      flexmock(RightScale::Log).should_receive(:error).never.by_default
+      flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       flexmock(EM).should_receive(:add_periodic_timer)
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
@@ -268,10 +260,12 @@ describe RightScale::Agent do
       @dispatcher = flexmock("dispatcher", :dispatch_age => nil, :dispatch => true, :stats => "").by_default
       flexmock(RightScale::Dispatcher).should_receive(:new).and_return(@dispatcher)
       @identity = "rs-instance-123-1"
+      @agent = RightScale::Agent.new(:user => "tester", :identity => @identity)
+      flexmock(@agent).should_receive(:load_actors).and_return(true)
     end
 
     after(:each) do
-      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root], 'config.yml'))) if @agent
+      FileUtils.rm_rf(File.normalize_path(File.join(@agent.options[:root_dir], 'config.yml'))) if @agent
     end
 
     describe "Setting up queues" do
@@ -279,7 +273,7 @@ describe RightScale::Agent do
       it "should subscribe to identity queue using identity exchange" do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).and_return(@broker_ids).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
         end
       end
 
@@ -287,7 +281,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @agent.instance_variable_get(:@remaining_setup).should == {:setup_identity_queue => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
@@ -299,7 +293,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).once
           @agent.connect("123", 2, 1, 1)
         end
@@ -309,7 +303,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => @broker_ids.last(1)), Proc).
                                              and_return(@broker_ids.last(1)).once
@@ -322,7 +316,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:connection_status).and_yield(:failed)
           flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
@@ -337,7 +331,7 @@ describe RightScale::Agent do
           @broker.should_receive(:failed).and_return([])
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:close_one).with(@broker_ids.last).once
           @agent.disconnect("123", 2)
         end
@@ -349,7 +343,7 @@ describe RightScale::Agent do
           @broker.should_receive(:failed).and_return([])
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:remove).with("123", 2, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:ports).and_return([1])
           flexmock(@agent).should_receive(:update_configuration).with(:host => ["123"], :port => [1]).and_return(true).once
@@ -361,7 +355,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:remove).never
           @broker.should_receive(:close_one).never
           flexmock(@agent).should_receive(:update_configuration).never
@@ -373,7 +367,7 @@ describe RightScale::Agent do
       it "should declare broker connection unusable if requested to do so" do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).and_return(@broker_ids).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:declare_unusable).with(@broker_ids.last(1)).once
           @agent.connect_failed(@broker_ids.last(1))
         end
@@ -382,7 +376,7 @@ describe RightScale::Agent do
       it "should not declare a broker connection unusable if currently connected" do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).and_return(@broker_ids).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
           @broker.should_receive(:declare_unusable).with([]).once
           @agent.connect_failed(@broker_ids.first(1))
         end
@@ -398,7 +392,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request).once
           @dispatcher.should_receive(:dispatch).with(request).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
         end
       end
 
@@ -408,7 +402,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result).once
           @sender.should_receive(:handle_response).with(result).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
         end
       end
 
@@ -419,7 +413,7 @@ describe RightScale::Agent do
                                              and_return(@broker_ids).and_yield(@broker_id, result).once
           @sender.should_receive(:handle_response).with(result).once
           @sender.should_receive(:message_received).once
-          @agent = RightScale::Agent.start(:user => "tester", :identity => @identity)
+          @agent.run
         end
       end
 
@@ -432,6 +426,7 @@ describe RightScale::Agent do
         @broker.should_receive(:close_one).with("rs-broker-123-1", false).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           @agent.terminate
         end
@@ -442,6 +437,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           @agent.terminate
         end
@@ -453,6 +449,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(10, Proc).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           @agent.terminate
         end
@@ -464,6 +461,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           @agent.terminate
         end
@@ -475,6 +473,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
           flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting 9 seconds for/).once
@@ -488,6 +487,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(0, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
           flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).never
@@ -503,6 +503,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
           flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).once
@@ -520,6 +521,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           called = 0
           @agent.terminate { called += 1 }
@@ -535,6 +537,7 @@ describe RightScale::Agent do
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em(stop_event_loop = false) do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           @agent.terminate
         end
@@ -547,6 +550,7 @@ describe RightScale::Agent do
         @timer.should_receive(:cancel).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
           called = 0
           @agent.terminate { called += 1 }
