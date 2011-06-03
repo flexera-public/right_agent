@@ -549,10 +549,21 @@ module RightScale
       false
     end
 
-    # Load the ruby code for the actors using the following search path:
+    # Set the path for searching for actors to be:
     #  - default actors_dir in root_dir
     #  - options[:actors_dirs} directories
     #  - actors directory in RightAgent gem
+    #
+    # === Return
+    # (Array):: List of directories to search for actors
+    def actors_dirs
+      actors_dirs = []
+      actors_dirs << actors_dir if File.directory?(actors_dir)
+      actors_dirs += @options[:actors_dirs] if @options[:actors_dirs]
+      actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors'))
+    end
+
+    # Load the ruby code for the actors
     #
     # === Return
     # true:: Always return true
@@ -560,10 +571,6 @@ module RightScale
       # Load agent's configured actors
       actors = (@options[:actors] || []).clone
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
-      actors_dirs = []
-      actors_dirs << actors_dir if File.directory?(actors_dir)
-      actors_dirs += @options[:actors_dirs] if @options[:actors_dirs]
-      actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors'))
       actors_dirs.each do |dir|
         Dir["#{dir}/*.rb"].each do |file|
           actor = File.basename(file, ".rb")

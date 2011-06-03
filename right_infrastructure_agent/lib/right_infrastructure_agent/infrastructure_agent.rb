@@ -200,6 +200,15 @@ module RightScale
       true
     end
 
+    # Extend the path for searching for actors to include the actors directory in this gem
+    #
+    # === Return
+    # (Array):: List of directories to search for actors
+    def actors_dirs
+      actors_dirs = super
+      actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), 'actors'))
+    end
+
   end # InfrastructureAgent
 
 end # RightScale
