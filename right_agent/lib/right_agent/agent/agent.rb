@@ -592,7 +592,6 @@ module RightScale
       end
       true
     end
-config/environments/development.rb config/environments/meta.rb config/environments/production.rb config/environments/selenium.rb config/environments/staging.rb config/environments/test.rb config/environments/test_selenium.rb config/initializers/agent.rb lib/daemon/simple_daemons/right_net_queues_gc_daemon.rb lib/daemon/simple_daemons/v5_5_ping_daemon.rb lib/tasks/cruise.rake
 
     # Setup the queues on the specified brokers for this agent
     # Also configure message non-delivery handling

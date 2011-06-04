@@ -10,7 +10,14 @@
 # the licensee.
 
 require File.join(File.dirname(__FILE__), 'spec_helper')
-require 'mysql' # For MysqlError
+
+module ActiveRecord
+  class ActiveRecordError < Exception; end
+  class StatementInvalid < ActiveRecordError; end
+  class RecordNotFound < Exception; end
+end
+
+class MysqlError < Exception; end
 
 describe RightScale::ModelsHelper do
 
@@ -73,12 +80,12 @@ describe RightScale::ModelsHelper do
       end
       called.should == 1
       result.should == nil
-      error = /Failed to retrieve something \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to retrieve something \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       (@last_error.should =~ error).should be_true
     end
 
     it 'should audit exception if audit enabled' do
-      error = /Failed to retrieve something \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to retrieve something \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       @audit_formatter.should_receive(:error).with(error).once
       @audit.should_receive(:append).once
       flexmock(RightScale::Log).should_receive(:error).once
@@ -123,12 +130,12 @@ describe RightScale::ModelsHelper do
       end
       called.should == 1
       result.should == nil
-      error = /Failed to create something \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to create something \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       (@last_error.should =~ error).should be_true
     end
 
     it 'should audit exception if audit enabled' do
-      error = /Failed to create something \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to create something \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       @audit_formatter.should_receive(:error).with(error).once
       @audit.should_receive(:append).once
       flexmock(RightScale::Log).should_receive(:error).once
@@ -146,10 +153,6 @@ describe RightScale::ModelsHelper do
 
   context :query do
 
-    before(:all) do
-      @importer = RightScale::ModelsImporter.instance
-    end
-
     it 'should run query, yielding to block and returning result from query block' do
       called = 0
       result = query("query database") { called += 1 }
@@ -166,12 +169,12 @@ describe RightScale::ModelsHelper do
       end
       called.should == 1
       result.should == nil
-      error = /Failed to query database \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to query database \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       (@last_error.should =~ error).should be_true
     end
 
     it 'should audit exception if audit enabled' do
-      error = /Failed to query database \(NoMethodError.*undefined method.*core_agent_helpers_spec.*\)$/
+      error = /Failed to query database \(NoMethodError.*undefined method.*models_helper_spec.*\)$/
       @audit_formatter.should_receive(:error).with(error).once
       @audit.should_receive(:append).once
       flexmock(RightScale::Log).should_receive(:error).once
@@ -210,7 +213,7 @@ describe RightScale::ModelsHelper do
       end
       called.should == 4
       result.should == nil
-      error = /Failed to query database \(ActiveRecord::StatementInvalid.*Invalid query in .*core_agent_helpers_spec.*\)$/
+      error = /Failed to query database \(ActiveRecord::StatementInvalid.*Invalid query in .*models_helper_spec.*\)$/
       (@last_error.should =~ error).should be_true
     end
 

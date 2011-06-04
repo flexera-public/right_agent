@@ -20,14 +20,14 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require File.join(File.dirname(__FILE__), '..', '..', '..', 'spec', 'spec_helper')
-require File.join(File.dirname(__FILE__), '..', 'lib', 'core', 'core_agent_commands' )
-require File.join(RightScale::RightNetConfig[:right_link_path], 'command_protocol', 'lib', 'command_protocol')
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'command'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'command', 'agent_manager_commands'))
 
-describe RightScale::CoreAgentCommands do
+describe RightScale::AgentManagerCommands do
 
   before(:all) do
-    @commands = RightScale::CoreAgentCommands::COMMANDS
+    @commands = RightScale::AgentManagerCommands::COMMANDS
     @agent_identity = RightScale::AgentIdentity.new('rs', 'test', 1).to_s
   end
 
@@ -38,11 +38,11 @@ describe RightScale::CoreAgentCommands do
       # plus one header line
       r.count("\n").should == (@commands.reject {|k,_| k.to_s =~ /test/}.size - 1) * 2 + 1
     end
-    RightScale::CoreAgentCommands.new("agent_manager").send(:list_command, {:conn => 42}).should be_true
+    RightScale::AgentManagerCommands.new("agent_manager").send(:list_command, {:conn => 42}).should be_true
   end
 
   it 'should get commands' do
-    cmds = RightScale::CoreAgentCommands.get("agent_manager")
+    cmds = RightScale::AgentManagerCommands.get("agent_manager")
     cmds.size.should == @commands.size
     cmds.keys.map { |k| k.to_s }.sort.should == @commands.keys.map { |k| k.to_s }.sort
     cmds.values.all? { |v| v.is_a? Proc }.should be_true

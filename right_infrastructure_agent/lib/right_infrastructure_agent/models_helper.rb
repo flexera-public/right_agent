@@ -91,7 +91,7 @@ module RightScale
     # (Object|nil):: Value returned by block, or nil if failed
     def query(description, audit = nil, options = {}, &blk)
       begin
-        ModelsImporter.instance.run_query(&blk)
+        run_query(&blk)
       rescue Exception => e
         description = "Failed to #{description}"
         Log.error(description, e, :trace)
@@ -318,8 +318,7 @@ module RightScale
     end
 
     # Run database query block
-    # When catch a MySQL disconnect error, reconnect and rerun block, retry indefinitely
-    # When catch other MySQL and ActiveRecord errors, rerun block, retry up to 3 times
+    # When catch retryable MySQL and ActiveRecord errors, rerun block, retry up to 3 times
     #
     # === Block
     # Accesses MySQL and returns result, required
@@ -343,10 +342,7 @@ module RightScale
           res = nil
           disconnected = false
         rescue Exception => e
-          if disconnected = is_disconnect_error?(e)
-            Log.error("Failed running MySQL query", e, :trace)
-            ActiveRecordInitializer.reconnect if defined?(ActiveRecordInitializer)
-          elsif is_retryable_error?(e)
+          if is_retryable_error?(e)
             if retries >= 3
               Log.warning("Aborting query after 3 failed retries")
               raise # re-raise the exception
@@ -362,21 +358,6 @@ module RightScale
         end
       end
       res
-    end
-
-    # Is given exception a MySQL connection exception?
-    #
-    # === Parameter
-    # e(Exception):: Exception to be tested
-    #
-    # === Return
-    # (Boolean):: true if exception is a MySQL disconnect exception, otherwise false or nil
-    def is_disconnect_error?(e)
-      if e.is_a?(MysqlError) || e.is_a?(ActiveRecord::StatementInvalid)
-        db_connection_errors = ActiveRecord::ConnectionAdapters::MysqlAdapter::LOST_CONNECTION_ERROR_MESSAGES
-        db_connection_errors << "Can't connect to"
-        db_connection_errors.find {|err| e.message.include?(err)}
-      end
     end
 
     # Is given exception a MySQL exception worth retrying, e.g., a deadlock or timeout?
