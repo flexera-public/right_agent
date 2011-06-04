@@ -143,9 +143,7 @@ module RightScale
     def start_mapper
       @options = agent_options(@options[:agent_name]).merge(@options)
 
-      Dir["#{root_dir}/lib/mapper/*.rb"].each do |file|
-        require file
-      end
+      require File.expand_path(File.join(root_dir, 'lib', 'mapper'))
 
       @options[:exception_callback] = proc do |e, msg, mapper|
         FaultyAgentsTracker.handle_exception(msg, e, mapper)
@@ -213,3 +211,14 @@ module RightScale
   end # InfrastructureAgentController
 
 end # RightScale
+
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
+#
+# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
+# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
+# reproduction, modification, or disclosure of this program is
+# strictly prohibited.  Any use of this program by an authorized
+# licensee is strictly subject to the terms and conditions,
+# including confidentiality obligations, set forth in the applicable
+# License Agreement between RightScale.com, Inc. and
+# the licensee.

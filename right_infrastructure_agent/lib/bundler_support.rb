@@ -1,5 +1,18 @@
+# Copyright (c) 2009-2011 RightScale, Inc, All Rights Reserved Worldwide.
+#
+# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
+# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
+# reproduction, modification, or disclosure of this program is
+# strictly prohibited.  Any use of this program by an authorized
+# licensee is strictly subject to the terms and conditions,
+# including confidentiality obligations, set forth in the applicable
+# License Agreement between RightScale.com, Inc. and
+# the licensee.
+
 module RightScale
+
   module BundlerSupport
+
     VERSION = '1.0.10'
     BUNDLE_PATH_REGEX = /BUNDLE_PATH: (.*)/
     SYSTEM_BUNDLE = false
@@ -142,5 +155,7 @@ module RightScale
           raise ArgumentError, "Don't know how to generate Bundler command line for #{action}"
       end
     end
-  end
-end
+
+  end # BundlerSupport
+
+end # RightScale
