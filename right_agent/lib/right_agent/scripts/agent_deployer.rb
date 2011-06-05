@@ -70,7 +70,7 @@ module RightScale
   class AgentDeployer
 
     include CommonParser
-    include AgentFileHelper
+    include AgentConfig
 
     VERSION = [0, 2]
 
@@ -92,7 +92,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def deploy(options)
-      # Initialize AgentFileHelper
+      # Initialize AgentConfig
       init_root_dir(options[:root_dir])
       init_cfg_dir(options[:cfg_dir])
       init_pid_dir(options[:pid_dir])

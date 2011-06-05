@@ -74,8 +74,8 @@ module RightScale
 
   class AgentController
 
+    include AgentConfig
     include CommonParser
-    include AgentFileHelper
 
     VERSION = [0, 2]
 
@@ -110,7 +110,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def control(options)
-      # Initialize AgentFileHelper
+      # Initialize AgentConfig
       init_cfg_dir(options[:cfg_dir])
 
       # List agents if requested

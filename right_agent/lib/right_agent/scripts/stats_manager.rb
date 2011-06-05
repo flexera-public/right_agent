@@ -1,16 +1,16 @@
 # === Synopsis:
 #   RightAgent Statistics Manager (rstat) - (c) 2010-2011 RightScale
 #
-#   rstat is a command line tool for displaying operation statistics for a RightAgent
+#   rstat is a command line tool for displaying operation statistics for RightAgents
 #
 # === Examples:
-#   Retrieve statistics for all agents:
+#   Retrieve statistics for all locally running agents:
 #     rstat
 #
-#   Retrieve statistics for a specific agent:
+#   Retrieve statistics for an agent named AGENT:
 #     rstat AGENT
 #
-#   Retrieve statistics for a specific agent in JSON format:
+#   Retrieve statistics for an agent in JSON format:
 #     rstat AGENT --json
 #     rstat AGENT --j
 #
@@ -20,9 +20,8 @@
 #    Options:
 #      --reset, -r        As part of gathering the stats from a server also reset the stats
 #      --timeout, -t SEC  Override default timeout in seconds to wait for a response from a server
-#      --json, -j         Dump the stats data in JSON format
+#      --json, -j         Display the stats data in JSON format
 #      --cfg-dir, -c DIR  Set directory containing configuration for all agents
-#      --version          Display version information
 #      --help             Display help
 
 require 'optparse'
@@ -37,16 +36,14 @@ module RightScale
 
   class StatsManager
 
-    include AgentFileHelper
+    include AgentConfig
     include StatsHelper
 
     VERSION = [0, 1, 0]
 
     DEFAULT_TIMEOUT = 5
 
-    SERVERS = ["instance"]
-
-    # Convenience wrapper for creating and running manager
+    # Create and run manager
     def self.run
       m = StatsManager.new
       m.manage(m.parse_args)
@@ -60,28 +57,11 @@ module RightScale
     # === Return
     # true:: Always return true
     def manage(options)
-      # Initialize AgentFileHelper
+      init_log
       init_cfg_dir(options[:cfg_dir])
-
-      # Determine candidate agents
-      agent_names = if options[:agent_name]
-        [options[:agent_name]]
-      else
-        configured_agents
-      end
-      fail("No agents configured") if agent_names.empty?
-
-      # Request stats from agents
-      count = 0
-      agent_names.each do |agent_name|
-        begin
-          count += 1 if request_stats(agent_name, options)
-        rescue Exception => e
-          puts "Command to agent #{agent_name} failed (#{e})"
-        end
-      end
-      puts("No agents running") if count == 0
-      true
+      request_stats(options)
+    rescue Exception => e
+      fail("#{e}\n#{e.backtrace.join("\n")}") unless e.is_a?(SystemExit)
     end
 
     # Create options hash from command line arguments
@@ -93,6 +73,7 @@ module RightScale
       options[:agent_name] = ARGV[0] unless ARGV[0] =~ /^-/
 
       opts = OptionParser.new do |opts|
+        parse_other_args(opts, options)
 
         opts.on('-r', '--reset') do
           options[:reset] = true
@@ -115,11 +96,6 @@ module RightScale
           exit
         end
 
-        opts.on_tail('--version') do
-          puts version
-          exit
-        end
-
       end
 
       begin
@@ -132,15 +108,43 @@ module RightScale
       options
     end
 
-    # Request and display statistics from agent
+    # Request and display statistics for agents
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def request_stats(options)
+      # Determine candidate agents
+      agent_names = if options[:agent_name]
+        [options[:agent_name]]
+      else
+        configured_agents
+      end
+      fail("No agents configured") if agent_names.empty?
+
+      # Request stats from agents
+      count = 0
+      agent_names.each do |agent_name|
+        begin
+          count += 1 if request_agent_stats(agent_name, options)
+        rescue Exception => e
+          puts "Command to agent #{agent_name} failed (#{e})"
+        end
+      end
+      puts("No agents running") if count == 0
+    end
+
+    # Request and display statistics for agent
     #
     # === Parameters
     # agent_name(String):: Agent name
-    # options(Hash):: Configuration options
+    # options(Hash):: Command line options
     #
     # === Return
     # (Boolean):: true if agent running, otherwise false
-    def request_stats(agent_name, options)
+    def request_agent_stats(agent_name, options)
       res = false
       config_options = agent_options(agent_name)
       unless config_options.empty?
@@ -161,12 +165,35 @@ module RightScale
 
     protected
 
+    # Initialize logging
+    #
+    # === Return
+    # true:: Always return true
+    def init_log
+      Log.program_name = "stats_manager"
+      Log.log_to_file_only(true)
+      Log.init("stats_manager", Platform.filesystem.log_dir, :print => true)
+      true
+    end
+
+    # Parse other arguments unique to given stats manager
+    #
+    # === Parameters
+    # opts(OptionParser):: Options parser with options to be parsed
+    # options(Hash):: Storage for options that are parsed
+    #
+    # === Return
+    # true:: Always return true
+    def parse_other_args(opts, options)
+      true
+    end
+
     # Display stats returned from server in human readable or JSON format
     #
     # === Parameters
     # server(String):: Name of server
     # result(String):: Result packet in JSON format containing stats or error
-    # options(Hash):: Configuration options:
+    # options(Hash):: Command line options:
     #   :json(Boolean):: Whether to display in JSON format
     #
     # === Return
@@ -197,11 +224,6 @@ module RightScale
       puts "** #{message}"
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
-    end
-
-    # Version information
-    def version
-      "rstat #{VERSION.join('.')} - RightAgent Statistics Manager (c) 2010-2011 RightScale"
     end
 
   end

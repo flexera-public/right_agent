@@ -26,6 +26,7 @@ module RightScale
 
   # Agent tags management
   class AgentTagsManager
+
     include Singleton
 
     # (Agent) Agent being managed
@@ -91,5 +92,6 @@ module RightScale
       true
     end
 
-  end
-end
+  end # AgentTagsManager
+
+end # RightScale

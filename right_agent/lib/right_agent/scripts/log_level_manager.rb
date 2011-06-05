@@ -43,7 +43,7 @@ module RightScale
 
   class LogLevelManager
 
-    include AgentFileHelper
+    include AgentConfig
 
     VERSION = [0, 1]
 
@@ -64,7 +64,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def manage(options)
-      # Initialize AgentFileHelper
+      # Initialize AgentConfig
       init_cfg_dir(options[:cfg_dir])
 
       # Determine command

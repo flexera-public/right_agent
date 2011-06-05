@@ -11,14 +11,15 @@
 
 module RightScale
 
-  # Container for RightInfrastructureAgent configuration data
-  class InfrastructureAgentConfig
+  AgentConfig.module_eval do
+
+    INSTANCE_RABBIT_ACL = '".*instance.*|request|registration|heartbeat|.*mapper.*" ".*" ".*instance.*"'
 
     # RabbitMQ permission settings for instance agent
-    def self.instance_rabbit_acl
-      '".*instance.*|request|registration|heartbeat|.*mapper.*" ".*" ".*instance.*"'
+    def instance_rabbit_acl
+      INSTANCE_RABBIT_ACL
     end
 
-  end # InfrastructureAgentConfig
+  end
 
-end # RightScale
+end

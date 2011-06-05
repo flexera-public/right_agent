@@ -25,7 +25,22 @@
 # by the contents of the associated agent configuration file
 module RightScale
 
-  module AgentFileHelper
+  # Helper methods for accessing RightAgent code, configuration data, and
+  # process information
+  module AgentConfig
+
+    # Current agent protocol version
+    PROTOCOL_VERSION = 15
+
+    # Current agent protocol version
+    def self.protocol_version
+      PROTOCOL_VERSION
+    end
+
+    # Current agent protocol version
+    def protocol_version
+      PROTOCOL_VERSION
+    end
 
     # Initialize path to root directory of agent
     def init_root_dir(dir)
@@ -166,6 +181,6 @@ module RightScale
       sym
     end
 
-  end # AgentUtils
+  end # AgentConfig
 
 end # RightScale

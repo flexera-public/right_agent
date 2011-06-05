@@ -67,7 +67,7 @@ module RightScale
 
   class InfrastructureAgentController < AgentController
 
-    include AgentFileHelper
+    include AgentConfig
 
     VERSION = [0, 2, 1]
 
