@@ -23,7 +23,7 @@
 require 'uri'
 require 'tmpdir'
 
-require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agent', 'agent_identity'))
+require File.normalize_path(File.join(File.dirname(__FILE__), '..', 'agent_identity'))
 
 # Common options parser
 module RightScale
