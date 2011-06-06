@@ -73,6 +73,9 @@ module RightScale
 
     # Create and run controller
     #
+    # === Parameters
+    # debug(Boolean):: Whether to run debugger
+    #
     # === Return
     # true:: Always return true
     def self.run(debug = false)
