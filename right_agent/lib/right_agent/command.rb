@@ -21,6 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 COMMAND_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'command'))
+
 require File.join(COMMAND_BASE_DIR, 'command_constants')
 require File.join(COMMAND_BASE_DIR, 'command_parser')
 require File.join(COMMAND_BASE_DIR, 'command_serializer')

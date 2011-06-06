@@ -30,7 +30,7 @@
 # === Usage:
 #    rnac [options]
 #
-#    Options:
+#    options:
 #      --start, -s AGENT    Start agent named AGENT
 #      --stop, -p AGENT     Stop agent named AGENT
 #      --stop-agent ID      Stop agent with serialized identity ID
@@ -57,7 +57,6 @@
 #      --foreground, -f     Run agent in foreground
 #      --interactive, -I    Spawn an irb console after starting agent
 #      --test               Use test settings
-#      --version, -v        Display version information
 #      --help               Display help
 
 require 'optparse'
@@ -76,8 +75,6 @@ module RightScale
 
     include AgentConfig
     include CommonParser
-
-    VERSION = [0, 2]
 
     FORCED_OPTIONS =
     {
@@ -495,11 +492,6 @@ module RightScale
       puts "** #{message}"
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
-    end
-
-    # Version information
-    def version
-      "rnac #{VERSION.join('.')} - RightAgent Controller (c) 2009-2011 RightScale"
     end
 
   end

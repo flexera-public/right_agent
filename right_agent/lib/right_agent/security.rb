@@ -21,6 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 SECURITY_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'security'))
+
 require File.join(SECURITY_BASE_DIR, 'cached_certificate_store_proxy')
 require File.join(SECURITY_BASE_DIR, 'certificate')
 require File.join(SECURITY_BASE_DIR, 'certificate_cache')

@@ -21,12 +21,11 @@
 # === Usage
 #    rs_set_log_level [AGENT] [--log-level, -l debug|info|warn|error|fatal]
 #
-#    Options:
+#    options:
 #      --log-level, -l LVL  Set log level of agent
 #      --cfg-dir, -c DIR    Set directory containing configuration for all agents
 #      --verbose, -v        Display debug information
 #      --help:              Display help
-#      --version:           Display version information
 #
 #    No options prints the current agent log level
 #
@@ -43,8 +42,6 @@ module RightScale
   class LogLevelManager
 
     include AgentConfig
-
-    VERSION = [0, 1]
 
     # Convenience wrapper for creating and running log level manager
     #
@@ -113,11 +110,6 @@ module RightScale
 
       end
 
-      opts.on_tail('--version') do
-        puts version
-        exit
-      end
-
       opts.on_tail('--help') do
          RDoc::usage_from_file(__FILE__)
          exit
@@ -172,14 +164,6 @@ module RightScale
       puts "** #{message}" if message
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
-    end
-
-    # Version information
-    #
-    # === Return
-    # ver(String):: Version information
-    def version
-      ver = "rlog #{VERSION.join('.')} - RightAgent Log Level Manager (c) 2009-2011 RightScale"
     end
 
   end

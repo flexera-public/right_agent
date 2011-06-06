@@ -21,6 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 SERIALIZE_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'serialize'))
+
 require File.join(SERIALIZE_BASE_DIR, 'message_pack')
 require File.join(SERIALIZE_BASE_DIR, 'secure_serializer')
 require File.join(SERIALIZE_BASE_DIR, 'secure_serializer_initializer')

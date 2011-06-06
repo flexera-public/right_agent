@@ -300,9 +300,9 @@ module RightScale
 
   end # Platform
 
-  # Initialize for current platform and cause File.normalize_path to be defined
-  Platform.load_platform_specific
-
 end # RightScale
+
+# Initialize for current platform and cause File.normalize_path to be defined
+RightScale::Platform.load_platform_specific
 
 end # Unless already defined

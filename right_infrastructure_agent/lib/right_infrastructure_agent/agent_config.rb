@@ -13,7 +13,13 @@ module RightScale
 
   AgentConfig.module_eval do
 
+    # RabbitMQ permission settings for instance agent
     INSTANCE_RABBIT_ACL = '".*instance.*|request|registration|heartbeat|.*mapper.*" ".*" ".*instance.*"'
+
+    # RabbitMQ permission settings for instance agent
+    def self.instance_rabbit_acl
+      INSTANCE_RABBIT_ACL
+    end
 
     # RabbitMQ permission settings for instance agent
     def instance_rabbit_acl

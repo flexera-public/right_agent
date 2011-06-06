@@ -18,7 +18,7 @@
 # === Usage:
 #    rad AGENT [options]
 #
-#    Options:
+#    options:
 #      --root-dir, -r DIR       Set agent root directory (containing actors, certs, and init subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
@@ -53,7 +53,6 @@
 #      --test                   Build test deployment using default test settings
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
-#      --version                Display version information
 
 require 'optparse'
 require 'yaml'
@@ -71,8 +70,6 @@ module RightScale
 
     include CommonParser
     include AgentConfig
-
-    VERSION = [0, 2]
 
     # Create and run deployer
     #
@@ -369,12 +366,8 @@ check process #{agent_name}
       exit(1)
     end
 
-    # Version information
-    def version
-      "rad #{VERSION.join('.')} - RightAgent Deployer (c) 2009-2011 RightScale"
-    end
-
   end
+
 end
 
 #

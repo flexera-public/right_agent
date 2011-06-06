@@ -31,7 +31,7 @@
 # === Usage:
 #    rnac [options]
 #
-#    Options:
+#    options:
 #      --start, -s AGENT    Start agent named AGENT
 #      --stop, -p AGENT     Stop agent named AGENT
 #      --stop-agent ID      Stop agent with serialized identity ID
@@ -58,7 +58,6 @@
 #      --interactive, -I    Spawn an irb shell after starting agent
 #      --test               Use test settings
 #      --debugger, -D PORT  Start a debug server on PORT and immediately break
-#      --version, -v        Display version information
 #      --help               Display help
 
 require 'right_agent/scripts/agent_controller'
@@ -68,8 +67,6 @@ module RightScale
   class InfrastructureAgentController < AgentController
 
     include AgentConfig
-
-    VERSION = [0, 2, 1]
 
     # Create and run controller
     #

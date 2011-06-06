@@ -30,7 +30,7 @@
 # === Usage:
 #    rad AGENT [options]
 #
-#    Common options:
+#    common options:
 #      --root-dir, -r DIR       Set agent root directory (containing actors, certs, and init subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
@@ -56,9 +56,8 @@
 #      --test                   Build test deployment using default test settings
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
-#      --version                Display version information
 #
-#    Agent-only options:
+#    agent-only options:
 #      --host, -h HOST          Set AMQP server host for agent
 #      --port, -P PORT          Set AMQP server port for agent
 #      --shared-queue, -q QUEUE Use QUEUE as input for agent in addition to identity queue
@@ -68,7 +67,7 @@
 #      --ping-interval SEC      Set minimum number of seconds since last message receipt for the agent
 #                               to ping the mapper to check connectivity, 0 means disable ping
 #
-#    Mapper-only options:
+#    mapper-only options:
 #      --rnds-urls URLS         Set comma-separated list of URLs for accessing RightNetDataService
 #      --tags-urls URLS         Set comma-separated list of URLs for accessing TagService
 #      --tags-auth-token TOKEN  Set authentication token for accessing TagService
@@ -81,8 +80,6 @@ require 'right_agent/scripts/agent_deployer'
 module RightScale
 
   class InfrastructureAgentDeployer < AgentDeployer
-
-    VERSION = [0, 2, 1]
 
     # Create and run deployer
     #
