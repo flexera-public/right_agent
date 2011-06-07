@@ -61,6 +61,7 @@
 #      --help               Display help
 
 require 'right_agent/scripts/agent_controller'
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'exception_mailer'))
 
 module RightScale
 
@@ -79,7 +80,6 @@ module RightScale
       c = InfrastructureAgentController.new
       options = c.parse_args
       options[:user] = 'mapper' if options[:agent_type] == 'mapper' && options[:test]
-      init_root_dir(options[:root_dir])
       c.control(options.merge(:debug => debug))
     end
 
@@ -165,7 +165,7 @@ module RightScale
         rescue SystemExit
           raise # Let parents of forked (daemonized) processes die
         rescue Exception => e
-          puts "#{name} failed with: #{e} in \n#{e.backtrace.join("\n")}"
+          puts "#{human_readable_name} failed with: #{e} in \n#{e.backtrace.join("\n")}"
         end
       end
       true

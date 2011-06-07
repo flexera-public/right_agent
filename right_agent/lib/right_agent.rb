@@ -32,6 +32,7 @@ require File.expand_path(File.join(File.dirname(__FILE__), 'right_agent', 'platf
 
 RIGHT_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_agent'))
 
+require File.join(RIGHT_AGENT_BASE_DIR, 'monkey_patches')
 require File.join(RIGHT_AGENT_BASE_DIR, 'agent_config')
 require File.join(RIGHT_AGENT_BASE_DIR, 'packets')
 require File.join(RIGHT_AGENT_BASE_DIR, 'console')

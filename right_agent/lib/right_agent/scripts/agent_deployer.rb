@@ -101,7 +101,7 @@ module RightScale
       cfg = configure(options, cfg)
 
       # Persist configuration
-      persist(options[:agent_name], options[:options], cfg)
+      persist(options, cfg)
 
       # Setup agent monitoring
       monitor(options) if options[:monit]
@@ -311,12 +311,12 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def persist(agent_name, overrides, cfg)
+    def persist(options, cfg)
       overrides = options[:options]
       overrides.each { |k, v| cfg[k] = v } if overrides
       agent_name = options[:agent_name]
       cfg_file = cfg_file(agent_name)
-      FileUtils.mkdir_p(Dir(cfg_file))
+      FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
       File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }

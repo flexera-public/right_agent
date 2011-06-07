@@ -13,6 +13,7 @@ require 'rubygems'
 require 'right_agent'
 
 RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_infrastructure_agent'))
+
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'instance_tokens_cache')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'models_helper')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'exception_mailer')

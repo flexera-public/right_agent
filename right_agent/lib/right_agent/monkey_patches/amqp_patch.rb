@@ -171,8 +171,6 @@ end
 
 begin
   # Monkey patch AMQP reconnect backoff
-  require 'amqp'
-
   AMQP::Client.module_eval do
     def initialize opts = {}
       @settings = opts

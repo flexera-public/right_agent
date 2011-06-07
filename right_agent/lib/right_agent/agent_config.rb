@@ -62,14 +62,14 @@ module RightScale
     #   actors - actors code
     #   certs  - security certificates and private keys
     def root_dir
-      @root_dir || Dir.pwd
+      @root_dir ||= Dir.pwd
     end
 
     # Path to directory containing a directory for each agent configured on the local
     # machine (e.g., core, core_2, core_3). Each agent directory contains a 'config.yml'
     # file generated to contain that agent's current configuration
     def cfg_dir
-      @cfg_dir || Platform.filesystem.cfg_dir
+      @cfg_dir ||= Platform.filesystem.cfg_dir
     end
 
     # Path to generated agent configuration file
@@ -108,7 +108,7 @@ module RightScale
 
     # Path to directory containing agent process id files
     def pid_dir
-      @pid_dir || Platform.filesystem.pid_dir
+      @pid_dir ||= Platform.filesystem.pid_dir
     end
 
     # Retrieve agent process id file
