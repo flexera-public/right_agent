@@ -34,8 +34,9 @@ require 'optparse'
 require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
 require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'actors', 'agent_manager'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 
 module RightScale
 
@@ -65,8 +66,8 @@ module RightScale
 
       # Determine command
       level = options[:level]
-      cmd = { :name => (level ? 'set_log_level' : 'get_log_level') }
-      cmd[:level] = level.to_sym if level
+      command = { :name => (level ? 'set_log_level' : 'get_log_level') }
+      command[:level] = level.to_sym if level
 
       # Determine candidate agents
       agent_names = if options[:agent_name]
@@ -79,7 +80,7 @@ module RightScale
       # Perform command for each agent
       count = 0
       agent_names.each do |agent_name|
-        count += 1 if request_log_level(agent_name)
+        count += 1 if request_log_level(agent_name, command, options)
       end
       puts("No agents running") if count == 0
       true
@@ -130,10 +131,12 @@ module RightScale
     #
     # === Parameters
     # agent_name(String):: Agent name
+    # command(String):: Command request
+    # options(Hash):: Command line options
     #
     # === Return
     # (Boolean):: true if agent running, otherwise false
-    def request_log_level(agent_name)
+    def request_log_level(agent_name, command, options)
       res = false
       config_options = agent_options(agent_name)
       unless config_options.empty?
@@ -141,12 +144,12 @@ module RightScale
         fail("Could not retrieve agent #{agent_name} listen port") unless listen_port
         client = CommandClient.new(listen_port, config_options[:cookie])
         begin
-          client.send_command(cmd, options[:verbose]) do |level|
+          client.send_command(command, options[:verbose]) do |level|
             puts "Agent #{agent_name} log level: #{level.to_s.upcase}"
           end
           res = true
         rescue Exception => e
-          puts "Command to agent #{agent_name} failed (#{e})"
+          puts "Command #{command.inspect} to agent #{agent_name.inspect} failed (#{e})"
         end
       end
       res

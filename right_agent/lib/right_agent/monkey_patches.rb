@@ -23,18 +23,6 @@
 require 'rubygems'
 require 'rbconfig'
 
-# Load platform-specific patches before any gem patches
-case (family = RbConfig::CONFIG['host_os'])
-when /mswin|win32|dos|mingw|cygwin/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'windows'))
-when /linux/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'linux'))
-when /darwin/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'platform', 'darwin'))
-else
-  raise LoadError, "Unsupported platform: #{family}"
-end
-
 MONKEY_PATCHES_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'monkey_patches'))
 
 require File.expand_path(File.join(MONKEY_PATCHES_BASE_DIR, 'amqp_patch'))

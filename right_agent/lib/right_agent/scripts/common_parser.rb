@@ -116,13 +116,13 @@ module RightScale
     # === Return
     # options(Hash)::
     def resolve_identity(options)
+      options[:agent_type] = agent_type(options[:agent_type], options[:agent_name])
       if options[:base_id]
         base_id = options[:base_id].to_i
         if base_id.abs.to_s != options[:base_id]
           puts "** Identity needs to be a positive integer"
           exit(1)
         end
-        options[:agent_type] = agent_type(options[:agent_type], options[:agent_name])
         token = options[:token]
         token = RightScale::SecureIdentity.derive(base_id, options[:token]) if options[:secure_identity]
         options[:identity] = AgentIdentity.new(options[:prefix] || 'rs', options[:agent_type], base_id, token).to_s

@@ -61,7 +61,7 @@
 #      --help               Display help
 
 require 'right_agent/scripts/agent_controller'
-require File.expand_path(File.join(File.dirname(__FILE__), '..', 'exception_mailer'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_infrastructure_agent'))
 
 module RightScale
 
@@ -117,11 +117,10 @@ module RightScale
         # Setup exception notification via email
         ExceptionMailer.configure_exception_callback(@options)
 
-        # Use single thread in core agent to avoid having it pull more messages than
-        # it can handle (doesn't make sense with multiple core agents running)
+        # Use single thread in agent to avoid having it pull more messages than it can handle
         @options[:single_threaded] = true
 
-        # Actually start the agent (mapper has special logic)
+        # Start the agent (mapper has special logic)
         if @options[:agent_type] == 'mapper'
           start_mapper
         else

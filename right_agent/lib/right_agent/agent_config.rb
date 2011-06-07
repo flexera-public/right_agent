@@ -160,9 +160,9 @@ module RightScale
     # Configured agents i.e. agents that have a configuration file
     #
     # === Return
-    # (Array):: List of configured agents
+    # (Array):: Name of configured agents
     def configured_agents
-      Dir.glob(File.join(cfg_dir, "*"))
+      Dir.glob(File.join(cfg_dir, "*")).map { |a| File.basename(a) }
     end
 
     # Produce a hash with keys as symbols from given hash

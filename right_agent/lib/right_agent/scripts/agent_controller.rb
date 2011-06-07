@@ -444,7 +444,6 @@ module RightScale
       if agents.empty?
         puts "Found no configured agents"
       else
-        puts version
         puts "Configured agents:"
         agents.each { |a| puts "  - #{a}" }
       end

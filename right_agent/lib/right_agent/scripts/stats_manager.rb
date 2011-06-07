@@ -18,8 +18,8 @@
 #    rstat [AGENT] [options]
 #
 #    Options:
-#      --reset, -r        As part of gathering the stats from a server also reset the stats
-#      --timeout, -t SEC  Override default timeout in seconds to wait for a response from a server
+#      --reset, -r        As part of gathering the stats from an agent also reset the stats
+#      --timeout, -t SEC  Override default timeout in seconds to wait for a response from an agent
 #      --json, -j         Display the stats data in JSON format
 #      --cfg-dir, -c DIR  Set directory containing configuration for all agents
 #      --help             Display help
@@ -28,8 +28,8 @@ require 'optparse'
 require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
 require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
 
 module RightScale
 
@@ -43,9 +43,17 @@ module RightScale
     DEFAULT_TIMEOUT = 5
 
     # Create and run manager
+    #
+    # === Return
+    # true:: Always return true
     def self.run
       m = StatsManager.new
       m.manage(m.parse_args)
+    end
+
+    # Initialize manager
+    def initialize
+      @command_serializer = Serializer.new
     end
 
     # Handle stats request
@@ -147,16 +155,15 @@ module RightScale
       res = false
       config_options = agent_options(agent_name)
       unless config_options.empty?
-        count += 1
         listen_port = config_options[:listen_port]
-        fail("Could not retrieve #{s} listen port") unless listen_port
+        fail("Could not retrieve #{agent_name} listen port") unless listen_port
         client = CommandClient.new(listen_port, config_options[:cookie])
         command = {:name => :stats, :reset => options[:reset]}
         begin
-          client.send_command(command, options[:verbose], options[:timeout]) { |r| display(s, r, options) }
+          client.send_command(command, options[:verbose], options[:timeout]) { |r| display(agent_name, r, options) }
           res = true
         rescue Exception => e
-          fail("Failed to retrieve #{s} stats: #{e}\n" + e.backtrace.join("\n"))
+          fail("Failed to retrieve #{agent_name} stats: #{e}\n" + e.backtrace.join("\n"))
         end
       end
       res
@@ -187,25 +194,25 @@ module RightScale
       true
     end
 
-    # Display stats returned from server in human readable or JSON format
+    # Display stats returned from an agent in human readable or JSON format
     #
     # === Parameters
-    # server(String):: Name of server
+    # agent_name(String):: Agent name
     # result(String):: Result packet in JSON format containing stats or error
     # options(Hash):: Command line options:
     #   :json(Boolean):: Whether to display in JSON format
     #
     # === Return
     # true:: Always return true
-    def display(server, result, options)
-      result = RightScale::OperationResult.from_results(JSON.load(result))
+    def display(agent_name, result, options)
+      result = RightScale::OperationResult.from_results(@command_serializer.load(result))
       if options[:json]
         puts result.content.to_json
       else
         if result.respond_to?(:success?) && result.success?
           puts "\n#{stats_str(result.content)}\n"
         else
-          puts "\nFailed to retrieve #{server} stats: #{result.inspect}"
+          puts "\nFailed to retrieve #{agent_name} stats: #{result.inspect}"
         end
       end
       true
