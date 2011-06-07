@@ -38,8 +38,7 @@ module RightScale
     include AgentConfig
     include StatsHelper
 
-    VERSION = [0, 1, 0]
-
+    # Default time to wait for a response from an agent
     DEFAULT_TIMEOUT = 5
 
     # Create and run manager

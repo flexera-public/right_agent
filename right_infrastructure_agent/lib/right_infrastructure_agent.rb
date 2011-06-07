@@ -6,8 +6,7 @@
 # strictly prohibited.  Any use of this program by an authorized
 # licensee is strictly subject to the terms and conditions,
 # including confidentiality obligations, set forth in the applicable
-# License Agreement between RightScale.com, Inc. and
-# the licensee.
+# License Agreement between RightScale.com, Inc. and the licensee.
 
 require 'rubygems'
 require 'right_agent'
@@ -19,4 +18,4 @@ require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'models_helper')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'exception_mailer')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'agent_config')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'packets')
-require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'agent')
+require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'infrastructure_agent')

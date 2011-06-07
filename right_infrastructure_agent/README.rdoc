@@ -16,11 +16,10 @@ invoked by requests packets it receives via its message queue. The actors
 provided are specific to the given agent.
 
 RightInfrastructureAgent comes with several library modules for forming basic
-command line tools:
+command line tools in addition to those provided in RightAgent:
 
 * <b>infrastructure_agent_deployer</b>: Build configuration file for running an agent (rad tool)
 * <b>infrastructure_agent_controller</b>: Manage an agent that has been configured (rnac tool)
-* <b>infrastructure_stats_manager</b>: Display operation statistics for an agent (rstat tool)
 
 == Supported Configuration
 
