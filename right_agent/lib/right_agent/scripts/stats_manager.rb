@@ -136,7 +136,7 @@ module RightScale
         begin
           count += 1 if request_agent_stats(agent_name, options)
         rescue Exception => e
-          puts "Command to agent #{agent_name} failed (#{e})"
+          puts "Command to #{agent_name} agent failed (#{e})"
         end
       end
       puts("No agents running") if count == 0

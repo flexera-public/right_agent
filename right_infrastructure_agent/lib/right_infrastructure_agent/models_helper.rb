@@ -176,7 +176,8 @@ module RightScale
       token && token.instance
     end
 
-    # Get instance from api token id
+    # Get instance from API token id
+    # Cache all tokens retrieved
     #
     # === Parameters
     # token_id(Integer):: API token id
@@ -184,8 +185,17 @@ module RightScale
     # === Return
     # instance(Instance):: Corresponding instance
     def instance_from_token_id(token_id)
-      @cache ||= InstanceTokensCache.new
-      instance = @cache[token_id]
+      @tokens ||= []
+      if instance = @tokens[token_id]
+        run_query { instance.reload }
+      else
+        # Not in cache, look it up
+        instance_api_token = instance_token(token_id)
+        raise RightScale::Exceptions::Application, "Instance token with id '#{token_id}' not found" unless instance_api_token
+        instance = instance_api_token.instance
+        raise RightScale::Exceptions::Application, "Instance with token id '#{token_id}' not found" unless instance
+        @tokens[token_id] = instance
+      end
     end
 
     # Get instance model corresponding to instance agent with given identity
