@@ -87,6 +87,24 @@ module RightScale
       @actors_dir ||= File.normalize_path(File.join(root_dir, "actors"))
     end
 
+    # Path for searching for actors:
+    #  - default actors_dir in root_dir
+    #  - configured optional directories
+    #  - actors directory in RightAgent gem
+    #
+    # === Parameters
+    # optional_dirs(Array):: Optional actor directories
+    #
+    # === Return
+    # actors_dirs(Array):: List of directories to search for actors
+    def actors_dirs(optional_dirs = nil)
+      actors_dirs = []
+      actors_dirs << actors_dir if File.directory?(actors_dir)
+      actors_dirs += optional_dirs if optional_dirs
+      actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), '..', 'actors'))
+      actors_dirs
+    end
+
     # Path to agent directory containing initialization files:
     #   config.yml - static configuration settings for the agent
     #   init.rb    - code that registers the agent's actors and performs any other

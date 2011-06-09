@@ -256,18 +256,12 @@ module RightScale
       fail("Cannot find agent initialization file #{init_file.inspect}") unless File.exists?(init_file)
 
       actors = cfg[:actors]
-      actors_dirs = cfg[:actors_dirs] || []
-      fail("Cannot find actors directory #{actors_dir.inspect}") unless File.directory?(actors_dir)
       fail('Agent configuration is missing actors') unless actors && actors.respond_to?(:each)
-      actors.each do |actor|
-        found = File.exists?(File.normalize_path(File.join(actors_dir, "#{actor}.rb")))
-        unless found
-          actors_dirs.each do |dir|
-            found = File.exist?(File.normalize_path(File.join(dir, "#{actor}.rb")))
-            break if found
-          end
-          fail("Cannot find source for actor #{actor.inspect} in #{actors_dir} or in #{actors_dirs.inspect}") unless found
-        end
+      actors_dirs = actors_dirs(cfg[:actors_dirs])
+      actors.each do |a|
+        found = false
+        actors_dirs.each { |d| break if found = File.exist?(File.normalize_path(File.join(d, "#{a}.rb"))) }
+        fail("Cannot find source for actor #{a.inspect} in #{actors_dirs.inspect}") unless found
       end
       true
     end
