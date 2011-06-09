@@ -26,6 +26,16 @@ module RightScale
       INSTANCE_RABBIT_ACL
     end
 
+    protected
+
+    # Other actors directories to be used in search for actors
+    #
+    # === Return
+    # (Array):: List of actors directories
+    def other_actors_dirs
+      [File.expand_path(File.join(File.dirname(__FILE__), 'actors'))]
+    end
+
   end
 
 end

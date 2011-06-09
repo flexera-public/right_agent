@@ -150,8 +150,6 @@ module RightScale
       cfg = super(options, cfg)
       advertise_interval = options[:advertise_interval] || 60 * 60
       instance_queue_ttl = options[:instance_queue_ttl] || 24 * 60 * 60
-      infrastructure_actors_dir = File.expand_path(File.join(File.dirname(__FILE__), '..', 'actors'))
-      cfg[:actors_dirs] = (cfg[:actors_dirs] || []) << infrastructure_actors_dir
       if options[:agent_type] == 'mapper'
         if options[:test]
           cfg[:rnds_urls] = '127.0.0.1:9010'
