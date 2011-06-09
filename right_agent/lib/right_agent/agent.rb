@@ -60,7 +60,7 @@ module RightScale
       :user               => 'agent',
       :pass               => 'testing',
       :vhost              => '/right_net',
-      :secure             => false,
+      :secure             => true,
       :log_level          => :info,
       :daemonize          => false,
       :console            => false,
@@ -117,7 +117,7 @@ module RightScale
     #     agent(Agent):: Reference to agent
     #   :ready_callback(Proc):: Called once agent is connected ready to service (no argument)
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
-    #   :secure(Boolean):: true indicates to use Security features of RabbitMQ to restrict agents to themselves
+    #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
     #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
     #     to do requested work on EM defer thread and all else on main thread
     #   :threadpool_size(Integer):: Number of threads in EM thread pool

@@ -148,8 +148,14 @@ module RightScale
     # cfg(Hash):: Configuration settings
     def configure(options, cfg)
       cfg = super(options, cfg)
-      advertise_interval = options[:advertise_interval] || 60 * 60
-      instance_queue_ttl = options[:instance_queue_ttl] || 24 * 60 * 60
+      if options[:agent_type] != 'instance'
+        cfg[:reconnect_interval] ||= 5
+        cfg[:grace_timeout] ||= 60
+        cfg[:dup_check] = false
+        cfg[:advertise_interval] = options[:advertise_interval] || 60 * 60
+        cfg[:instance_queue_ttl] = options[:instance_queue_ttl] || 24 * 60 * 60
+        cfg[:secure] = options[:options][:secure] = false
+      end
       if options[:agent_type] == 'mapper'
         if options[:test]
           cfg[:rnds_urls] = '127.0.0.1:9010'
@@ -162,18 +168,13 @@ module RightScale
         cfg[:max_cache_size] = options[:max_cache_size] || 10000
         cfg[:cache_reload_age] = options[:cache_reload_age] || 30
         cfg[:instance_queue_ttl] = instance_queue_ttl
+        cfg[:secure] = options[:options][:secure] = false
         cfg[:reconnect_interval] ||= 5
         cfg[:grace_timeout] ||= 60
         cfg[:dup_check] = false
         cfg[:advertise_interval] = advertise_interval
         cfg[:home_island] = options[:home_island]
       elsif options[:agent_type] != 'instance'
-        cfg[:secure] = options[:options][:secure] = false
-        cfg[:reconnect_interval] ||= 5
-        cfg[:grace_timeout] ||= 60
-        cfg[:dup_check] = false
-        cfg[:advertise_interval] = advertise_interval
-        cfg[:instance_queue_ttl] = instance_queue_ttl
         cfg[:shared_queue] = options[:shared_queue] if options[:shared_queue]
       end
       cfg

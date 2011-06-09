@@ -141,7 +141,7 @@ module RightScale
       config_options = agent_options(agent_name)
       unless config_options.empty?
         listen_port = config_options[:listen_port]
-        fail("Could not retrieve agent #{agent_name} listen port") unless listen_port
+        fail("Could not retrieve #{agent_name} agent listen port") unless listen_port
         client = CommandClient.new(listen_port, config_options[:cookie])
         begin
           client.send_command(command, options[:verbose]) do |level|
@@ -149,7 +149,7 @@ module RightScale
           end
           res = true
         rescue Exception => e
-          puts "Command #{command.inspect} to agent #{agent_name.inspect} failed (#{e})"
+          puts "Command #{command.inspect} to #{agent_name} agent failed (#{e})"
         end
       end
       res

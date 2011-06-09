@@ -155,14 +155,14 @@ module RightScale
       config_options = agent_options(agent_name)
       unless config_options.empty?
         listen_port = config_options[:listen_port]
-        fail("Could not retrieve #{agent_name} listen port") unless listen_port
+        fail("Could not retrieve #{agent_name} agent listen port") unless listen_port
         client = CommandClient.new(listen_port, config_options[:cookie])
         command = {:name => :stats, :reset => options[:reset]}
         begin
           client.send_command(command, options[:verbose], options[:timeout]) { |r| display(agent_name, r, options) }
           res = true
         rescue Exception => e
-          fail("Failed to retrieve #{agent_name} stats: #{e}\n" + e.backtrace.join("\n"))
+          fail("Failed to retrieve #{agent_name} agent stats: #{e}\n" + e.backtrace.join("\n"))
         end
       end
       res
@@ -211,7 +211,7 @@ module RightScale
         if result.respond_to?(:success?) && result.success?
           puts "\n#{stats_str(result.content)}\n"
         else
-          puts "\nFailed to retrieve #{agent_name} stats: #{result.inspect}"
+          puts "\nFailed to retrieve #{agent_name} agent stats: #{result.inspect}"
         end
       end
       true

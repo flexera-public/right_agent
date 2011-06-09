@@ -322,7 +322,7 @@ module RightScale
       options = agent_options(@options[:agent_name])
       listen_port = options[:listen_port]
       unless listen_port
-        puts "Failed to retrieve listen port for agent #{@options[:identity]}"
+        puts "Could not retrieve listen port for agent #{@options[:identity]}"
         return false
       end
       puts message
