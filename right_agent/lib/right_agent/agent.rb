@@ -376,6 +376,29 @@ module RightScale
       res
     end
 
+    # Handle packet received
+    #
+    # === Parameters
+    # packet(Request|Push|Result):: Packet received
+    #
+    # === Return
+    # true:: Always return true
+    def receive(packet)
+      begin
+        case packet
+        when Push, Request then @dispatcher.dispatch(packet) unless @terminating
+        when Result        then @sender.handle_response(packet)
+        end
+        @sender.message_received
+      rescue HABrokerClient::NoConnectedBrokers => e
+        Log.error("Identity queue processing error", e)
+      rescue Exception => e
+        Log.error("Identity queue processing error", e, :trace)
+        @exceptions.track("identity queue", e, packet)
+      end
+      true
+    end
+
     # Gracefully terminate execution by allowing unfinished tasks to complete
     # Immediately terminate if called a second time
     #
@@ -632,21 +655,7 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) do |_, packet|
-        begin
-          case packet
-          when Push, Request then @dispatcher.dispatch(packet) unless @terminating
-          when Result        then @sender.handle_response(packet)
-          end
-          @sender.message_received
-        rescue HABrokerClient::NoConnectedBrokers => e
-          Log.error("Identity queue processing error", e)
-        rescue Exception => e
-          Log.error("Identity queue processing error", e, :trace)
-          @exceptions.track("identity queue", e, packet)
-        end
-      end
-      ids
+      ids = @broker.subscribe(queue, nil, options) { |_, packet| receive(packet) }
     end
 
     # Setup signal traps
