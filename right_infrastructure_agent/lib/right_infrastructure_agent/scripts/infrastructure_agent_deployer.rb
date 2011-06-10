@@ -167,12 +167,6 @@ module RightScale
         cfg[:tags_auth_token] = options[:tags_auth_token]
         cfg[:max_cache_size] = options[:max_cache_size] || 10000
         cfg[:cache_reload_age] = options[:cache_reload_age] || 30
-        cfg[:instance_queue_ttl] = instance_queue_ttl
-        cfg[:secure] = options[:options][:secure] = false
-        cfg[:reconnect_interval] ||= 5
-        cfg[:grace_timeout] ||= 60
-        cfg[:dup_check] = false
-        cfg[:advertise_interval] = advertise_interval
         cfg[:home_island] = options[:home_island]
       elsif options[:agent_type] != 'instance'
         cfg[:shared_queue] = options[:shared_queue] if options[:shared_queue]

@@ -32,7 +32,7 @@ module RightScale
     # agent_types(Array):: Type name for candidate agents
     # worker_index(Integer):: Rainbows worker index starting at 0
     # logger(Object):: Logger to use
-    # options(Hash):: Configuration options
+    # options(Hash):: Configuration options for agent and following specifically for use here
     #   :cfg_dir(String):: Directory containing configuration for all agents
     #   :prefix(String):: Prefix to build agent identity
     #   :base_id(String):: Base id to build agent identity, defaults to worker_index
@@ -48,6 +48,7 @@ module RightScale
           if agent_type = pick_agent_type(agent_types)
             agent_name = form_agent_name(agent_type, worker_index)
             cfg = configure(agent_type, agent_name, worker_index, options)
+            cfg.merge!(options.merge(FORCED_OPTIONS))
             Log.info("Starting #{agent_name} agent with the following options:\n" +
                      "  #{cfg.map { |k, v| "#{k}: #{v.inspect}" }.sort.join("\n  ")}")
             @@agent = RightScale::InfrastructureAgent.start(cfg)
@@ -125,13 +126,13 @@ module RightScale
     def self.configure(agent_type, agent_name, worker_index, options)
       identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
       cfg = agent_options(File.exist?(cfg_file(agent_name)) ? agent_name : agent_type)
-      cfg.merge!(FORCED_OPTIONS.merge(:identity => identity))
+      cfg.merge!(:identity => identity)
       cfg_file = cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
       File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
-      Log.info("Generated configuration file for #{agent_name} agent:\n  - config: #{cfg_file}")
+      Log.info("Generated configuration file for #{agent_name} agent: #{cfg_file}")
       cfg
     end
 

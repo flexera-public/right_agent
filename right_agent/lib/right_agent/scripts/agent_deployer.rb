@@ -315,8 +315,7 @@ module RightScale
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
       File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
       unless options[:quiet]
-        puts "Generated configuration file for #{agent_name} agent:"
-        puts "  - config: #{cfg_file}"
+        puts "Generated configuration file for #{agent_name} agent: #{cfg_file}"
       end
       true
     end
