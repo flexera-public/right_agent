@@ -76,6 +76,7 @@
 #      --home-island ID         Set identifier for RightNet island in which mapper is located
 
 require 'right_agent/scripts/agent_deployer'
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_infrastructure_agent'))
 
 module RightScale
 

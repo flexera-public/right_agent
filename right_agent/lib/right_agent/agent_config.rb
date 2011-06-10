@@ -88,8 +88,8 @@ module RightScale
     end
 
     # Path for searching for actors:
-    #  - default actors_dir in root_dir
     #  - configured optional directories
+    #  - default actors_dir in root_dir
     #  - other directories produced by other_actors_dirs method (e.g., from derived gem)
     #  - actors directory in RightAgent gem
     #
@@ -100,8 +100,8 @@ module RightScale
     # actors_dirs(Array):: List of directories to search for actors
     def actors_dirs(optional_dirs = nil)
       actors_dirs = []
-      actors_dirs << actors_dir if File.directory?(actors_dir)
       actors_dirs += optional_dirs if optional_dirs
+      actors_dirs << actors_dir if File.directory?(actors_dir)
       actors_dirs += other_actors_dirs if self.respond_to?(:other_actors_dirs)
       actors_dirs << File.normalize_path(File.join(File.dirname(__FILE__), 'actors'))
       actors_dirs

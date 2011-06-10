@@ -125,7 +125,7 @@ module RightScale
     # cfg(Hash):: Persisted configuration options
     def self.configure(agent_type, agent_name, worker_index, options)
       identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
-      cfg = agent_options(File.exist?(cfg_file(agent_name)) ? agent_name : agent_type)
+      cfg = agent_options(agent_type)
       cfg.merge!(:identity => identity)
       cfg_file = cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(cfg_file))
