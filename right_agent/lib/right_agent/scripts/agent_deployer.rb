@@ -69,7 +69,6 @@ module RightScale
   class AgentDeployer
 
     include CommonParser
-    include AgentConfig
 
     # Create and run deployer
     #
@@ -89,10 +88,10 @@ module RightScale
     # === Return
     # true:: Always return true
     def deploy(options)
-      # Initialize AgentConfig
-      init_root_dir(options[:root_dir])
-      init_cfg_dir(options[:cfg_dir])
-      init_pid_dir(options[:pid_dir])
+      # Initialize directory settings
+      AgentConfig.root_dir = options[:root_dir]
+      AgentConfig.cfg_dir = options[:cfg_dir]
+      AgentConfig.pid_dir = options[:pid_dir]
 
       # Configure agent
       cfg = load_init_config
@@ -231,9 +230,9 @@ module RightScale
     # cfg(Hash):: Initial agent configuration options
     def load_init_config
       cfg = {}
-      cfg_file = File.normalize_path(File.join(init_dir, "config.yml"))
+      cfg_file = File.normalize_path(File.join(AgentConfig.init_dir, "config.yml"))
       if File.exists?(cfg_file)
-        cfg = symbolize(YAML.load(IO.read(cfg_file))) rescue nil
+        cfg = SerializationHelper.symbolize_keys(YAML.load(IO.read(cfg_file))) rescue nil
         fail("Cannot read configuration for agent #{cfg_file.inspect}") unless cfg
       end
       cfg
@@ -252,12 +251,12 @@ module RightScale
       agent_type = options[:agent_type]
       type = AgentIdentity.parse(identity).agent_type if identity
       fail("Agent type #{agent_type.inspect} and identity #{identity.inspect} are inconsistent") if agent_type != type
-      init_file = File.normalize_path(File.join(init_dir, "init.rb"))
+      init_file = File.normalize_path(File.join(AgentConfig.init_dir, "init.rb"))
       fail("Cannot find agent initialization file #{init_file.inspect}") unless File.exists?(init_file)
 
       actors = cfg[:actors]
       fail('Agent configuration is missing actors') unless actors && actors.respond_to?(:each)
-      actors_dirs = actors_dirs(cfg[:actors_dirs])
+      actors_dirs = AgentConfig.actors_dirs(cfg[:actors_dirs])
       actors.each do |a|
         found = false
         actors_dirs.each { |d| break if found = File.exist?(File.normalize_path(File.join(d, "#{a}.rb"))) }
@@ -275,8 +274,8 @@ module RightScale
     # === Return
     # cfg(Hash):: Configuration settings
     def configure(options, cfg)
-      cfg[:root_dir]           = root_dir
-      cfg[:pid_dir]            = pid_dir
+      cfg[:root_dir]           = AgentConfig.root_dir
+      cfg[:pid_dir]            = AgentConfig.pid_dir
       cfg[:identity]           = options[:identity] if options[:identity]
       cfg[:user]               = options[:user] if options[:user]
       cfg[:pass]               = options[:pass] if options[:pass]
@@ -309,7 +308,7 @@ module RightScale
       overrides = options[:options]
       overrides.each { |k, v| cfg[k] = v } if overrides
       agent_name = options[:agent_name]
-      cfg_file = cfg_file(agent_name)
+      cfg_file = AgentConfig.cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
@@ -330,7 +329,7 @@ module RightScale
     def monitor(options)
       agent_name = options[:agent_name]
       identity = options[:identity]
-      pid_file = PidFile.new(identity, pid_dir)
+      pid_file = PidFile.new(identity, AgentConfig.pid_dir)
       cfg = <<-EOF
 check process #{agent_name}
   with pidfile \"#{pid_file}\"
@@ -338,7 +337,7 @@ check process #{agent_name}
   stop program \"/opt/rightscale/bin/rnac --stop #{agent_name}\"
   mode manual
       EOF
-      cfg_file = File.join(cfg_dir, agent_name, "#{identity}.conf")
+      cfg_file = File.join(AgentConfig.cfg_dir, agent_name, "#{identity}.conf")
       File.open(cfg_file, 'w') { |f| f.puts(cfg) }
       File.chmod(0600, cfg_file) # monit requires strict perms on this file
       puts "  - agent monit config: #{cfg_file}" unless options[:quiet]

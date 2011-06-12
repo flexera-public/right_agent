@@ -67,8 +67,6 @@ module RightScale
 
   class InfrastructureAgentController < AgentController
 
-    include AgentConfig
-
     # Create and run controller
     #
     # === Parameters
@@ -140,9 +138,9 @@ module RightScale
     # === Return
     # true:: Always return true
     def start_mapper
-      @options = agent_options(@options[:agent_name]).merge(@options)
+      @options = AgentConfig.agent_options(@options[:agent_name]).merge(@options)
 
-      require File.expand_path(File.join(root_dir, 'lib', 'mapper'))
+      require File.expand_path(File.join(AgentConfig.root_dir, 'lib', 'mapper'))
 
       @options[:exception_callback] = proc do |e, msg, mapper|
         FaultyAgentsTracker.handle_exception(msg, e, mapper)

@@ -73,7 +73,6 @@ module RightScale
 
   class AgentController
 
-    include AgentConfig
     include CommonParser
 
     FORCED_OPTIONS =
@@ -107,8 +106,8 @@ module RightScale
     # === Return
     # true:: Always return true
     def control(options)
-      # Initialize AgentConfig
-      init_cfg_dir(options[:cfg_dir])
+      # Initialize configuration directory setting
+      AgentConfig.cfg_dir = options[:cfg_dir])
 
       # List agents if requested
       list_configured_agents if options[:list]
@@ -121,11 +120,12 @@ module RightScale
       end
       FileUtils.mkdir_p(options[:pid_dir]) if options[:pid_dir]
       if options[:agent_name]
-        cfg_file = cfg_file(options[:agent_name])
+        cfg_file = AgentConfig.cfg_file(options[:agent_name])
         fail("Deployment is missing configuration file #{cfg_file.inspect}.") unless File.exists?(cfg_file)
-        cfg = symbolize(YAML.load(IO.read(cfg_file)))
+        cfg = SerializationHelper.symbolize_keys(YAML.load(IO.read(cfg_file)))
         options = cfg.merge(options)
         options[:cfg_file] = cfg_file
+        AgentConfig.root_dir = options[:root_dir]
         Log.program_name = syslog_program_name(options)
         Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
@@ -137,7 +137,7 @@ module RightScale
       when /show|killall/
         action = 'stop' if action == 'killall'
         s = true
-        configured_agents.each { |agent_name| s &&= run_cmd(action, agent_name) }
+        AgentConfig.configured_agents.each { |agent_name| s &&= run_cmd(action, agent_name) }
         s
       when 'kill'
         kill_process
@@ -319,7 +319,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def run_command(message, command)
-      options = agent_options(@options[:agent_name])
+      options = AgentConfig.agent_options(@options[:agent_name])
       listen_port = options[:listen_port]
       unless listen_port
         puts "Could not retrieve listen port for agent #{@options[:identity]}"
@@ -381,7 +381,7 @@ module RightScale
     # (Boolean):: true if process was stopped, otherwise false
     def stop_agent(agent_name)
       res = false
-      pid_file = pid_file(agent_name)
+      pid_file = AgentConfig.pid_file(agent_name)
       if pid = pid_file.read_pid[:pid]
         name = human_readable_name(agent_name, pid_file.identity)
         begin
@@ -410,7 +410,7 @@ module RightScale
     # (Boolean):: true if process is running, otherwise false
     def show_agent(agent_name)
       res = false
-      pid_file = pid_file(agent_name)
+      pid_file = AgentConfig.pid_file(agent_name)
       if pid = pid_file.read_pid[:pid]
         pid = Process.getpgid(pid) rescue -1
         name = human_readable_name(agent_name, pid_file.identity)
@@ -440,7 +440,7 @@ module RightScale
     # === Return
     # never
     def list_configured_agents
-      agents = configured_agents
+      agents = AgentConfig.configured_agents
       if agents.empty?
         puts "Found no configured agents"
       else

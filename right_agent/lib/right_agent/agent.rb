@@ -29,7 +29,6 @@ module RightScale
   # See load_actors for details on how the agent specific environment is loaded
   class Agent
 
-    include AgentConfig
     include ConsoleHelper
     include DaemonizeHelper
     include StatsHelper
@@ -537,7 +536,7 @@ module RightScale
         FileUtils.mkdir_p(@options[:log_dir])
       end
 
-      init_root_dir(@options[:root_dir])
+      AgentConfig.root_dir = @options[:root_dir]
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
@@ -559,7 +558,7 @@ module RightScale
     # (Boolean):: true if successful, otherwise false
     def update_configuration(opts)
       res = false
-      cfg_file = @options[:cfg_file] || cfg_file(@agent_type)
+      cfg_file = @options[:cfg_file] || AgentConfig.cfg_file(@agent_type)
       if File.exists?(cfg_file) && cfg = YAML.load(IO.read(cfg_file))
         opts.each { |k, v| cfg[k] = v if cfg.has_key?(k) }
         File.open(cfg_file, 'w') { |fd| fd.write(YAML.dump(cfg)) }
@@ -579,7 +578,8 @@ module RightScale
       # Load agent's configured actors
       actors = (@options[:actors] || []).clone
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
-      actors_dirs(@options[:actors_dirs]).each do |dir|
+      actors_dirs = AgentConfig.actors_dirs(@options[:actors_dirs])
+      actors_dirs.each do |dir|
         Dir["#{dir}/*.rb"].each do |file|
           actor = File.basename(file, ".rb")
           next if actors && !actors.include?(actor)
@@ -591,7 +591,7 @@ module RightScale
       Log.error("Actors #{actors.inspect} not found in #{actors_dirs.inspect}") unless actors.empty?
 
       # Perform agent-specific initialization including actor creation and registration
-      init_path = File.normalize_path(File.join(init_dir, "init.rb"))
+      init_path = File.normalize_path(File.join(AgentConfig.init_dir, "init.rb"))
       if File.exists?(init_path)
         instance_eval(File.read(init_path), init_path)
       else

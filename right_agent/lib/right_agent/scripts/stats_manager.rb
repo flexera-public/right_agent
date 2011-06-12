@@ -35,7 +35,6 @@ module RightScale
 
   class StatsManager
 
-    include AgentConfig
     include StatsHelper
 
     # Default time to wait for a response from an agent
@@ -64,7 +63,7 @@ module RightScale
     # true:: Always return true
     def manage(options)
       init_log
-      init_cfg_dir(options[:cfg_dir])
+      AgentConfig.cfg_dir = options[:cfg_dir]
       request_stats(options)
     rescue Exception => e
       fail("#{e}\n#{e.backtrace.join("\n")}") unless e.is_a?(SystemExit)
@@ -126,7 +125,7 @@ module RightScale
       agent_names = if options[:agent_name]
         [options[:agent_name]]
       else
-        configured_agents
+        AgentConfig.configured_agents
       end
       fail("No agents configured") if agent_names.empty?
 
@@ -152,7 +151,7 @@ module RightScale
     # (Boolean):: true if agent running, otherwise false
     def request_agent_stats(agent_name, options)
       res = false
-      config_options = agent_options(agent_name)
+      config_options = AgentConfig.agent_options(agent_name)
       unless config_options.empty?
         listen_port = config_options[:listen_port]
         fail("Could not retrieve #{agent_name} agent listen port") unless listen_port

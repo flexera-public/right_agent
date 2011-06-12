@@ -42,8 +42,6 @@ module RightScale
 
   class LogLevelManager
 
-    include AgentConfig
-
     # Convenience wrapper for creating and running log level manager
     #
     # === Return
@@ -61,8 +59,8 @@ module RightScale
     # === Return
     # true:: Always return true
     def manage(options)
-      # Initialize AgentConfig
-      init_cfg_dir(options[:cfg_dir])
+      # Initialize configuration directory setting
+      AgentConfig.cfg_dir = options[:cfg_dir]
 
       # Determine command
       level = options[:level]
@@ -73,7 +71,7 @@ module RightScale
       agent_names = if options[:agent_name]
         [options[:agent_name]]
       else
-        configured_agents
+        AgentConfig.configured_agents
       end
       fail("No agents configured") if agent_names.empty?
 
@@ -138,7 +136,7 @@ module RightScale
     # (Boolean):: true if agent running, otherwise false
     def request_log_level(agent_name, command, options)
       res = false
-      config_options = agent_options(agent_name)
+      config_options = AgentConfig.agent_options(agent_name)
       unless config_options.empty?
         listen_port = config_options[:listen_port]
         fail("Could not retrieve #{agent_name} agent listen port") unless listen_port

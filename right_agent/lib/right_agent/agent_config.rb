@@ -20,13 +20,11 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Helper methods for accessing files and directories associated with an agent
-# Values returned are driven by root_dir and cfg_dir, which may be set, and secondarily
-# by the contents of the associated agent configuration file
 module RightScale
 
-  # Helper methods for accessing RightAgent code, configuration data, and
-  # process information
+  # Helper methods for accessing RightAgent files, directories, and processes
+  # Values returned are driven by root_dir, cfg_dir, and pid_dir, which may be set,
+  # and secondarily by the contents of the associated agent configuration file
   module AgentConfig
 
     # Current agent protocol version
@@ -37,23 +35,18 @@ module RightScale
       PROTOCOL_VERSION
     end
 
-    # Current agent protocol version
-    def protocol_version
-      PROTOCOL_VERSION
-    end
-
     # Initialize path to root directory of agent
-    def init_root_dir(dir)
+    def self.root_dir=(dir)
       @root_dir = dir
     end
 
     # Initialize path to directory containing generated agent configuration files
-    def init_cfg_dir(dir)
+    def self.cfg_dir=(dir)
       @cfg_dir = dir
     end
 
     # Initialize path to directory containing agent process id files
-    def init_pid_dir(dir)
+    def self.pid_dir=(dir)
       @pid_dir = dir
     end
 
@@ -61,36 +54,36 @@ module RightScale
     #   init   - initialization code
     #   actors - actors code
     #   certs  - security certificates and private keys
-    def root_dir
+    def self.root_dir
       @root_dir ||= Dir.pwd
     end
 
     # Path to directory containing a directory for each agent configured on the local
     # machine (e.g., core, core_2, core_3). Each agent directory contains a 'config.yml'
     # file generated to contain that agent's current configuration
-    def cfg_dir
+    def self.cfg_dir
       @cfg_dir ||= Platform.filesystem.cfg_dir
     end
 
     # Path to generated agent configuration file
-    def cfg_file(agent_name)
+    def self.cfg_file(agent_name)
       File.normalize_path(File.join(cfg_dir, agent_name, "config.yml"))
     end
 
     # List of all agent configuration files
-    def cfg_files
-      Dir.glob(File.join(cfg_dir, "**", "*.{#{YAML_EXT.join(',')}}"))
+    def self.cfg_files
+      Dir.glob(File.join(cfg_dir, "**", "*.yml"))
     end
 
     # Path to directory containing actor source files
-    def actors_dir
+    def self.actors_dir
       @actors_dir ||= File.normalize_path(File.join(root_dir, "actors"))
     end
 
     # Path for searching for actors:
     #  - configured optional directories
     #  - default actors_dir in root_dir
-    #  - other directories produced by other_actors_dirs method (e.g., from derived gem)
+    #  - other directories produced by other_actors_dirs method
     #  - actors directory in RightAgent gem
     #
     # === Parameters
@@ -98,7 +91,7 @@ module RightScale
     #
     # === Return
     # actors_dirs(Array):: List of directories to search for actors
-    def actors_dirs(optional_dirs = nil)
+    def self.actors_dirs(optional_dirs = nil)
       actors_dirs = []
       actors_dirs += optional_dirs if optional_dirs
       actors_dirs << actors_dir if File.directory?(actors_dir)
@@ -112,7 +105,7 @@ module RightScale
     #   init.rb    - code that registers the agent's actors and performs any other
     #                agent specific initialization such as initializing its
     #                secure serializer and its command protocol server
-    def init_dir
+    def self.init_dir
       @init_dir ||= File.normalize_path(File.join(root_dir, "init"))
     end
 
@@ -122,12 +115,12 @@ module RightScale
     #   <agent name>.key  - agent's' private key
     #   <agent name>.cert - agent's' public certificate
     #   mapper.cert       - mapper's' public certificate
-    def certs_dir
+    def self.certs_dir
       @certs_dir ||= File.normalize_path(File.join(root_dir, "certs"))
     end
 
     # Path to directory containing agent process id files
-    def pid_dir
+    def self.pid_dir
       @pid_dir ||= Platform.filesystem.pid_dir
     end
 
@@ -138,11 +131,11 @@ module RightScale
     #
     # === Return
     # (PidFile):: Process id file
-    def pid_file(agent_name)
+    def self.pid_file(agent_name)
       res = nil
       file = cfg_file(agent_name)
       if File.readable?(file)
-        if options = symbolize(YAML.load(IO.read(file)))
+        if options = SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
           agent = Agent.new(options)
           res = PidFile.new(agent.identity, agent.options)
         end
@@ -151,28 +144,28 @@ module RightScale
     end
 
     # Retrieve agent options from generated agent configuration file
-    # and agent process id file if it exists
+    # and agent process id file if they exist
+    # Reset root_dir to one found in agent configuration file
     #
     # === Parameters
     # agent_name(String):: Agent name
     #
     # === Return
-    # options(Hash):: Agent options
+    # options(Hash):: Agent options including
     #   :identity(String):: Serialized agent identity
-    #   :log_path(String):: Log path
+    #   :log_path(String):: Path to directory for agent log file
     #   :pid(Integer):: Agent process pid if available
     #   :listen_port(Integer):: Agent command listen port if available
     #   :cookie(String):: Agent command cookie if available
-    #   Hash):: Other serialized configuration options
-    def agent_options(agent_name)
+    def self.agent_options(agent_name)
       options = {}
       file = cfg_file(agent_name)
       if File.readable?(file)
-        options = symbolize(YAML.load(IO.read(file)))
+        options = SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
         options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity], options)
         options.merge!(pid_file.read_pid) if pid_file.exists?
-        init_root_dir(options[:root_dir])
+        @root_dir = options[:root_dir]
       end
       options
     end
@@ -181,24 +174,8 @@ module RightScale
     #
     # === Return
     # (Array):: Name of configured agents
-    def configured_agents
-      Dir.glob(File.join(cfg_dir, "*")).map { |a| File.basename(a) }
-    end
-
-    # Produce a hash with keys as symbols from given hash
-    #
-    # === Parameters
-    # hash(Hash):: Hash to be symbolized
-    #
-    # === Return
-    # sym(Hash):: Hash with keys as symbols
-    def symbolize(hash)
-      sym = {}
-      hash.each do |k, v|
-        k = k.intern if k.respond_to?(:intern)
-        sym[k] = v
-      end
-      sym
+    def self.configured_agents
+      cfg_files.map { |c| File.basename(File.dirname(c)) }
     end
 
   end # AgentConfig

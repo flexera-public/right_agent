@@ -21,10 +21,6 @@ module RightScale
       :daemonize       => false
     }
 
-    class << self
-      include RightScale::AgentConfig
-    end
-
     # Start agent
     # Choose agent type from candidate types based on contents of configuration directory
     #
@@ -44,7 +40,7 @@ module RightScale
 
       EM.next_tick do
         begin
-          init_cfg_dir(options[:cfg_dir])
+          AgentConfig.cfg_dir = options[:cfg_dir]
           if agent_type = pick_agent_type(agent_types)
             agent_name = form_agent_name(agent_type, worker_index)
             cfg = configure(agent_type, agent_name, worker_index, options)
@@ -92,11 +88,9 @@ module RightScale
     # agent_types(Array):: Type name for candidate agents
     #
     # === Return
-    # type(String|nil):: Agent type, or nil if unknown
+    # type(String|nil):: Agent type, or nil if none configured
     def self.pick_agent_type(types)
-      type = nil
-      types.each { |t| (type = t; break) if File.exist?(cfg_file(t)) }
-      type
+      (types & AgentConfig.configured_agents).first
     end
 
     # Form agent name form type and index
@@ -125,9 +119,9 @@ module RightScale
     # cfg(Hash):: Persisted configuration options
     def self.configure(agent_type, agent_name, worker_index, options)
       identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
-      cfg = agent_options(agent_type)
+      cfg = AgentConfig.agent_options(agent_type)
       cfg.merge!(:identity => identity)
-      cfg_file = cfg_file(agent_name)
+      cfg_file = AgentConfig.cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
