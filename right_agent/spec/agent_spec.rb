@@ -81,9 +81,9 @@ describe RightScale::Agent do
       @agent.options[:pass].should == "testing"
     end
 
-    it "for secure is false" do
+    it "for secure is true" do
       @agent.options.should include(:secure)
-      @agent.options[:secure].should == false
+      @agent.options[:secure].should == true
     end
 
     it "for log_level is info" do
