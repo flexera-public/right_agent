@@ -14,6 +14,7 @@ require 'right_agent'
 RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_infrastructure_agent'))
 
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'models_helper')
+require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'login_policy_factory')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'exception_mailer')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'agent_config')
 require File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'packets')
