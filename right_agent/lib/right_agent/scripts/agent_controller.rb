@@ -107,7 +107,7 @@ module RightScale
     # true:: Always return true
     def control(options)
       # Initialize configuration directory setting
-      AgentConfig.cfg_dir = options[:cfg_dir])
+      AgentConfig.cfg_dir = options[:cfg_dir]
 
       # List agents if requested
       list_configured_agents if options[:list]
