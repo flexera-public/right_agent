@@ -138,6 +138,10 @@ module RightScale
           options[:actors_dirs] = d.split(',')
         end
 
+        opts.on('-w', '--monit') do
+          options[:monit] = true
+        end
+
         opts.on('-S', '--secure-identity') do
           options[:secure_identity] = true
         end
