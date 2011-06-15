@@ -102,7 +102,7 @@ module RightScale
     # === Return
     # (String):: Agent name
     def self.form_agent_name(type, index)
-      index == 0 ? type : "#{type}_#{index}"
+      index == 0 ? type : "#{type}_#{index + 1}"
     end
 
     # Determine configuration settings for this agent and persist them
@@ -122,7 +122,7 @@ module RightScale
       cfg = AgentConfig.agent_options(agent_name) if cfg_file = AgentConfig.cfg_file(agent_name, exists = true)
       if cfg.nil? || (options[:base_id] && AgentIdentity.parse(cfg[:identity]).base_id != options[:base_id])
         cfg = AgentConfig.agent_options(agent_type)
-        identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
+        identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
         cfg.merge!(:identity => identity)
         cfg_file = AgentConfig.cfg_file(agent_name)
       end
