@@ -151,7 +151,12 @@ describe RightScale::AgentConfig do
   it 'should return the configuration file path for an agent' do
     @agent_config.cfg_dir = @cfg_dir
     @agent_config.cfg_file('agent1').should == @cfg_agent1
-    @agent_config.cfg_file('no_agent').should be_nil
+  end
+
+  it 'should check if agent configuration file exists if requested to' do
+    @agent_config.cfg_dir = @cfg_dir
+    @agent_config.cfg_file('agent1', exists = true).should == @cfg_agent1
+    @agent_config.cfg_file('no_agent', exists = true).should be_nil
   end
 
   it 'should return configuration file paths for all agents' do

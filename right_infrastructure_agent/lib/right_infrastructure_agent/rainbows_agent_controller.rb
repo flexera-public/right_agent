@@ -106,6 +106,7 @@ module RightScale
     end
 
     # Determine configuration settings for this agent and persist them
+    # Reuse existing agent identities when possible
     #
     # === Parameters
     # agent_type(String):: Agent type
@@ -118,10 +119,13 @@ module RightScale
     # === Return
     # cfg(Hash):: Persisted configuration options
     def self.configure(agent_type, agent_name, worker_index, options)
-      identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
-      cfg = AgentConfig.agent_options(agent_type)
-      cfg.merge!(:identity => identity)
-      cfg_file = AgentConfig.cfg_file(agent_name)
+      cfg = AgentConfig.agent_options(agent_name) if cfg_file = AgentConfig.cfg_file(agent_name, exists = true)
+      if cfg.nil? || (options[:base_id] && AgentIdentity.parse(cfg[:identity]).base_id != options[:base_id])
+        cfg = AgentConfig.agent_options(agent_type)
+        identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || worker_index).to_s
+        cfg.merge!(:identity => identity)
+        cfg_file = AgentConfig.cfg_file(agent_name)
+      end
       FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }

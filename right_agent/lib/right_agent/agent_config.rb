@@ -206,12 +206,13 @@ module RightScale
     #
     # === Parameters
     # agent_name(String):: Agent name
+    # exists(Boolean):: Whether to return nil if does not exist
     #
     # === Return
     # (String):: Configuration file path name, or nil if file does not exist
-    def self.cfg_file(agent_name)
+    def self.cfg_file(agent_name, exists = false)
       file = File.normalize_path(File.join(cfg_dir, agent_name, "config.yml"))
-      file = nil unless File.exist?(file)
+      file = nil unless !exists || File.exist?(file)
       file
     end
 
@@ -247,15 +248,10 @@ module RightScale
     # === Return
     # (PidFile|nil):: Process id file, or nil if there is no configuration file for agent
     def self.pid_file(agent_name)
-      res = nil
-      file = cfg_file(agent_name)
-      if File.readable?(file)
-        if options = SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
-          agent = Agent.new(options)
-          res = PidFile.new(agent.identity, agent.options)
-        end
+      if options = load_cfg_file(agent_name)
+        agent = Agent.new(options)
+        PidFile.new(agent.identity, agent.options)
       end
-      res
     end
 
     # Agent options from generated agent configuration file
@@ -273,16 +269,13 @@ module RightScale
     #   :listen_port(Integer):: Agent command listen port if available
     #   :cookie(String):: Agent command cookie if available
     def self.agent_options(agent_name)
-      options = {}
-      file = cfg_file(agent_name)
-      if File.readable?(file)
-        options = SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
+      if options = load_cfg_file(agent_name)
         options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity], options)
         options.merge!(pid_file.read_pid) if pid_file.exists?
         @root_dirs = array(options[:root_dir])
       end
-      options
+      options ||= {}
     end
 
     protected
@@ -320,6 +313,13 @@ module RightScale
     # Path to agent directory containing scripts
     def self.scripts_dir2(root_dir)
       File.normalize_path(File.join(root_dir, "scripts"))
+    end
+
+    # Options from agent's configuration file, or nil if file not accessible
+    def self.load_cfg_file(agent_name)
+      if (file = cfg_file(agent_name, exists = true)) && File.readable?(file)
+        SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
+      end
     end
 
     # All existing directories of given type
