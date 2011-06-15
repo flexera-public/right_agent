@@ -84,14 +84,13 @@ module RightScale
     # opts(Hash):: Configuration options:
     #   :identity(String):: Identity of this agent, no default
     #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init,
-    #     defaults to Dir.pwd
+    #     defaults to current working directory
     #   :cfg_file(String):: Path to this agent's configuration file
     #   :pid_dir(String):: Path to the directory where the agent stores its process id file (only if daemonized),
     #     defaults to the current working directory
-    #   :log_dir(String):: Log file path, defaults to the current working directory
+    #   :log_dir(String):: Log directory path, defaults to the platform specific log directory
     #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal
     #   :actors(Array):: List of actors to load
-    #   :actors_dirs(Array):: Directories to search for actors in addition to default location in root_dir
     #   :console(Boolean):: true indicates to start interactive console
     #   :daemonize(Boolean):: true indicates to daemonize
     #   :retry_interval(Numeric):: Number of seconds between request retries
@@ -528,15 +527,13 @@ module RightScale
     def set_configuration(opts)
       @options = DEFAULT_OPTIONS.clone
       @options.update(opts)
+      AgentConfig.root_dir = @options[:root_dir]
+
       @options[:log_path] = false
       if @options[:daemonize] || @options[:log_dir]
-        @options[:log_path] = (@options[:log_dir] || Dir.pwd)
-
-        # Create the path if is does not exist.  Added for windows, but is a good practice.
-        FileUtils.mkdir_p(@options[:log_dir])
+        @options[:log_path] = (@options[:log_dir] || Platform.filesystem.log_dir)
+        FileUtils.mkdir_p(@options[:log_path]) unless File.directory?(@options[:log_path])
       end
-
-      AgentConfig.root_dir = @options[:root_dir]
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
@@ -578,7 +575,7 @@ module RightScale
       # Load agent's configured actors
       actors = (@options[:actors] || []).clone
       Log.info("[setup] Agent #{@identity} with actors #{actors.inspect}")
-      actors_dirs = AgentConfig.actors_dirs(@options[:actors_dirs])
+      actors_dirs = AgentConfig.actors_dirs
       actors_dirs.each do |dir|
         Dir["#{dir}/*.rb"].each do |file|
           actor = File.basename(file, ".rb")
@@ -591,11 +588,10 @@ module RightScale
       Log.error("Actors #{actors.inspect} not found in #{actors_dirs.inspect}") unless actors.empty?
 
       # Perform agent-specific initialization including actor creation and registration
-      init_path = File.normalize_path(File.join(AgentConfig.init_dir, "init.rb"))
-      if File.exists?(init_path)
-        instance_eval(File.read(init_path), init_path)
+      if init_file = AgentConfig.init_file
+        instance_eval(File.read(init_file), init_file)
       else
-        Log.error("Agent initialization file #{init_path.inspect} does not exist")
+        Log.error("No agent init.rb file found in init directory of #{AgentConfig.root_dir.inspect}")
       end
       true
     end

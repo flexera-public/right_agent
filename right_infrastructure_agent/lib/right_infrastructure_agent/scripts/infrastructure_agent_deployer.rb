@@ -31,11 +31,9 @@
 #    rad AGENT [options]
 #
 #    common options:
-#      --root-dir, -r DIR       Set agent root directory (containing actors, certs, and init subdirectories)
+#      --root-dir, -r DIR       Set agent root directory (containing init, actors, and certs subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
-#      --actors-dirs, -a DIRS   Set comma-separated list of directories to search for actors in addition to
-#                               default location in agent root directory
 #      --identity, -i ID        Use base id ID to build agent's identity
 #      --token, -t TOKEN        Use token TOKEN to build agent's identity
 #      --prefix, -x PREFIX      Use prefix PREFIX to build agent's identity
@@ -173,6 +171,31 @@ module RightScale
         cfg[:shared_queue] = options[:shared_queue] if options[:shared_queue]
       end
       cfg
+    end
+
+    # Setup agent monitoring
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def monitor(options)
+      agent_name = options[:agent_name]
+      identity = options[:identity]
+      pid_file = PidFile.new(identity, AgentConfig.pid_dir)
+      cfg = <<-EOF
+check process #{agent_name}
+  with pidfile \"#{pid_file}\"
+  start program \"/etc/init.d/#{agent_name} start\"
+  stop program \"/etc/init.d/#{agent_name} stop\"
+  mode manual
+      EOF
+      cfg_file = File.join(AgentConfig.cfg_dir, agent_name, "#{identity}.conf")
+      File.open(cfg_file, 'w') { |f| f.puts(cfg) }
+      File.chmod(0600, cfg_file) # monit requires strict perms on this file
+      puts "  - agent monit config: #{cfg_file}" unless options[:quiet]
+      true
     end
 
   end # InfrastructureAgentDeployer

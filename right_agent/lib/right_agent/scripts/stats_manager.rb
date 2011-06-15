@@ -125,7 +125,7 @@ module RightScale
       agent_names = if options[:agent_name]
         [options[:agent_name]]
       else
-        AgentConfig.configured_agents
+        AgentConfig.cfg_agents
       end
       fail("No agents configured") if agent_names.empty?
 

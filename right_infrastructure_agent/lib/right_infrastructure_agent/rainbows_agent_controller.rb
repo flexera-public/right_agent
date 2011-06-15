@@ -90,7 +90,7 @@ module RightScale
     # === Return
     # type(String|nil):: Agent type, or nil if none configured
     def self.pick_agent_type(types)
-      (types & AgentConfig.configured_agents).first
+      (types & AgentConfig.cfg_agents).first
     end
 
     # Form agent name form type and index

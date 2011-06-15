@@ -19,11 +19,9 @@
 #    rad AGENT [options]
 #
 #    options:
-#      --root-dir, -r DIR       Set agent root directory (containing actors, certs, and init subdirectories)
+#      --root-dir, -r DIR       Set agent root directory (containing init, actors, and certs subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
-#      --actors-dirs, -a DIRS   Set comma-separated list of directories to search for actors in addition to
-#                               default location in agent root directory
 #      --identity, -i ID        Use base id ID to build agent's identity
 #      --token, -t TOKEN        Use token TOKEN to build agent's identity
 #      --prefix, -x PREFIX      Use prefix PREFIX to build agent's identity
@@ -94,8 +92,7 @@ module RightScale
       AgentConfig.pid_dir = options[:pid_dir]
 
       # Configure agent
-      cfg = load_init_config
-      cfg[:actors_dirs] = options[:actor_dirs] if options[:actors_dirs]
+      cfg = load_init_cfg
       check_agent(options, cfg)
       cfg = configure(options, cfg)
 
@@ -123,7 +120,13 @@ module RightScale
         parse_other_args(opts, options)
 
         opts.on('-r', '--root-dir DIR') do |d|
-          options[:root_dir] = d
+          # Allow for more than one
+          if options[:root_dir]
+            options[:root_dir] = [options[:root_dir]] unless options[:root_dir].is_a?(Array)
+            options[:root_dir] << d
+          else
+            options[:root_dir] = d
+          end
         end
 
         opts.on('-c', '--cfg-dir DIR') do |d|
@@ -132,10 +135,6 @@ module RightScale
 
         opts.on('-z', '--pid-dir DIR') do |d|
           options[:pid_dir] = d
-        end
-
-        opts.on('-a', '--actors-dirs DIRS') do |d|
-          options[:actors_dirs] = d.split(',')
         end
 
         opts.on('-w', '--monit') do
@@ -232,10 +231,9 @@ module RightScale
     #
     # === Return
     # cfg(Hash):: Initial agent configuration options
-    def load_init_config
+    def load_init_cfg
       cfg = {}
-      cfg_file = File.normalize_path(File.join(AgentConfig.init_dir, "config.yml"))
-      if File.exists?(cfg_file)
+      if cfg_file = AgentConfig.init_cfg_file
         cfg = SerializationHelper.symbolize_keys(YAML.load(IO.read(cfg_file))) rescue nil
         fail("Cannot read configuration for agent #{cfg_file.inspect}") unless cfg
       end
@@ -255,12 +253,11 @@ module RightScale
       agent_type = options[:agent_type]
       type = AgentIdentity.parse(identity).agent_type if identity
       fail("Agent type #{agent_type.inspect} and identity #{identity.inspect} are inconsistent") if agent_type != type
-      init_file = File.normalize_path(File.join(AgentConfig.init_dir, "init.rb"))
-      fail("Cannot find agent initialization file #{init_file.inspect}") unless File.exists?(init_file)
+      fail("Cannot find agent init.rb file in init directory of #{AgentConfig.root_dir.inspect}") unless AgentConfig.init_file
 
       actors = cfg[:actors]
       fail('Agent configuration is missing actors') unless actors && actors.respond_to?(:each)
-      actors_dirs = AgentConfig.actors_dirs(cfg[:actors_dirs])
+      actors_dirs = AgentConfig.actors_dirs
       actors.each do |a|
         found = false
         actors_dirs.each { |d| break if found = File.exist?(File.normalize_path(File.join(d, "#{a}.rb"))) }

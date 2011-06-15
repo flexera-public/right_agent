@@ -137,7 +137,7 @@ module RightScale
       when /show|killall/
         action = 'stop' if action == 'killall'
         s = true
-        AgentConfig.configured_agents.each { |agent_name| s &&= run_cmd(action, agent_name) }
+        AgentConfig.cfg_agents.each { |agent_name| s &&= run_cmd(action, agent_name) }
         s
       when 'kill'
         kill_process
@@ -440,7 +440,7 @@ module RightScale
     # === Return
     # never
     def list_configured_agents
-      agents = AgentConfig.configured_agents
+      agents = AgentConfig.cfg_agents
       if agents.empty?
         puts "Found no configured agents"
       else

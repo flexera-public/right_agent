@@ -140,7 +140,7 @@ module RightScale
     def start_mapper
       @options = AgentConfig.agent_options(@options[:agent_name]).merge(@options)
 
-      require File.expand_path(File.join(AgentConfig.root_dir, 'lib', 'mapper'))
+      require File.expand_path(File.join(AgentConfig.lib_dir, 'mapper'))
 
       @options[:exception_callback] = proc do |e, msg, mapper|
         FaultyAgentsTracker.handle_exception(msg, e, mapper)
