@@ -53,7 +53,7 @@ module RightScale
                      "#{agent_types.inspect} in #{cfg_dir}, need to run rad!")
           end
         rescue Exception => e
-          Log.info("Failed to start #{agent_name} agent", e, :trace)
+          Log.error("Failed to start #{agent_name} agent", e, :trace)
         end
       end
       true
