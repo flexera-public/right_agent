@@ -64,6 +64,7 @@ module RightScale
     def manage(options)
       init_log
       AgentConfig.cfg_dir = options[:cfg_dir]
+      options[:timeout] ||= DEFAULT_TIMEOUT
       request_stats(options)
     rescue Exception => e
       fail("#{e}\n#{e.backtrace.join("\n")}") unless e.is_a?(SystemExit)
@@ -74,7 +75,7 @@ module RightScale
     # === Return
     # options(Hash):: Parsed options
     def parse_args
-      options = {:reset => false, :timeout => DEFAULT_TIMEOUT}
+      options = {:reset => false}
       options[:agent_name] = ARGV[0] unless ARGV[0] =~ /^-/
 
       opts = OptionParser.new do |opts|
