@@ -42,8 +42,6 @@ module RightScale
     #                        increment and retry if port already taken
     # identity(String):: Agent identity
     # commands(Hash):: Commands exposed by agent
-    # options(Hash):: Optional, options used to retrieve agent pid file
-    #                 If present pid file will get updated with listen port
     #
     # === Return
     # cmd_options[:cookie](String):: Command protocol cookie
@@ -51,7 +49,7 @@ module RightScale
     #
     # === Raise
     # (RightScale::Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
-    def self.start(socket_port, identity, commands, options=nil)
+    def self.start(socket_port, identity, commands)
       cmd_options = nil
       @listen_port = socket_port
       begin
@@ -76,19 +74,17 @@ module RightScale
         @cookie = AgentIdentity.generate
         cmd_options = { :listen_port => @listen_port, :cookie => @cookie }
         # Now update pid file with command port and cookie
-        if options
-          pid_file = PidFile.new(identity, options)
-          if pid_file.exists?
-            pid_file.set_command_options(cmd_options)
-          else
-            Log.warning("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
-          end
+        pid_file = PidFile.new(identity)
+        if pid_file.exists?
+          pid_file.set_command_options(cmd_options)
+        else
+          Log.warning("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
         end
 
         Log.info("[setup] Command server started listening on port #{@listen_port}")
       rescue Exceptions::IO
         # Port already taken, increment and retry
-        cmd_options = start(socket_port + 1, identity, commands, options)
+        cmd_options = start(socket_port + 1, identity, commands)
       end
 
       cmd_options

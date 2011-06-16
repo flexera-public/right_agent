@@ -249,8 +249,7 @@ module RightScale
     # (PidFile|nil):: Process id file, or nil if there is no configuration file for agent
     def self.pid_file(agent_name)
       if options = load_cfg_file(agent_name)
-        agent = Agent.new(options)
-        PidFile.new(agent.identity, agent.options)
+        PidFile.new(options[:identity], options[:pid_dir])
       end
     end
 
@@ -270,11 +269,11 @@ module RightScale
     #   :cookie(String):: Agent command cookie if available
     def self.agent_options(agent_name)
       if options = load_cfg_file(agent_name)
-        options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
-        pid_file = PidFile.new(options[:identity], options)
-        options.merge!(pid_file.read_pid) if pid_file.exists?
         @root_dirs = array(options[:root_dir])
         @pid_dir = options[:pid_dir]
+        options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
+        pid_file = PidFile.new(options[:identity])
+        options.merge!(pid_file.read_pid) if pid_file.exists?
       end
       options ||= {}
     end

@@ -170,7 +170,7 @@ module RightScale
       
       begin
         # Capture process id in file after optional daemonize
-        pid_file = PidFile.new(@identity, @options)
+        pid_file = PidFile.new(@identity)
         pid_file.check
         daemonize(@identity, @options) if @options[:daemonize]
         pid_file.write

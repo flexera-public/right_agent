@@ -330,7 +330,7 @@ module RightScale
     def monitor(options)
       agent_name = options[:agent_name]
       identity = options[:identity]
-      pid_file = PidFile.new(identity, AgentConfig.pid_dir)
+      pid_file = PidFile.new(identity)
       cfg = <<-EOF
 check process #{agent_name}
   with pidfile \"#{pid_file}\"
