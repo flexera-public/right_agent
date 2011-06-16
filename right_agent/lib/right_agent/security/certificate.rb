@@ -56,7 +56,7 @@ module RightScale
     # res(Certificate):: Certificate
     def self.load(file)
       res = nil
-      File.open(file, 'r') { |f| res = from_data(f) }
+      File.open(file, 'r') { |f| res = from_data(f) } if file
       res
     end
     
