@@ -527,7 +527,9 @@ module RightScale
     def set_configuration(opts)
       @options = DEFAULT_OPTIONS.clone
       @options.update(opts)
+
       AgentConfig.root_dir = @options[:root_dir]
+      AgentConfig.pid_dir = @options[:pid_dir]
 
       @options[:log_path] = false
       if @options[:daemonize] || @options[:log_dir]
