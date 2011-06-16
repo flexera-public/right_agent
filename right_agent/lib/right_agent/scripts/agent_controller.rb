@@ -106,8 +106,9 @@ module RightScale
     # === Return
     # true:: Always return true
     def control(options)
-      # Initialize configuration directory setting
+      # Initialize directory settings
       AgentConfig.cfg_dir = options[:cfg_dir]
+      AgentConfig.pid_dir = options[:pid_dir]
 
       # List agents if requested
       list_configured_agents if options[:list]
@@ -118,7 +119,7 @@ module RightScale
       if action == 'kill' && (options[:pid_file].nil? || !File.file?(options[:pid_file]))
         fail("Missing or invalid pid file #{options[:pid_file]}", print_usage = true)
       end
-      FileUtils.mkdir_p(options[:pid_dir]) if options[:pid_dir]
+      FileUtils.mkdir_p(options[:pid_dir]) unless options[:pid_dir].nil? || File.directory?(options[:pid_dir])
       if options[:agent_name]
         cfg_file = AgentConfig.cfg_file(options[:agent_name])
         fail("Deployment is missing configuration file #{cfg_file.inspect}.") unless File.exists?(cfg_file)
