@@ -256,7 +256,7 @@ module RightScale
 
     # Agent options from generated agent configuration file
     # and agent process id file if they exist
-    # Reset root_dir to one found in agent configuration file
+    # Reset root_dir and pid_dir to one found in agent configuration file
     #
     # === Parameters
     # agent_name(String):: Agent name
@@ -274,6 +274,7 @@ module RightScale
         pid_file = PidFile.new(options[:identity], options)
         options.merge!(pid_file.read_pid) if pid_file.exists?
         @root_dirs = array(options[:root_dir])
+        @pid_dir = options[:pid_dir]
       end
       options ||= {}
     end

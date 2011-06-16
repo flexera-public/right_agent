@@ -119,7 +119,6 @@ module RightScale
       if action == 'kill' && (options[:pid_file].nil? || !File.file?(options[:pid_file]))
         fail("Missing or invalid pid file #{options[:pid_file]}", print_usage = true)
       end
-      FileUtils.mkdir_p(options[:pid_dir]) unless options[:pid_dir].nil? || File.directory?(options[:pid_dir])
       if options[:agent_name]
         cfg_file = AgentConfig.cfg_file(options[:agent_name])
         fail("Deployment is missing configuration file #{cfg_file.inspect}.") unless File.exists?(cfg_file)
@@ -127,11 +126,13 @@ module RightScale
         options = cfg.merge(options)
         options[:cfg_file] = cfg_file
         AgentConfig.root_dir = options[:root_dir]
+        AgentConfig.pid_dir = options[:pid_dir]
         Log.program_name = syslog_program_name(options)
         Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
       end 
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
+      FileUtils.mkdir_p(@options[:pid_dir]) unless @options[:pid_dir].nil? || File.directory?(@options[:pid_dir])
 
       # Execute request
       success = case action
