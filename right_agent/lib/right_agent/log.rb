@@ -20,6 +20,13 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+# Protect this code from being loaded more than once since very painful
+# discovering that the singleton got re-instantiated thus losing any class
+# instance variable settings
+unless defined?(RIGHTSCALE_LOG_DEFINED)
+
+RIGHTSCALE_LOG_DEFINED = true
+
 require 'logger'
 require 'right_support'
 require 'singleton'
@@ -33,6 +40,8 @@ module RightScale
   # Logs both to syslog and to local file
   class Log
 
+    # Expecting use of RightScale patched Singleton so that clients of this
+    # class do not need to use '.instance' in Log calls
     include Singleton
 
     # Default formatter for a Log
@@ -120,21 +129,6 @@ module RightScale
       init unless @initialized
       @logger.level = level_from_sym(level) if @level_frozen
       @logger.__send__(m, *args)
-    end
-
-    # Forward all class method calls to the singleton instance to keep the interface as it was
-    # prior to introducing the singleton
-    #
-    # === Parameters
-    # m(Symbol):: Forwarded method name
-    # args(Array):: Forwarded method arguments
-    #
-    # === Return
-    # (Object):: Result from singleton
-    class << self
-      def method_missing(m, *args)
-        Log.instance.__send__(m, *args)
-      end
     end
 
     # Log warning and optionally append exception information
@@ -403,3 +397,5 @@ module RightScale
   end # Log
 
 end # RightScale
+
+end # Unless already defined
