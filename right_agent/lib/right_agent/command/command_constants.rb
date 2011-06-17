@@ -28,12 +28,14 @@ module RightScale
     # Ports used for command protocol
     BASE_INSTANCE_AGENT_SOCKET_PORT         = 60000
     BASE_INSTANCE_AGENT_CHECKER_SOCKET_PORT = 61000
+
     BASE_CORE_AGENT_SOCKET_PORT             = 70000
     BASE_LABORER_AGENT_SOCKET_PORT          = 71000
     BASE_PROXY_AGENT_SOCKET_PORT            = 72000
     BASE_LIBRARY_AGENT_SOCKET_PORT          = 73000
     BASE_WASABI_AGENT_SOCKET_PORT           = 74000
-    BASE_MAPPER_SOCKET_PORT                 = 80000
+
+    BASE_MAPPER_SOCKET_PORT                 = 79000
 
   end
 end
