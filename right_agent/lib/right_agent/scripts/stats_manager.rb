@@ -136,7 +136,7 @@ module RightScale
         begin
           count += 1 if request_agent_stats(agent_name, options)
         rescue Exception => e
-          puts "Command to #{agent_name} agent failed (#{e})"
+          puts "Command to #{agent_name} agent failed (#{e})" unless e.is_a?(SystemExit)
         end
       end
       puts("No agents running") if count == 0
@@ -162,7 +162,9 @@ module RightScale
           client.send_command(command, options[:verbose], options[:timeout]) { |r| display(agent_name, r, options) }
           res = true
         rescue Exception => e
-          fail("Failed to retrieve #{agent_name} agent stats: #{e}\n" + e.backtrace.join("\n"))
+          msg = "Could notretrieve #{agent_name} agent stats: #{e}"
+          msg += "\n" + e.backtrace.join("\n") unless e.message =~ /Timed out/
+          fail(msg)
         end
       end
       res
@@ -211,7 +213,7 @@ module RightScale
         if result.respond_to?(:success?) && result.success?
           puts "\n#{stats_str(result.content)}\n"
         else
-          puts "\nFailed to retrieve #{agent_name} agent stats: #{result.inspect}"
+          puts "\nCould notretrieve #{agent_name} agent stats: #{result.inspect}"
         end
       end
       true
