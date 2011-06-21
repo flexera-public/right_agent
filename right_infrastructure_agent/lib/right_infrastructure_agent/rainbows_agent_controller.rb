@@ -36,7 +36,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def self.start(agent_types, worker_index, logger, options = {})
-      RightScale::Log.force_logger(logger) if logger
+      Log.force_logger(logger) if logger
 
       EM.next_tick do
         begin
@@ -47,7 +47,7 @@ module RightScale
             cfg.merge!(options.merge(FORCED_OPTIONS))
             Log.info("Starting #{agent_name} agent with the following options:\n" +
                      "  #{cfg.map { |k, v| "#{k}: #{v.inspect}" }.sort.join("\n  ")}")
-            @@agent = RightScale::InfrastructureAgent.start(cfg)
+            @@agent = InfrastructureAgent.start(cfg)
           else
             Log.info("Deployment is missing configuration file for any agents of type " +
                      "#{agent_types.inspect} in #{cfg_dir}, need to run rad!")
@@ -119,13 +119,13 @@ module RightScale
     # === Return
     # cfg(Hash):: Persisted configuration options
     def self.configure(agent_type, agent_name, worker_index, options)
-      cfg = AgentConfig.agent_options(agent_name) if cfg_file = AgentConfig.cfg_file(agent_name, exists = true)
-      if cfg.nil? || (options[:base_id] && AgentIdentity.parse(cfg[:identity]).base_id != options[:base_id])
-        cfg = AgentConfig.agent_options(agent_type)
-        identity = RightScale::AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
-        cfg.merge!(:identity => identity)
-        cfg_file = AgentConfig.cfg_file(agent_name)
+      cfg = AgentConfig.agent_options(agent_type)
+      unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
+             (options[:base_id] && AgentIdentity.parse(identity).base_id != options[:base_id])
+        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
       end
+      cfg.merge!(:identity => identity)
+      cfg_file = AgentConfig.cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(cfg_file))
       File.delete(cfg_file) if File.exists?(cfg_file)
       File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }

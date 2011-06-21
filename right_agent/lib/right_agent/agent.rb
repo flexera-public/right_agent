@@ -410,6 +410,7 @@ module RightScale
         if @terminating
           Log.info("[stop] Terminating immediately")
           @termination_timer.cancel if @termination_timer
+          @termination_timer = nil
           if blk then blk.call else EM.stop end
         else
           @terminating = true
