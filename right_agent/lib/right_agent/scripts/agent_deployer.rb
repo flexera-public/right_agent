@@ -54,7 +54,6 @@
 
 require 'optparse'
 require 'yaml'
-require 'ftools'
 require 'fileutils'
 require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
 require 'rdoc/usage'
