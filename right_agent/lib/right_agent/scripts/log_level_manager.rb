@@ -31,9 +31,7 @@
 #
 
 require 'optparse'
-require 'rdoc/ri/ri_paths' # For backwards compat with ruby 1.8.5
-require 'rdoc/usage'
-require File.expand_path(File.join(File.dirname(__FILE__), 'rdoc_patch'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'actors', 'agent_manager'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
@@ -110,7 +108,7 @@ module RightScale
       end
 
       opts.on_tail('--help') do
-         RDoc::usage_from_file(__FILE__)
+         puts Usage.scan(__FILE__)
          exit
       end
 
@@ -163,7 +161,7 @@ module RightScale
     # R.I.P. does not return
     def fail(message = nil, print_usage = false)
       puts "** #{message}" if message
-      RDoc::usage_from_file(__FILE__) if print_usage
+      puts Usage.scan(__FILE__) if print_usage
       exit(1)
     end
 

@@ -40,7 +40,7 @@ module RightScale
     # true:: Always return true
     def parse_common(opts, options)
 
-      opts.on("--test") do 
+      opts.on("--test") do
         options[:user] = 'test'
         options[:pass] = 'testing'
         options[:vhost] = '/right_net'
@@ -70,7 +70,7 @@ module RightScale
         options[:port]  = uri.port     if uri.port
         options[:vhost] = uri.path     if (uri.path && !uri.path.empty?)
       end
-      
+
       opts.on("-u", "--user USER") do |user|
         options[:user] = user
       end
@@ -96,7 +96,7 @@ module RightScale
       end
 
       opts.on_tail("--help") do
-        RDoc::usage_from_file(__FILE__)
+        puts Usage.scan(__FILE__)
         exit
       end
 

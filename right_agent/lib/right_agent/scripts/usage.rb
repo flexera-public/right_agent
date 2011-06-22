@@ -1,4 +1,4 @@
-#
+#--
 # Copyright (c) 2009-2011 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
@@ -19,39 +19,54 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#++
 
-# Patch RDoc so that RDoc::usage works even when the application is started via
-# a proxy such as a bash script instead of being run directly.
-# See resat.rb for usage information.
+
 #
+# Scans the 'usage' for a given file and returns the resulting String.
+#
+# Note : no formatting occurs. Rdoc is nice as is.
+#
+module Usage
 
-module RDoc
-  # Force the use of comments in this file so RDoc::usage works even when
-  # invoked from a proxy (e.g. 'resat' bash script)
-  def usage_no_exit(*args)
-    main_program_file = caller[-1].sub(/:\d+$/, '')
-    usage_from_file(main_program_file)
-  end
+  # Scans the given file from its usage (the top comment block) and
+  # returns it.
+  #
+  # === Parameters
+  # file(String)::
+  #   path to file to read
+  #
+  # === Return
+  # String::
+  #   the usage as found in the file
+  #
+  def self.scan(file)
 
-  # Display usage from the given file
-  def RDoc.usage_from_file(input_file, *args)
-    comment = File.open(input_file) do |file|
-      find_comment(file)
+    lines = File.readlines(file)
+
+    result = []
+
+    while line = lines.shift
+      if m = line.match(/^ *#(.*)$/)
+        result << m[1]
+      else
+        break unless result.empty?
+      end
     end
-    comment = comment.gsub(/^\s*#/, '')
-    markup = SM::SimpleMarkup.new
-    flow_convertor = SM::ToFlow.new
-    flow = markup.convert(comment, flow_convertor)
-    format = "plain"
-    unless args.empty?
-      flow = extract_sections(flow, args)
-    end
-    options = RI::Options.instance
-    if args = ENV["RI"]
-      options.parse(args.split)
-    end
-    formatter = options.formatter.new(options, "")
-    formatter.display_flow(flow)
+
+    result.join("\n")
   end
+end
+
+# self-test, for example :
+#
+#   ruby \
+#     right_agent/lib/right_agent/scripts/usage.rb \
+#     right_agent/lib/right_agent/scripts/stats_manager.rb
+#
+if __FILE__ == $0
+  puts '-' * 80
+  puts Usage.scan(ARGV[0])
+  puts '-' * 80
 end
 
