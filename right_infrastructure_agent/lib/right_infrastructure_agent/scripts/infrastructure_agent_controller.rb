@@ -93,6 +93,11 @@ module RightScale
       opts.on("-D", "--debugger PORT") do |port|
         options[:debug] = port
       end
+
+      opts.on('--help') do
+        RDoc::usage_from_file(__FILE__)
+        exit
+      end
     end
 
     protected

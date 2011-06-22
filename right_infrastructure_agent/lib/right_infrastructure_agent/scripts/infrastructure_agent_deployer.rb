@@ -135,6 +135,11 @@ module RightScale
       opts.on('--advertise-interval SEC') do |sec|
         options[:advertise_interval] = sec.to_i
       end
+
+      opts.on('--help') do
+        RDoc::usage_from_file(__FILE__)
+        exit
+      end
     end
 
     # Determine configuration settings to be persisted
