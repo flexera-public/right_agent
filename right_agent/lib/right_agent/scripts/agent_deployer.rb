@@ -206,6 +206,7 @@ module RightScale
       begin
         opts.parse!(ARGV)
       rescue Exception => e
+        exit 0 if e.is_a?(SystemExit)
         fail(e.message, print_usage = true)
       end
       resolve_identity(options)
