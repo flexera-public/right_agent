@@ -209,7 +209,7 @@ module RightScale
                 EM.stop
               end
             end
-          else
+          elsif status == :failed
             Log.error("Agent failed to connect to any brokers")
             EM.stop
           end

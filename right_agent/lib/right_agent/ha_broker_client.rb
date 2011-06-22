@@ -837,7 +837,8 @@ module RightScale
     #
     # === Block
     # Required block activated when connected count crosses a status boundary with following parameters
-    #   status(Symbol):: Status of connection: :connected or :disconnected
+    #   status(Symbol):: Status of connection: :connected, :disconnected, or :failed, with
+    #     :failed indicating that all selected brokers or all brokers have failed
     #   island_id(Integer):: Island in which there was a change (optional parameter)
     #
     # === Return
@@ -1040,7 +1041,7 @@ module RightScale
  
     # Callback from broker client with connection status update
     # Makes client callback with :connected or :disconnected status if boundary crossed
-    # for given island
+    # for given island, or with :failed if all selected brokers or all brokers have failed
     #
     # === Parameters
     # broker(BrokerClient):: Broker client reporting status update
@@ -1061,22 +1062,26 @@ module RightScale
       @connection_status.reject! do |k, v|
         reject = false
         if v[:brokers].nil? || v[:brokers].include?(broker.identity)
-          b, a, n = if v[:brokers].nil?
-            [before, after, in_island(broker.island_id).size]
+          b, a, n, f = if v[:brokers].nil?
+            [before, after, in_island(broker.island_id).size, all]
           else
-            [before & v[:brokers], after & v[:brokers], (island(broker.island_id) & v[:brokers]).size]
+            [before & v[:brokers], after & v[:brokers], (island(broker.island_id) & v[:brokers]).size, v[:brokers]]
           end
           update = if v[:boundary] == :all
             if b.size < n && a.size == n
               :connected
             elsif b.size == n && a.size < n
               :disconnected
+            elsif (f - failed).empty?
+              :failed
             end
           else
             if b.size == 0 && a.size > 0
               :connected
             elsif b.size > 0 && a.size == 0
               :disconnected
+            elsif (f - failed).empty?
+              :failed
             end
           end
           if update

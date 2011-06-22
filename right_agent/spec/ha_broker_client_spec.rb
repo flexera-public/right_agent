@@ -1218,6 +1218,10 @@ describe RightScale::HABrokerClient do
         @broker.should_receive(:subscribe).and_return(true).by_default
         @broker.should_receive(:return_message).and_return(true).by_default
         flexmock(RightScale::BrokerClient).should_receive(:new).and_return(@broker).by_default
+        @broker1.should_receive(:failed?).and_return(false).by_default
+        @broker2.should_receive(:failed?).and_return(false).by_default
+        @broker3.should_receive(:failed?).and_return(false).by_default
+        @broker4.should_receive(:failed?).and_return(false).by_default
       end
 
       it "should give access to or list usable brokers" do
@@ -1521,6 +1525,78 @@ describe RightScale::HABrokerClient do
         ha.__send__(:update_status, @broker, true)
         called1.should == 1
         called2.should == 2
+      end
+
+      it "should provide failed connection status callback when all brokers fail to connect" do
+        ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
+        connected = disconnected = failed = 0
+        ha.connection_status(:boundary => :all) do |status|
+          if status == :connected
+            connected += 1
+          elsif status == :disconnected
+            disconnected += 1
+          elsif status == :failed
+            (ha.brokers[0].failed? &&
+             ha.brokers[1].failed? &&
+             ha.brokers[2].failed? &&
+             ha.brokers[3].failed?).should be_true
+            failed += 1
+          end
+        end
+        @broker1.should_receive(:failed?).and_return(true)
+        @broker1.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker1, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 0
+        @broker2.should_receive(:failed?).and_return(true)
+        @broker2.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker2, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 0
+        @broker3.should_receive(:failed?).and_return(true)
+        @broker3.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker3, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 0
+        @broker4.should_receive(:failed?).and_return(true)
+        @broker4.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker4, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 1
+      end
+
+      it "should provide failed connection status callback when brokers selected and all brokers fail to connect" do
+        ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
+        connected = disconnected = failed = 0
+        ha.connection_status(:boundary => :all, :brokers => [@broker3.identity, @broker4.identity]) do |status|
+          if status == :connected
+            connected += 1
+          elsif status == :disconnected
+            disconnected += 1
+          elsif status == :failed
+            (ha.brokers[0].failed? &&
+             ha.brokers[1].failed?).should be_true
+            failed += 1
+          end
+        end
+        @broker1.should_receive(:failed?).and_return(true)
+        @broker2.should_receive(:failed?).and_return(true)
+        @broker3.should_receive(:failed?).and_return(true)
+        @broker3.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker3, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 0
+        @broker4.should_receive(:failed?).and_return(true)
+        @broker4.should_receive(:connected?).and_return(false)
+        ha.__send__(:update_status, @broker4, false)
+        connected.should == 0
+        disconnected.should == 0
+        failed.should == 1
       end
 
     end # monitoring
