@@ -26,9 +26,12 @@ GEM
     eventmachine (0.12.10)
     flexmock (0.9.0)
     json (1.4.6)
+    mime-types (1.16)
     msgpack (0.4.4)
     rack (1.0.1)
     rake (0.8.7)
+    rest-client (1.6.1)
+      mime-types (>= 1.16)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
     rspec (2.6.0)
@@ -51,6 +54,7 @@ DEPENDENCIES
   json (>= 1.4.4, <= 1.4.6)
   msgpack (= 0.4.4)
   rake (= 0.8.7)
+  rest-client (= 1.6.1)
   right_agent!
   right_popen (= 1.0.11)
   right_support!

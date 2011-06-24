@@ -592,6 +592,7 @@ module RightScale
 
       # Perform agent-specific initialization including actor creation and registration
       if init_file = AgentConfig.init_file
+        Log.info("[setup] initializing agent from #{init_file}")
         instance_eval(File.read(init_file), init_file)
       else
         Log.error("No agent init.rb file found in init directory of #{AgentConfig.root_dir.inspect}")
