@@ -54,6 +54,7 @@ module RightScale
           end
         rescue Exception => e
           Log.error("Failed to start #{agent_name} agent", e, :trace)
+          EM.stop
         end
       end
       true
