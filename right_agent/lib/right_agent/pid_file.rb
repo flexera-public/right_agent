@@ -31,6 +31,8 @@ module RightScale
   #     the command protocol
   class PidFile
 
+    class AlreadyRunning < Exception; end
+
     attr_reader :identity
 
     # Initialize pid file location from agent identity and pid directory
@@ -46,10 +48,13 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # AlreadyRunning:: If pid file already exists and process is running
     def check
       if pid = read_pid[:pid]
-        if process_running? pid
-          raise "#{@pid_file} already exists (pid: #{pid})"
+        if process_running?(pid)
+          raise AlreadyRunning.new("#{@pid_file} already exists and process is running (pid: #{pid})")
         else
           Log.info "removing stale pid file: #{@pid_file}"
           remove
@@ -115,7 +120,7 @@ module RightScale
       end
       content
     end
-    
+
     # Does pid file exist?
     #
     # === Return
@@ -135,7 +140,7 @@ module RightScale
     
     private
 
-    # Check wether there is a process running with the given pid
+    # Check whether there is a process running with the given pid
     #
     # === Parameters
     # pid(Integer):: PID to check

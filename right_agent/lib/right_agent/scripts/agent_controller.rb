@@ -19,7 +19,11 @@
 #     rnac --killall
 #     rnac -K
 #
-#   List running agents on local machine:
+#   List agents configured on local machine:
+#     rnac --list
+#     rnac -l
+#
+#   List status of agents configured on local machine:
 #     rnac --status
 #     rnac -U
 #
@@ -131,6 +135,7 @@ module RightScale
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
       end 
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
+      @options[:exception_callback] = lambda { |e, msg, _| AgentManager.process_exception(e, msg) }
       FileUtils.mkdir_p(@options[:pid_dir]) unless @options[:pid_dir].nil? || File.directory?(@options[:pid_dir])
 
       # Execute request
@@ -347,30 +352,27 @@ module RightScale
     # === Return
     # true:: Always return true
     def start_agent(agent = Agent)
-      begin
-        # Register exception handler
-        @options[:exception_callback] = lambda { |e, msg, _| AgentManager.process_exception(e, msg) }
+      puts "#{human_readable_name} being started"
 
-        # Override default status proc for windows instance since "uptime" is not available.
-        @options[:status_proc] = lambda { 1 } if Platform.windows?
+      EM.error_handler do |e|
+        msg = "EM block execution failed with exception: #{e}"
+        Log.error(msg + "\n" + e.backtrace.join("\n"))
+        Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
+        EM.stop
+      end
 
-        puts "#{human_readable_name} being started"
-
-        EM.error_handler do |e|
-          msg = "EM block execution failed with exception: #{e}"
-          Log.error(msg + "\n" + e.backtrace.join("\n"))
-          Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
+      EM.run do
+        begin
+          @@agent = agent.start(@options)
+        rescue SystemExit
+          raise # Let parents of forked (daemonized) processes die
+        rescue PidFile::AlreadyRunning
+          puts "#{human_readable_name} already running"
+          EM.stop
+        rescue Exception => e
+          puts "#{human_readable_name} failed with: #{e} in \n#{e.backtrace.join("\n")}"
           EM.stop
         end
-
-        EM.run do
-          @@agent = agent.start(@options)
-        end
-
-      rescue SystemExit
-        raise # Let parents of forked (daemonized) processes die
-      rescue Exception => e
-        puts "#{human_readable_name} failed with: #{e} in \n#{e.backtrace.join("\n")}"
       end
       true
     end
@@ -384,8 +386,7 @@ module RightScale
     # (Boolean):: true if process was stopped, otherwise false
     def stop_agent(agent_name)
       res = false
-      pid_file = AgentConfig.pid_file(agent_name)
-      if pid = pid_file.read_pid[:pid]
+      if (pid_file = AgentConfig.pid_file(agent_name)) && (pid = pid_file.read_pid[:pid])
         name = human_readable_name(agent_name, pid_file.identity)
         begin
           Process.kill('TERM', pid)
@@ -395,10 +396,10 @@ module RightScale
           puts "#{name} not running."
         end
       else
-        if File.file?(pid_file.to_s)
+        if pid_file && File.file?(pid_file.to_s)
           puts "Invalid pid file '#{pid_file.to_s}' content: #{IO.read(pid_file.to_s)}"
         else
-          puts "Non-existent pid file '#{pid_file.to_s}'"
+          puts "Non-existent pid file for #{agent_name}"
         end
       end
       res
@@ -413,11 +414,10 @@ module RightScale
     # (Boolean):: true if process is running, otherwise false
     def show_agent(agent_name)
       res = false
-      pid_file = AgentConfig.pid_file(agent_name)
-      if pid = pid_file.read_pid[:pid]
-        pid = Process.getpgid(pid) rescue -1
+      if (pid_file = AgentConfig.pid_file(agent_name) && (pid = pid_file.read_pid[:pid])
+        pgid = Process.getpgid(pid) rescue -1
         name = human_readable_name(agent_name, pid_file.identity)
-        if pid != -1
+        if pgid != -1
           psdata = `ps up #{pid}`.split("\n").last.split
           memory = (psdata[5].to_i / 1024)
           puts "#{name} is alive, using #{memory}MB of memory"
@@ -425,6 +425,8 @@ module RightScale
         else
           puts "#{name} is not running but has a stale pid file at #{pid_file}"
         end
+      elsif identity = AgentConfig.agent_options(agent_name)[:identity]
+        puts "#{human_readable_name(agent_name, identity)} is not running"
       end
       res
     end

@@ -378,13 +378,13 @@ module RightScale
           else
             file = STDOUT
           end
-          puts "Logging to #{file}" if opts[:print]
+          $stderr.puts "Logging to #{file}" if opts[:print]
           logger = Logger.new(file)
           logger.formatter = Formatter.new
           logger.progname = @program_name || identity || 'RightAgent'
           logger.formatter.datetime_format = "%b %d %H:%M:%S"
         else
-          puts "Logging to syslog" if opts[:print]
+          $stderr.puts "Logging to syslog" if opts[:print]
           logger = RightSupport::SystemLogger.new(@program_name || identity || 'RightAgent')
         end
 

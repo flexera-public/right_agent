@@ -83,6 +83,7 @@ module RightScale
     # === Parameters
     # opts(Hash):: Configuration options:
     #   :identity(String):: Identity of this agent, no default
+    #   :agent_name(String):: Local name for this agent
     #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init,
     #     defaults to current working directory
     #   :cfg_file(String):: Path to this agent's configuration file
@@ -216,6 +217,8 @@ module RightScale
         end
       rescue SystemExit => e
         raise e
+      rescue PidFile::AlreadyRunning
+        raise
       rescue Exception => e
         Log.error("Agent failed startup", e, :trace) unless e.message == "exit"
         raise e
@@ -465,7 +468,8 @@ module RightScale
     def stats(options = {})
       now = Time.now
       reset = options[:reset]
-      result = OperationResult.success("identity"        => @identity,
+      result = OperationResult.success("name"            => @agent_name,
+                                       "identity"        => @identity,
                                        "hostname"        => Socket.gethostname,
                                        "version"         => AgentConfig.protocol_version,
                                        "brokers"         => @broker.stats(reset),
@@ -541,6 +545,7 @@ module RightScale
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
       @agent_type = parsed_identity.agent_type
+      @agent_name = @options[:agent_name]
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
 
       @remaining_setup = {}

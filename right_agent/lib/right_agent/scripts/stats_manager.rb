@@ -136,10 +136,10 @@ module RightScale
         begin
           count += 1 if request_agent_stats(agent_name, options)
         rescue Exception => e
-          puts "Command to #{agent_name} agent failed (#{e})" unless e.is_a?(SystemExit)
+          $stderr.puts "Command to #{agent_name} agent failed (#{e})" unless e.is_a?(SystemExit)
         end
       end
-      puts("No agents running") if count == 0
+      $stderr.puts("No agents running") if count == 0
     end
 
     # Request and display statistics for agent
@@ -179,7 +179,7 @@ module RightScale
     def init_log
       Log.program_name = "stats_manager"
       Log.log_to_file_only(true)
-      Log.init("stats_manager", Platform.filesystem.log_dir, :print => true)
+      Log.init("stats_manager", Platform.filesystem.temp_dir, :print => true)
       true
     end
 
@@ -208,12 +208,12 @@ module RightScale
     def display(agent_name, result, options)
       result = RightScale::OperationResult.from_results(@command_serializer.load(result))
       if options[:json]
-        puts result.content.to_json
+        $stdout.puts result.content.to_json
       else
         if result.respond_to?(:success?) && result.success?
-          puts "\n#{stats_str(result.content)}\n"
+          $stdout.puts "\n#{stats_str(result.content)}\n"
         else
-          puts "\nCould notretrieve #{agent_name} agent stats: #{result.inspect}"
+          $stderr.puts "\nCould not retrieve #{agent_name} agent stats: #{result.inspect}"
         end
       end
       true
@@ -228,7 +228,7 @@ module RightScale
     # === Return
     # exits the program
     def fail(message, print_usage = false)
-      puts "** #{message}"
+      $stderr.puts "** #{message}"
       RDoc::usage_from_file(__FILE__) if print_usage
       exit(1)
     end

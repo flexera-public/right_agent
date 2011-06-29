@@ -651,6 +651,31 @@ describe RightScale::StatsHelper do
                        "              float_value       : 3.2\n"
     end
 
+    it "should display name if provided" do
+      sub_stats = {"exceptions" => @exceptions.stats,
+                   "empty_hash" => {},
+                   "float_value" => 3.15}
+
+      stats = {"stat time" => @now,
+               "last reset time" => @now,
+               "service uptime" => 1000,
+               "hostname" => "localhost",
+               "identity" => "unit tester",
+               "name" => "tester_1",
+               "stuff stats" => sub_stats}
+
+      result = stats_str(stats)
+      result.should == "name        : tester_1\n" +
+                       "identity    : unit tester\n" +
+                       "hostname    : localhost\n" +
+                       "stat time   : Mon Jan 12 05:46:40\n" +
+                       "last reset  : Mon Jan 12 05:46:40\n" +
+                       "service up  : 16 min 40 sec\n" +
+                       "stuff       : empty_hash        : none\n" +
+                       "              exceptions        : none\n" +
+                       "              float_value       : 3.2\n"
+    end
+
   end # Formatting
 
 end # RightScale::StatsHelper

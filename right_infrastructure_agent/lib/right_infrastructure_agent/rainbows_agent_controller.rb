@@ -52,6 +52,9 @@ module RightScale
             Log.info("Deployment is missing configuration file for any agents of type " +
                      "#{agent_types.inspect} in #{cfg_dir}, need to run rad!")
           end
+        rescue PidFile::AlreadyRunning
+          Log.error("#{agent_name} already running")
+          EM.stop
         rescue Exception => e
           Log.error("Failed to start #{agent_name} agent", e, :trace)
           EM.stop

@@ -499,7 +499,7 @@ module RightScale
     # Converts server statistics to a displayable format
     #
     # === Parameters
-    # stats(Hash):: Statistics with generic keys "identity", "hostname", "service uptime",
+    # stats(Hash):: Statistics with generic keys "name", "identity", "hostname", "service uptime",
     #   "machine uptime", "stat time", "last reset time", "version", and "broker" with the
     #   latter two and "machine uptime" being optional; any other keys ending with "stats"
     #   have an associated hash value that is displayed in sorted key order
@@ -508,11 +508,12 @@ module RightScale
     # (String):: Display string
     def stats_str(stats)
       name_width = MAX_STAT_NAME_WIDTH
-      str = sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "identity", stats["identity"]) +
-            sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "hostname", stats["hostname"]) +
-            sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "stat time", time_at(stats["stat time"])) +
-            sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "last reset", time_at(stats["last reset time"])) +
-            sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "service up", elapsed(stats["service uptime"]))
+      str = stats["name"] ? sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "name", stats["name"]) : ""
+      str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "identity", stats["identity"]) +
+             sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "hostname", stats["hostname"]) +
+             sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "stat time", time_at(stats["stat time"])) +
+             sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "last reset", time_at(stats["last reset time"])) +
+             sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "service up", elapsed(stats["service uptime"]))
       str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "machine up", elapsed(stats["machine uptime"])) if stats.has_key?("machine uptime")
       str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "version", stats["version"].to_i) if stats.has_key?("version")
       str += brokers_str(stats["brokers"], name_width) if stats.has_key?("brokers")
