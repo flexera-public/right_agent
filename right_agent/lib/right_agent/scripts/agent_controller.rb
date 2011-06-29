@@ -414,7 +414,7 @@ module RightScale
     # (Boolean):: true if process is running, otherwise false
     def show_agent(agent_name)
       res = false
-      if (pid_file = AgentConfig.pid_file(agent_name) && (pid = pid_file.read_pid[:pid])
+      if (pid_file = AgentConfig.pid_file(agent_name)) && (pid = pid_file.read_pid[:pid])
         pgid = Process.getpgid(pid) rescue -1
         name = human_readable_name(agent_name, pid_file.identity)
         if pgid != -1

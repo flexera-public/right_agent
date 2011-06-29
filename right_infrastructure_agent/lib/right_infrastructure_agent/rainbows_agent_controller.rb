@@ -45,6 +45,7 @@ module RightScale
             agent_name = form_agent_name(agent_type, worker_index)
             cfg = configure(agent_type, agent_name, worker_index, options)
             cfg.merge!(options.merge(FORCED_OPTIONS))
+            cfg[:agent_name] = agent_name
             Log.info("Starting #{agent_name} agent with the following options:\n" +
                      "  #{cfg.map { |k, v| "#{k}: #{v.inspect}" }.sort.join("\n  ")}")
             @@agent = InfrastructureAgent.start(cfg)
