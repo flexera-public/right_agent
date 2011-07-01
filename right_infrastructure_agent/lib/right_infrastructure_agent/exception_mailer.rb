@@ -24,11 +24,12 @@ module RightScale
 
       self.notification_recipients = options[:notify] || nil
 
-      name = "#{options[:agent]}_agent"
+      name = "#{options[:agent_name]}_agent"
       name = "#{ENV['RAILS_ENV']}_#{name}" if ENV['RAILS_ENV']
+      meth = "#{options[:agent_type]}_receive_loop".to_sym
       self.notification_sender = "#{name}@#{`hostname --fqdn 2> /dev/null || hostname 2> /dev/null`}"
       options[:exception_callback] = Proc.new do |e, msg, _|
-        self.deliver_notification(:mapper_receive_loop, msg, e)
+        self.deliver_notification(meth, msg, e)
       end
     end
 

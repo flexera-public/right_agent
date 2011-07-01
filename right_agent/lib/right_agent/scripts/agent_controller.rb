@@ -135,7 +135,6 @@ module RightScale
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
       end 
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
-      @options[:exception_callback] = lambda { |e, msg, _| AgentManager.process_exception(e, msg) }
       FileUtils.mkdir_p(@options[:pid_dir]) unless @options[:pid_dir].nil? || File.directory?(@options[:pid_dir])
 
       # Execute request
