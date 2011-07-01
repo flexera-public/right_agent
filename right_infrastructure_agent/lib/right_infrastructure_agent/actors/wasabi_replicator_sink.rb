@@ -42,7 +42,7 @@ class WasabiReplicatorSink
     attrs   = options[:attrs]
     klass   = options[:klass].constantize
 
-    Log.info("GlobalObjectReplica: Processing global object change for #{klass.name}/#{options[:id]}")
+    RightScale::Log.info("GlobalObjectReplica: Processing global object change for #{klass.name}/#{options[:id]}")
 
     action  = "wasabi_replicator_sink/handle_global_object_change for #{klass.name}/#{options[:id]} " +
               "(schema verison #{options[:schema_version]}, global object version #{options[:global_object_version]})"
@@ -71,10 +71,10 @@ class WasabiReplicatorSink
 
     success = query("wasabi_replicator_sink/verify_replicas for  #{replica_class.name}", nil, :email_errors => true) do
       if(replica_class.calculate_global_object_checksum(checksum_type) == checksum_value)
-        Log.info("GlobalObjectReplica: Verified #{replica_class.name} global_object_version_sum.")
+        RightScale::Log.info("GlobalObjectReplica: Verified #{replica_class.name} global_object_version_sum.")
         set_global_object_replication_status(replica_class.name, checksum_type, :completed => true)
       else
-        Log.info("GlobalObjectReplica: Verification of #{replica_class.name} global_object_version_sum failed.  Beginning synchronization.")
+        RightScale::Log.info("GlobalObjectReplica: Verification of #{replica_class.name} global_object_version_sum failed.  Beginning synchronization.")
         set_global_object_replication_status(replica_class.name, checksum_type, :start => true)
 
         max_id = replica_class.max_id
@@ -114,8 +114,8 @@ class WasabiReplicatorSink
 
 
     success = query("wasabi_replicator_sink/synchronize_replica_range for #{replica_class.name}", nil, :email_errors => true) do
-      Log.info("GlobalObjectReplica: Synchronizing #{replica_class.name} range #{begin_id}-#{end_id} (#{checksum_type} " +
-        "#{checksum_matched ? 'match' : 'mismatch'}) #{records.size} rows received.")
+      RightScale::Log.info("GlobalObjectReplica: Synchronizing #{replica_class.name} range #{begin_id}-#{end_id} (#{checksum_type} " +
+                           "#{checksum_matched ? 'match' : 'mismatch'}) #{records.size} rows received.")
       records.each do |h|
         h = RightScale::SerializationHelper.symbolize_keys(h)
         replica_class.handle_global_object_change(h[:id], h[:schema_version], h[:global_object_version], h[:attrs])
@@ -129,7 +129,7 @@ class WasabiReplicatorSink
         next_begin_id, next_end_id = calculate_next_range_for_binary_sync(max_id_at_start, replica_class.will_replicate_initialization_chunk_size, begin_id, end_id, in_sync)
         verify_next_replica_range(replica_class, checksum_type, max_id_at_start, next_begin_id, next_end_id)
       else
-        Log.info("GlobalObjectReplica: Synchronization of #{replica_class.name} complete at row #{end_id}")
+        RightScale::Log.info("GlobalObjectReplica: Synchronization of #{replica_class.name} complete at row #{end_id}")
         set_global_object_replication_status(replica_class.name, checksum_type, :completed => true)
       end
       true
@@ -256,7 +256,7 @@ class WasabiReplicatorSink
       status.last_sync_start_at = Time.now if options[:start]
       status.save!
     rescue Exception => e
-      Log.error("Failed to update global object replication status", e, :trace)
+      RightScale::Log.error("Failed to update global object replication status", e, :trace)
     end
   end
 end
