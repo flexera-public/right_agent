@@ -28,6 +28,8 @@ class AgentManager
   include RightScale::Actor
   include RightScale::OperationResultHelper
 
+  on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
+
   expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect
 
   # Valid log levels
