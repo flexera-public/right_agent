@@ -35,33 +35,34 @@
 #    rnac [options]
 #
 #    options:
-#      --start, -s AGENT    Start agent named AGENT
-#      --stop, -p AGENT     Stop agent named AGENT
-#      --stop-agent ID      Stop agent with serialized identity ID
-#      --kill, -k PIDFILE   Kill process with given process id file
-#      --killall, -K        Stop all running agents
-#      --decommission, -d   Send decommission signal to agent
-#      --shutdown, -S       Send a terminate request to agent
-#      --status, -U         List running agents on local machine
-#      --identity, -i ID    Use base id ID to build agent's identity
-#      --token, -t TOKEN    Use token TOKEN to build agent's identity
-#      --prefix, -x PREFIX  Use prefix PREFIX to build agent's identity
-#      --type TYPE          Use agent type TYPE to build agent's' identity,
-#                           defaults to AGENT with any trailing '_[0-9]+' removed
-#      --list, -l           List all configured agents
-#      --user, -u USER      Set AMQP user
-#      --pass, -p PASS      Set AMQP password
-#      --vhost, -v VHOST    Set AMQP vhost
-#      --host, -h HOST      Set AMQP server hostname
-#      --port, -P PORT      Set AMQP server port
-#      --cfg-dir, -c DIR    Set directory containing configuration for all agents
-#      --pid-dir, -z DIR    Set directory containing agent process id files
-#      --log-dir DIR        Set log directory
-#      --log-level LVL      Log level (debug, info, warning, error or fatal)
-#      --foreground, -f     Run agent in foreground
-#      --interactive, -I    Spawn an irb console after starting agent
-#      --test               Use test settings
-#      --help               Display help
+#      --start, -s AGENT      Start agent named AGENT
+#      --stop, -p AGENT       Stop agent named AGENT
+#      --stop-agent ID        Stop agent with serialized identity ID
+#      --kill, -k PIDFILE     Kill process with given process id file
+#      --killall, -K          Stop all running agents
+#      --decommission, -d     Send decommission signal to instance agent
+#      --shutdown, -S [AGENT] Send a terminate request to agent named AGENT,
+#                             defaults to 'instance'
+#      --status, -U           List running agents on local machine
+#      --identity, -i ID      Use base id ID to build agent's identity
+#      --token, -t TOKEN      Use token TOKEN to build agent's identity
+#      --prefix, -x PREFIX    Use prefix PREFIX to build agent's identity
+#      --type TYPE            Use agent type TYPE to build agent's' identity,
+#                             defaults to AGENT with any trailing '_[0-9]+' removed
+#      --list, -l             List all configured agents
+#      --user, -u USER        Set AMQP user
+#      --pass, -p PASS        Set AMQP password
+#      --vhost, -v VHOST      Set AMQP vhost
+#      --host, -h HOST        Set AMQP server hostname
+#      --port, -P PORT        Set AMQP server port
+#      --cfg-dir, -c DIR      Set directory containing configuration for all agents
+#      --pid-dir, -z DIR      Set directory containing agent process id files
+#      --log-dir DIR          Set log directory
+#      --log-level LVL        Log level (debug, info, warning, error or fatal)
+#      --foreground, -f       Run agent in foreground
+#      --interactive, -I      Spawn an irb console after starting agent
+#      --test                 Use test settings
+#      --help                 Display help
 
 require 'optparse'
 require 'yaml'
@@ -193,6 +194,11 @@ module RightScale
           options[:agent_name] = 'instance'
         end
 
+        opts.on("-S", "--shutdown [AGENT]") do |a|
+          options[:action] = 'shutdown'
+          options[:agent_name] = a || 'instance'
+        end
+
         opts.on("-U", "--status") do
           options[:action] = 'show'
         end
@@ -228,10 +234,6 @@ module RightScale
 
         opts.on("-I", "--interactive") do
           options[:console] = true
-        end
-
-        opts.on("-S", "--shutdown") do
-          options[:action] = 'shutdown'
         end
 
         opts.on_tail("--help") do
@@ -385,21 +387,23 @@ module RightScale
     # (Boolean):: true if process was stopped, otherwise false
     def stop_agent(agent_name)
       res = false
-      if (pid_file = AgentConfig.pid_file(agent_name)) && (pid = pid_file.read_pid[:pid])
+      if pid_file = AgentConfig.pid_file(agent_name)
         name = human_readable_name(agent_name, pid_file.identity)
-        begin
-          Process.kill('TERM', pid)
-          res = true
-          puts "#{name} stopped."
-        rescue Errno::ESRCH
-          puts "#{name} not running."
-        end
-      else
-        if pid_file && File.file?(pid_file.to_s)
+        if pid = pid_file.read_pid[:pid]
+          begin
+            Process.kill('TERM', pid)
+            res = true
+            puts "#{name} stopped"
+          rescue Errno::ESRCH
+            puts "#{name} not running"
+          end
+        elsif File.file?(pid_file.to_s)
           puts "Invalid pid file '#{pid_file.to_s}' content: #{IO.read(pid_file.to_s)}"
         else
-          puts "Non-existent pid file for #{agent_name}"
+          puts "#{name} not running"
         end
+      else
+        puts "Non-existent pid file for #{agent_name}"
       end
       res
     end

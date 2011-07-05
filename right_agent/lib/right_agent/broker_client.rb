@@ -440,7 +440,7 @@ module RightScale
     #
     # === Parameters
     # propagate(Boolean):: Whether to propagate connection status updates, defaults to true
-    # normal(Boolean):: Whether this is a normal close vs. a failed connetcion, defaults to true
+    # normal(Boolean):: Whether this is a normal close vs. a failed connection, defaults to true
     # log(Boolean):: Whether to log that closing, defaults to true
     #
     # === Block

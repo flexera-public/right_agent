@@ -41,7 +41,7 @@
 #      --stop-agent ID      Stop agent with serialized identity ID
 #      --kill, -k PIDFILE   Kill process with given process id file
 #      --killall, -K        Stop all running agents
-#      --shutdown, -S       Send a terminate request to agent
+#      --shutdown, -S AGENT Send a terminate request to agent named AGENT
 #      --status, -U         List running agents on local machine
 #      --identity, -i ID    Use base id ID to build agent's identity
 #      --token, -t TOKEN    Use token TOKEN to build agent's identity

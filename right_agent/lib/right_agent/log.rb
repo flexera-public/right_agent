@@ -142,6 +142,7 @@ module RightScale
     # === Return
     # (Object):: Result from first registered logger
     def warning(description, exception = nil, backtrace = :caller)
+      init unless @initialized
       @logger.warn(format(description, exception, backtrace))
     end
 
@@ -158,6 +159,7 @@ module RightScale
     # === Return
     # (Object):: Result from first registered logger
     def error(description, exception = nil, backtrace = :caller)
+      init unless @initialized
       @logger.error(format(description, exception, backtrace))
     end
 

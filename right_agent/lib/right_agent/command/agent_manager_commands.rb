@@ -33,7 +33,8 @@ module RightScale
       :set_log_level    => 'Set log level to options[:level]',
       :get_log_level    => 'Get log level',
       :ping             => 'Ping agent',
-      :stats            => 'Get statistics about agent operation'
+      :stats            => 'Get statistics about agent operation',
+      :terminate        => 'Terminate agent'
     }
 
     # Build hash of commands associating command names with block
@@ -114,6 +115,18 @@ module RightScale
     # true
     def stats_command(opts)
       CommandIO.instance.reply(opts[:conn], @serializer.dump(@agent_manager.stats({:reset => opts[:reset]})))
+    end
+
+    # Terminate command
+    #
+    # === Parameters
+    # opts[:conn](EM::Connection):: Connection used to send reply
+    #
+    # === Return
+    # true:: Always return true
+    def terminate_command(opts)
+      CommandIO.instance.reply(opts[:conn], 'Terminating')
+      @agent_manager.terminate
     end
 
   end # AgentManagerCommands

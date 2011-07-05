@@ -30,7 +30,7 @@ class AgentManager
 
   on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
 
-  expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect
+  expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect, :terminate
 
   # Valid log levels
   LEVELS = [:debug, :info, :warn, :error, :fatal]
@@ -170,6 +170,20 @@ class AgentManager
       res = error_result("Failed to notify agent that brokers #{options[:brokers]} are unusable: #{e.message}")
     end
     res
+  end
+
+  # Terminate self
+  #
+  # === Parameters
+  # options(Hash):: Terminate options
+  #
+  # === Return
+  # true
+  def terminate(options = nil)
+    RightScale::CommandRunner.stop
+    # Delay terminate a bit to give reply a chance to be sent
+    EM.next_tick { @agent.terminate }
+    true
   end
 
 end
