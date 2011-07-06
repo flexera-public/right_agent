@@ -492,15 +492,15 @@ module RightScale
     # === Return
     # cfg(Hash):: Persisted configuration options
     def configure_agent(action, options)
-      base_id = options[:base_id].to_i
       agent_type = options[:agent_type]
       agent_name = options[:agent_name]
       cfg = AgentConfig.load_cfg(agent_type)
       fail("Deployment is missing configuration file #{AgentConfig.cfg_file(agent_type).inspect}.") unless cfg
       if agent_name != agent_type
+        base_id = (options[:base_id] || AgentIdentity.parse(cfg[:identity]).base_id.to_s).to_i
         unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
                AgentIdentity.parse(identity).base_id == base_id
-          identity = options[:identity]
+          identity = AgentIdentity.new(options[:prefix] || 'rs', options[:agent_type], base_id, options[:token]).to_s
         end
         cfg.merge!(:identity => identity)
         cfg_file = AgentConfig.store_cfg(agent_name, cfg)
