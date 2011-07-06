@@ -31,6 +31,16 @@
 #     rnac --start AGENT --foreground
 #     rnac -s AGENT -f
 #
+#   Start new agent named AGENT of type TYPE:
+#     rnac --start AGENT --type TYPE
+#     rnac -s AGENT -t TYPE
+#
+#   Note: To start multiple agents of the same type generate one
+#         config.yml file with rad and then start each agent with rnac:
+#         rad my_agent
+#         rnac -s my_agent_1 -t my_agent
+#         rnac -s my_agent_2 -t my_agent
+#
 # === Usage:
 #    rnac [options]
 #
@@ -124,11 +134,13 @@ module RightScale
         fail("Missing or invalid pid file #{options[:pid_file]}", print_usage = true)
       end
       if options[:agent_name]
-        cfg_file = AgentConfig.cfg_file(options[:agent_name])
-        fail("Deployment is missing configuration file #{cfg_file.inspect}.") unless File.exists?(cfg_file)
-        cfg = SerializationHelper.symbolize_keys(YAML.load(IO.read(cfg_file)))
+        if action == 'start'
+          cfg = configure_agent(action, options)
+        else
+          cfg = AgentConfig.load_cfg(options[:agent_name])
+          fail("Deployment is missing configuration file #{AgentConfig.cfg_file(options[:agent_name]).inspect}.") unless cfg
+        end
         options = cfg.merge(options)
-        options[:cfg_file] = cfg_file
         AgentConfig.root_dir = options[:root_dir]
         AgentConfig.pid_dir = options[:pid_dir]
         Log.program_name = syslog_program_name(options)
@@ -467,6 +479,31 @@ module RightScale
     # (String):: Program name
     def syslog_program_name(options)
       'RightAgent'
+    end
+
+    # Determine configuration settings for this agent and persist them
+    # Reuse existing agent identity when possible
+    #
+    # === Parameters
+    # action(String):: Requested action
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # cfg(Hash):: Persisted configuration options
+    def self.configure_agent(action, options)
+      base_id = options[:identity]
+      agent_type = options[:agent_type]
+      agent_name = options[:agent_name]
+      cfg = AgentConfig.load_cfg(agent_type)
+      fail("Deployment is missing configuration file #{AgentConfig.cfg_file(agent_type).inspect}.") unless cfg
+      unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
+             AgentIdentity.parse(identity).base_id != base_id
+        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, base_id).to_s
+      end
+      cfg.merge!(:identity => identity)
+      cfg_file = AgentConfig.store_cfg(agent_name, cfg)
+      Log.info("Generated configuration file for #{agent_name} agent: #{cfg_file}")
+      cfg
     end
 
     # Enable the use of an HTTP proxy for this process and its subprocesses

@@ -232,6 +232,37 @@ module RightScale
       cfg_files.map { |c| File.basename(File.dirname(c)) }
     end
 
+    # Get options from agent's configuration file
+    #
+    # === Parameters
+    # agent_name(String):: Agent name
+    #
+    # === Return
+    # options(Hash|nil):: Agent options with key names symbolized,
+    #   or nil if file not accessible or empty
+    def self.load_cfg(agent_name)
+      if (file = cfg_file(agent_name, exists = true)) && File.readable?(file) && (cfg = YAML.load(IO.read(file)))
+        SerializationHelper.symbolize_keys(cfg)
+      end
+    end
+
+    # Write agent's configuration to file
+    #
+    # === Parameters
+    # agent_name(String):: Agent name
+    # cfg(Hash):: Configuration options
+    #
+    # === Return
+    # cfg_file(String):: Configuration file path name
+    def self.store_cfg(agent_name, cfg)
+      file = cfg_file(agent_name)
+      FileUtils.mkdir_p(File.dirname(file))
+      File.delete(file) if File.exists?(file)
+      File.open(file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
+      File.open(file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
+      file
+    end
+
     # Path to directory containing agent process id files
     #
     # === Return
@@ -248,7 +279,7 @@ module RightScale
     # === Return
     # (PidFile|nil):: Process id file, or nil if there is no configuration file for agent
     def self.pid_file(agent_name)
-      if options = load_cfg_file(agent_name)
+      if options = load_cfg(agent_name)
         PidFile.new(options[:identity], options[:pid_dir])
       end
     end
@@ -268,7 +299,7 @@ module RightScale
     #   :listen_port(Integer):: Agent command listen port if available
     #   :cookie(String):: Agent command cookie if available
     def self.agent_options(agent_name)
-      if options = load_cfg_file(agent_name)
+      if options = load_cfg(agent_name)
         @root_dirs = array(options[:root_dir])
         @pid_dir = options[:pid_dir]
         options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
@@ -313,13 +344,6 @@ module RightScale
     # Path to agent directory containing scripts
     def self.scripts_dir2(root_dir)
       File.normalize_path(File.join(root_dir, "scripts"))
-    end
-
-    # Options from agent's configuration file, or nil if file not accessible
-    def self.load_cfg_file(agent_name)
-      if (file = cfg_file(agent_name, exists = true)) && File.readable?(file)
-        SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
-      end
     end
 
     # All existing directories of given type

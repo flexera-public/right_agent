@@ -153,16 +153,14 @@ module RightScale
     def request_agent_stats(agent_name, options)
       res = false
       config_options = AgentConfig.agent_options(agent_name)
-      unless config_options.empty?
-        listen_port = config_options[:listen_port]
-        fail("Could not retrieve #{agent_name} agent listen port") unless listen_port
+      unless config_options.empty? || (listen_port = config_options[:listen_port]).nil?
         client = CommandClient.new(listen_port, config_options[:cookie])
         command = {:name => :stats, :reset => options[:reset]}
         begin
           client.send_command(command, options[:verbose], options[:timeout]) { |r| display(agent_name, r, options) }
           res = true
         rescue Exception => e
-          msg = "Could notretrieve #{agent_name} agent stats: #{e}"
+          msg = "Could not retrieve #{agent_name} agent stats: #{e}"
           msg += "\n" + e.backtrace.join("\n") unless e.message =~ /Timed out/
           fail(msg)
         end

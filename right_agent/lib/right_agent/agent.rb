@@ -86,7 +86,6 @@ module RightScale
     #   :agent_name(String):: Local name for this agent
     #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init,
     #     defaults to current working directory
-    #   :cfg_file(String):: Path to this agent's configuration file
     #   :pid_dir(String):: Path to the directory where the agent stores its process id file (only if daemonized),
     #     defaults to the current working directory
     #   :log_dir(String):: Log directory path, defaults to the platform specific log directory
@@ -183,7 +182,7 @@ module RightScale
         @all_setup.each { |s| @remaining_setup[s] = @broker.all }
         @broker.connection_status(:one_off => @options[:connect_timeout]) do |status|
           if status == :connected
-            # need to give EM (on Windows) a chance to respond to the AMQP handshake
+            # Need to give EM (on Windows) a chance to respond to the AMQP handshake
             # before doing anything interesting to prevent AMQP handshake from
             # timing-out; delay post-connected activity a second.
             EM.add_timer(1) do
@@ -569,16 +568,16 @@ module RightScale
     # === Return
     # (Boolean):: true if successful, otherwise false
     def update_configuration(opts)
-      res = false
-      cfg_file = @options[:cfg_file] || AgentConfig.cfg_file(@agent_type)
-      if File.exists?(cfg_file) && cfg = YAML.load(IO.read(cfg_file))
+      if cfg = AgentConfig.load_cfg(@agent_name)
         opts.each { |k, v| cfg[k] = v if cfg.has_key?(k) }
-        File.open(cfg_file, 'w') { |fd| fd.write(YAML.dump(cfg)) }
-        res = true
+        AgentConfig.store_cfg(@agent_name, cfg)
+        true
+      else
+        Log.error("Could not access configuration file #{AgentConfig.cfg_file(@agent_name).inspect} for update")
+        false
       end
-      res
     rescue Exception => e
-      Log.error("Failed updating configuration file #{cfg_file}", e, :trace)
+      Log.error("Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e, :trace)
       false
     end
 

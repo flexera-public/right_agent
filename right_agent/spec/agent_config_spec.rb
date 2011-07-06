@@ -50,7 +50,7 @@ describe RightScale::AgentConfig do
     FileUtils.mkdir_p(@lib1 = File.join(@root_dir1, 'lib'))
     FileUtils.mkdir_p(@scripts3 = File.join(@root_dir3, 'scripts'))
     FileUtils.mkdir_p(@cfg_dir = File.join(@test_dir, 'cfg'))
-    FileUtils.mkdir_p(@cfg_agent1_dir = File.join(@cfg_dir, 'agent1'))
+    FileUtils.mkdir_p(@cfg_agent1_dir = File.join(@cfg_dir, 'agent_1'))
     FileUtils.mkdir_p(@pid_dir = File.join(@test_dir, 'pid'))
     @agent_options1 = {
       :identity => @agent_id1,
@@ -59,7 +59,12 @@ describe RightScale::AgentConfig do
       :pid_dir  => @pid_dir
     }
     File.open(@cfg_agent1 = File.join(@cfg_agent1_dir, 'config.yml'), "w") { |f| f.puts(YAML.dump(@agent_options1)) }
-    FileUtils.mkdir_p(@cfg_agent2_dir = File.join(@cfg_dir, 'agent2'))
+    @agent_id2 = "rs-agent-2-2"
+    @agent_options2 = {
+      :identity => @agent_id1,
+      :root_dir => @root_dir2,
+    }
+    FileUtils.mkdir_p(@cfg_agent2_dir = File.join(@cfg_dir, 'agent_2'))
     FileUtils.touch([@cfg_agent2 = File.join(@cfg_agent2_dir, 'config.yml')])
     @pid = 12345
     File.open(@cookie_file = File.join(@pid_dir, "#{@agent_id1}.pid"), "w") { |f| f.puts(@pid) }
@@ -168,13 +173,13 @@ describe RightScale::AgentConfig do
 
   it 'should return the configuration file path for an agent' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.cfg_file('agent1').should == @cfg_agent1
+    @agent_config.cfg_file('agent_1').should == @cfg_agent1
     @agent_config.cfg_file('no_agent').should == File.join(@cfg_dir, 'no_agent', 'config.yml')
   end
 
   it 'should check if agent configuration file exists if requested to' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.cfg_file('agent1', exists = true).should == @cfg_agent1
+    @agent_config.cfg_file('agent_1', exists = true).should == @cfg_agent1
     @agent_config.cfg_file('no_agent', exists = true).should be_nil
   end
 
@@ -185,18 +190,30 @@ describe RightScale::AgentConfig do
 
   it 'should return a list of all configured agents' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.cfg_agents.should == ['agent1', 'agent2']
+    @agent_config.cfg_agents.should == ['agent_1', 'agent_2']
+  end
+
+  it 'should load agent options from a configuration file and symbolize the keys' do
+    @agent_config.cfg_dir = @cfg_dir
+    @agent_config.load_cfg('agent_1').should == @agent_options1
+    @agent_config.load_cfg("no_agent").should == nil
+  end
+
+  it 'should store agent options in a configuration file in YAML format' do
+    @agent_config.cfg_dir = @cfg_dir
+    @agent_config.store_cfg("agent_2", @agent_options2) == @agent_config.cfg_file("agent_2")
+    @agent_config.load_cfg('agent_2').should == @agent_options2
   end
 
   it 'should return the process id file object for an agent' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.pid_file('agent1').identity.should == @agent_id1
+    @agent_config.pid_file('agent_1').identity.should == @agent_id1
     @agent_config.pid_file('no_agent').should be_nil
   end
 
   it 'should return the agent options retrieved from the configuration file and associated pid file' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.agent_options('agent1').should == @agent_options1.merge(@agent_cookie1.merge(:pid => @pid, :log_path => @tmp_dir))
+    @agent_config.agent_options('agent_1').should == @agent_options1.merge(@agent_cookie1.merge(:pid => @pid, :log_path => @tmp_dir))
     @agent_config.agent_options("no_agent").should == {}
   end
 

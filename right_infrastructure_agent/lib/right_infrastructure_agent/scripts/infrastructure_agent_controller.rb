@@ -32,6 +32,16 @@
 #     rnac --start AGENT --foreground
 #     rnac -s AGENT -f
 #
+#   Start new agent named AGENT of type TYPE:
+#     rnac --start AGENT --type TYPE
+#     rnac -s AGENT -t TYPE
+#
+#   Note: To start multiple agents of the same type generate one
+#         config.yml file with rad and then start each agent with rnac:
+#         rad my_agent
+#         rnac -s my_agent_1 -t my_agent
+#         rnac -s my_agent_2 -t my_agent
+#
 # === Usage:
 #    rnac [options]
 #

@@ -233,8 +233,8 @@ module RightScale
     # cfg(Hash):: Initial agent configuration options
     def load_init_cfg
       cfg = {}
-      if cfg_file = AgentConfig.init_cfg_file
-        cfg = SerializationHelper.symbolize_keys(YAML.load(IO.read(cfg_file))) rescue nil
+      if (cfg_file = AgentConfig.init_cfg_file) && (cfg_data = YAML.load(IO.read(cfg_file)))
+        cfg = SerializationHelper.symbolize_keys(cfg_data) rescue nil
         fail("Cannot read configuration for agent #{cfg_file.inspect}") unless cfg
       end
       cfg
@@ -308,14 +308,9 @@ module RightScale
     def persist(options, cfg)
       overrides = options[:options]
       overrides.each { |k, v| cfg[k] = v } if overrides
-      agent_name = options[:agent_name]
-      cfg_file = AgentConfig.cfg_file(agent_name)
-      FileUtils.mkdir_p(File.dirname(cfg_file))
-      File.delete(cfg_file) if File.exists?(cfg_file)
-      File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
-      File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
+      cfg_file = AgentConfig.store_cfg(options[:agent_name], cfg)
       unless options[:quiet]
-        puts "Generated configuration file for #{agent_name} agent: #{cfg_file}"
+        puts "Generated configuration file for #{options[:agent_name]} agent: #{cfg_file}"
       end
       true
     end

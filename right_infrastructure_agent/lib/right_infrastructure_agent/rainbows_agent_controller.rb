@@ -23,6 +23,7 @@ module RightScale
 
     # Start agent
     # Choose agent type from candidate types based on contents of configuration directory
+    # Assign agent name by using worker index to suffix agent type
     #
     # === Parameters
     # agent_types(Array):: Type name for candidate agents
@@ -43,7 +44,7 @@ module RightScale
           AgentConfig.cfg_dir = options[:cfg_dir]
           if agent_type = pick_agent_type(agent_types)
             agent_name = form_agent_name(agent_type, worker_index)
-            cfg = configure(agent_type, agent_name, worker_index, options)
+            cfg = configure_agent(agent_type, agent_name, worker_index, options)
             cfg.merge!(options.merge(FORCED_OPTIONS))
             cfg[:agent_name] = agent_name
             ExceptionMailer.configure_exception_callback(cfg)
@@ -108,7 +109,7 @@ module RightScale
     # === Return
     # (String):: Agent name
     def self.form_agent_name(type, index)
-      index == 0 ? type : "#{type}_#{index + 1}"
+      "#{type}_#{index + 1}"
     end
 
     # Determine configuration settings for this agent and persist them
@@ -124,18 +125,14 @@ module RightScale
     #
     # === Return
     # cfg(Hash):: Persisted configuration options
-    def self.configure(agent_type, agent_name, worker_index, options)
+    def self.configure_agent(agent_type, agent_name, worker_index, options)
       cfg = AgentConfig.agent_options(agent_type)
       unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
              (options[:base_id] && AgentIdentity.parse(identity).base_id != options[:base_id])
         identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
       end
       cfg.merge!(:identity => identity)
-      cfg_file = AgentConfig.cfg_file(agent_name)
-      FileUtils.mkdir_p(File.dirname(cfg_file))
-      File.delete(cfg_file) if File.exists?(cfg_file)
-      File.open(cfg_file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
-      File.open(cfg_file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
+      cfg_file = AgentConfig.store_cfg(agent_name, cfg)
       Log.info("Generated configuration file for #{agent_name} agent: #{cfg_file}")
       cfg
     end
