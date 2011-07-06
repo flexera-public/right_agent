@@ -140,13 +140,14 @@ module RightScale
           cfg = AgentConfig.load_cfg(options[:agent_name])
           fail("Deployment is missing configuration file #{AgentConfig.cfg_file(options[:agent_name]).inspect}.") unless cfg
         end
+        options.delete(:identity)
         options = cfg.merge(options)
         AgentConfig.root_dir = options[:root_dir]
         AgentConfig.pid_dir = options[:pid_dir]
         Log.program_name = syslog_program_name(options)
         Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
-      end 
+      end
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
       FileUtils.mkdir_p(@options[:pid_dir]) unless @options[:pid_dir].nil? || File.directory?(@options[:pid_dir])
 
@@ -178,7 +179,7 @@ module RightScale
         parse_other_args(opts, options)
 
         opts.on("-s", "--start AGENT") do |a|
-          options[:action] = 'run'
+          options[:action] = 'start'
           options[:agent_name] = a
         end
 
@@ -291,7 +292,7 @@ module RightScale
       # Setup the environment from config if necessary
       begin
         case action
-          when 'run'          then start_agent
+          when 'start'        then start_agent
           when 'stop'         then stop_agent(agent_name)
           when 'show'         then show_agent(agent_name)
           when 'decommission' then run_command('Decommissioning...', 'decommission')
@@ -481,7 +482,7 @@ module RightScale
       'RightAgent'
     end
 
-    # Determine configuration settings for this agent and persist them
+    # Determine configuration settings for this agent and persist them if needed
     # Reuse existing agent identity when possible
     #
     # === Parameters
@@ -490,19 +491,21 @@ module RightScale
     #
     # === Return
     # cfg(Hash):: Persisted configuration options
-    def self.configure_agent(action, options)
-      base_id = options[:identity]
+    def configure_agent(action, options)
+      base_id = options[:base_id].to_i
       agent_type = options[:agent_type]
       agent_name = options[:agent_name]
       cfg = AgentConfig.load_cfg(agent_type)
       fail("Deployment is missing configuration file #{AgentConfig.cfg_file(agent_type).inspect}.") unless cfg
-      unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
-             AgentIdentity.parse(identity).base_id != base_id
-        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, base_id).to_s
+      if agent_name != agent_type
+        unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
+               AgentIdentity.parse(identity).base_id == base_id
+          identity = options[:identity]
+        end
+        cfg.merge!(:identity => identity)
+        cfg_file = AgentConfig.store_cfg(agent_name, cfg)
+        puts "Generated configuration file for #{agent_name} agent: #{cfg_file}"
       end
-      cfg.merge!(:identity => identity)
-      cfg_file = AgentConfig.store_cfg(agent_name, cfg)
-      Log.info("Generated configuration file for #{agent_name} agent: #{cfg_file}")
       cfg
     end
 

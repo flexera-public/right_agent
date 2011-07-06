@@ -126,7 +126,6 @@ module RightScale
         token = options[:token]
         token = RightScale::SecureIdentity.derive(base_id, options[:token]) if options[:secure_identity]
         options[:identity] = AgentIdentity.new(options[:prefix] || 'rs', options[:agent_type], base_id, token).to_s
-        puts "NAME: #{options[:agent_name]}  TYPE: #{options[:agent_type]}  ID: #{options[:identity]}"
       end
     end
 

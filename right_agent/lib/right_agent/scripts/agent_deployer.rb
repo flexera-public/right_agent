@@ -310,7 +310,7 @@ module RightScale
       overrides.each { |k, v| cfg[k] = v } if overrides
       cfg_file = AgentConfig.store_cfg(options[:agent_name], cfg)
       unless options[:quiet]
-        puts "Generated configuration file for #{options[:agent_name]} agent: #{cfg_file}"
+        puts "Generated configuration file for #{options[:agent_name]} agent: #{cfg_file}" unless options[:quiet]
       end
       true
     end

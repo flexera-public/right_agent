@@ -32,7 +32,7 @@ module RightScale
     # options(Hash):: Configuration options for agent and following specifically for use here
     #   :cfg_dir(String):: Directory containing configuration for all agents
     #   :prefix(String):: Prefix to build agent identity
-    #   :base_id(String):: Base id to build agent identity, defaults to worker_index
+    #   :base_id(String|Integer):: Base id to build agent identity, defaults to worker_index
     #
     # === Return
     # true:: Always return true
@@ -121,15 +121,16 @@ module RightScale
     # worker_index(Integer):: Rainbows worker index starting at 0
     # options(Hash):: Configuration options
     #   :prefix(String):: Prefix to build agent identity
-    #   :base_id(String):: Base id to build agent identity, defaults to worker_index
+    #   :base_id(String|Integer):: Base id to build agent identity, defaults to worker_index
     #
     # === Return
     # cfg(Hash):: Persisted configuration options
     def self.configure_agent(agent_type, agent_name, worker_index, options)
       cfg = AgentConfig.agent_options(agent_type)
+      base_id = options[:base_id].to_i
       unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
-             (options[:base_id] && AgentIdentity.parse(identity).base_id != options[:base_id])
-        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
+             AgentIdentity.parse(identity).base_id == base_id
+        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, base_id).to_s
       end
       cfg.merge!(:identity => identity)
       cfg_file = AgentConfig.store_cfg(agent_name, cfg)
