@@ -33,6 +33,7 @@ module RightScale
     def set_configuration(opts)
       @identity = super(opts)
       @shared_queue = @options[:shared_queue]
+      @shard_number = @options[:shard_number]
       @all_setup = [:setup_identity_queue] + (@shared_queue ? [:setup_shared_queue] : [])
       @advertise_modulus = (@options[:advertise_interval] || DEFAULT_ADVERTISE_INTERVAL) / @options[:check_interval]
       @advertise_offset = rand(@advertise_modulus)
@@ -151,7 +152,7 @@ module RightScale
     # true:: Always return true
     def advertise_services
       exchange = {:type => :direct, :name => 'shared-registration', :options => {:no_declare => @options[:secure], :durable => true}}
-      packet = Register.new(@identity, @registry.services, self.tags, @broker.all, @shared_queue)
+      packet = Register.new(@identity, @registry.services, self.tags, @broker.all, @shared_queue, @shard_number)
       publish(exchange, packet) unless @terminating
       true
     end
