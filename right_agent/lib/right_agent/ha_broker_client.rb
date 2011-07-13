@@ -1124,40 +1124,45 @@ module RightScale
     # === Return
     # true:: Always return true
     def handle_return(identity, reason, message, to, context)
-      @returns.update("#{alias_(identity)} (#{reason.to_s.downcase})")
-
       @brokers_hash[identity].update_status(:stopping) if reason == "ACCESS_REFUSED"
 
-      name = context.name
-      options = context.options || {}
-      token = context.token
-      one_way = context.one_way
-      persistent = options[:persistent]
-      mandatory = true
-      remaining = (context.brokers - context.failed) & all_connected
-      Log.info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
-               " connected #{all_connected.inspect} remaining #{remaining.inspect}")
-      if remaining.empty?
-        if (persistent || one_way) &&
-           ["ACCESS_REFUSED", "NO_CONSUMERS"].include?(reason) &&
-           !(remaining = context.brokers & all_connected).empty?
-          # Retry because persistent, and this time w/o mandatory so that gets queued even though no consumers
-          mandatory = false
-        else
-          t = token ? " <#{token}>" : ""
-          Log.info("NO ROUTE #{aliases(context.brokers).join(", ")} [#{name}]#{t} to #{to}")
-          @non_delivery.call(reason, context.type, token, context.from, to) if @non_delivery
+      if context
+        @returns.update("#{alias_(identity)} (#{reason.to_s.downcase})")
+        name = context.name
+        options = context.options || {}
+        token = context.token
+        one_way = context.one_way
+        persistent = options[:persistent]
+        mandatory = true
+        remaining = (context.brokers - context.failed) & all_connected
+        Log.info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
+                 " connected #{all_connected.inspect} remaining #{remaining.inspect}")
+        if remaining.empty?
+          if (persistent || one_way) &&
+             ["ACCESS_REFUSED", "NO_CONSUMERS"].include?(reason) &&
+             !(remaining = context.brokers & all_connected).empty?
+            # Retry because persistent, and this time w/o mandatory so that gets queued even though no consumers
+            mandatory = false
+          else
+            t = token ? " <#{token}>" : ""
+            Log.info("NO ROUTE #{aliases(context.brokers).join(", ")} [#{name}]#{t} to #{to}")
+            @non_delivery.call(reason, context.type, token, context.from, to) if @non_delivery
+          end
         end
-      end
 
-      unless remaining.empty?
-        t = token ? " <#{token}>" : ""
-        p = persistent ? ", persistent" : ""
-        m = mandatory ? ", mandatory" : ""
-        Log.info("RE-ROUTE #{aliases(remaining).join(", ")} [#{context.name}]#{t} to #{to}#{p}#{m}")
-        exchange = {:type => :queue, :name => to, :options => {:no_declare => true}}
-        publish(exchange, message, options.merge(:no_serialize => true, :brokers => remaining,
-                                                 :persistent => persistent, :mandatory => mandatory))
+        unless remaining.empty?
+          t = token ? " <#{token}>" : ""
+          p = persistent ? ", persistent" : ""
+          m = mandatory ? ", mandatory" : ""
+          Log.info("RE-ROUTE #{aliases(remaining).join(", ")} [#{context.name}]#{t} to #{to}#{p}#{m}")
+          exchange = {:type => :queue, :name => to, :options => {:no_declare => true}}
+          publish(exchange, message, options.merge(:no_serialize => true, :brokers => remaining,
+                                                   :persistent => persistent, :mandatory => mandatory))
+        end
+      else
+        @returns.update("#{alias_(identity)} (#{reason.to_s.downcase} - missing context)")
+        Log.info("Dropping message returned from broker #{identity} for reason #{reason} " +
+                 "because no message context available for re-routing it to #{to}")
       end
       true
     end

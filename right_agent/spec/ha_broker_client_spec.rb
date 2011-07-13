@@ -1094,6 +1094,12 @@ describe RightScale::HABrokerClient do
           called.should == 1
         end
 
+        it "should log info if no message context available for re-routing it" do
+          flexmock(RightScale::Log).should_receive(:info).with(/Dropping/).once
+          ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
+          ha.__send__(:handle_return, @identity4, "any reason", @message, "to", nil)
+        end
+
       end
 
     end # returning

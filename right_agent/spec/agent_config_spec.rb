@@ -196,7 +196,8 @@ describe RightScale::AgentConfig do
   it 'should load agent options from a configuration file and symbolize the keys' do
     @agent_config.cfg_dir = @cfg_dir
     @agent_config.load_cfg('agent_1').should == @agent_options1
-    @agent_config.load_cfg("no_agent").should == nil
+    @agent_config.load_cfg('agent_2').should be_nil
+    @agent_config.load_cfg("no_agent").should be_nil
   end
 
   it 'should store agent options in a configuration file in YAML format' do
