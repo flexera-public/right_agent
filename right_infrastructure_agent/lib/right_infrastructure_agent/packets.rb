@@ -14,7 +14,7 @@ module RightScale
   # Packet for availability notification from an agent to the mappers
   class Register < Packet
 
-    attr_accessor :identity, :services, :tags, :brokers, :shared_queue, :shard_number, :version
+    attr_accessor :identity, :services, :tags, :brokers, :shared_queue, :shard_id, :version
 
     # Create packet
     #
@@ -24,17 +24,17 @@ module RightScale
     # tags(Array(Symbol)):: List of tags associated with this service
     # brokers(Array|nil):: Identity of agent's brokers with nil meaning not supported
     # shared_queue(String):: Name of a queue shared between this agent and another
-    # shard_number(String|nil):: Shard number to which agent is restricted or nil if shard independent
+    # shard_id(Integer|nil):: Shard to which agent is restricted or nil if shard independent
     # version(Array):: Protocol version of the original creator of the packet followed by the
     #   protocol version of the packet contents to be used when sending
     # size(Integer):: Size of request in bytes used only for marshalling
-    def initialize(identity, services, tags, brokers, shared_queue = nil, shard_number = nil, version = [VERSION, VERSION], size = nil)
+    def initialize(identity, services, tags, brokers, shared_queue = nil, shard_id = nil, version = [VERSION, VERSION], size = nil)
       @identity     = identity
       @services     = services
       @tags         = tags
       @brokers      = brokers
       @shared_queue = shared_queue
-      @shard_number = shard_number
+      @shard_id     = shard_id
       @version      = version
       @size         = size
     end
@@ -53,7 +53,7 @@ module RightScale
       else
         version = [DEFAULT_VERSION, DEFAULT_VERSION]
       end
-      new(self.compatible(i['identity']), i['services'], i['tags'], i['brokers'], i['shared_queue'], i['shard_number'], version, o['size'])
+      new(self.compatible(i['identity']), i['services'], i['tags'], i['brokers'], i['shared_queue'], i['shard_id'], version, o['size'])
     end
 
     # Generate log representation
@@ -67,7 +67,7 @@ module RightScale
     def to_s(filter = nil, version = nil)
       log_msg = "#{super(filter, version)} #{id_to_s(@identity)}"
       log_msg += ", shared_queue #{@shared_queue}" if @shared_queue
-      log_msg += ", shard #{@shard_number}" if @shard_number
+      log_msg += ", shard_id #{@shard_id}" if @shard_id
       log_msg += ", services #{@services.inspect}" if @services && !@services.empty?
       log_msg += ", brokers #{@brokers.inspect}" if @brokers && !@brokers.empty?
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty?

@@ -60,7 +60,7 @@
 #      --host, -h HOST          Set AMQP server host for agent
 #      --port, -P PORT          Set AMQP server port for agent
 #      --shared-queue, -q QUEUE Use QUEUE as input for agent in addition to identity queue
-#      --shard, -s N            Set agent shard number to N
+#      --shard, -s ID           Set identifier for shard that agent is servicing
 #      --time-to-live SEC       Set maximum age in seconds before a request expires and is ignored
 #      --retry-timeout SEC      Set maximum number of seconds to retry request before give up
 #      --retry-interval SEC     Set number of seconds before initial request retry, increases exponentially
@@ -106,8 +106,8 @@ module RightScale
         options[:shared_queue] = q
       end
 
-      opts.on('-s', '--shard N') do |n|
-        options[:shard_number] = n
+      opts.on('-s', '--shard ID') do |id|
+        options[:shard_id] = id.to_i
       end
 
       opts.on('-n', '--notify EMAIL') do |email|
@@ -169,7 +169,7 @@ module RightScale
         cfg[:advertise_interval] = options[:advertise_interval] || 60 * 60
         cfg[:instance_queue_ttl] = options[:instance_queue_ttl] || 24 * 60 * 60
         cfg[:secure] = options[:options][:secure] = false
-        cfg[:shard_number] = options[:shard_number] if options[:shard_number]
+        cfg[:shard_id] = options[:shard_id] if options[:shard_id]
         cfg[:notify] = options[:notify] if options[:notify]
       end
       if options[:agent_type] == 'mapper'

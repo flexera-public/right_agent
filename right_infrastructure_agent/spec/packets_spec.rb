@@ -19,7 +19,7 @@ describe "Packet: Register" do
     packet.services.should == packet2.services
     packet.brokers.should == packet2.brokers
     packet.shared_queue.should == packet2.shared_queue
-    packet.shard_number.should == packet2.shard_number
+    packet.shard_id.should == packet2.shard_id
     packet.recv_version.should == packet2.recv_version
     packet.send_version.should == packet2.send_version
   end
@@ -31,7 +31,7 @@ describe "Packet: Register" do
     packet.services.should == packet2.services
     packet.brokers.should == packet2.brokers
     packet.shared_queue.should == packet2.shared_queue
-    packet.shard_number.should == packet2.shard_number
+    packet.shard_id.should == packet2.shard_id
     packet.recv_version.should == packet2.recv_version
     packet.send_version.should == packet2.send_version
   end
@@ -46,24 +46,24 @@ describe "Packet: Register" do
     packet.shared_queue.should be_nil
    end
 
-  it "should set specified shard number" do
-    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', '11')
-    packet.shard_number.should == '11'
+  it "should set specified shard_id" do
+    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', 9)
+    packet.shard_id.should == 9
   end
 
-  it "should default shard number to nil" do
+  it "should default shard_id to nil" do
     packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil)
-    packet.shard_number.should be_nil
+    packet.shard_id.should be_nil
    end
 
   it "should use current version by default when constructing" do
-    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', '11')
+    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', 9)
     packet.recv_version.should == RightScale::Packet::VERSION
     packet.send_version.should == RightScale::Packet::VERSION
   end
 
   it "should use default version if none supplied when unmarshalling" do
-    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', '11')
+    packet = RightScale::Register.new('0xdeadbeef', ['/foo/bar', '/nik/qux'], ['foo'], nil, 'shared', 9)
     packet.instance_variable_set(:@version, nil)
     MessagePack.load(packet.to_msgpack).send_version.should == RightScale::Packet::DEFAULT_VERSION
     JSON.load(packet.to_json).send_version.should == RightScale::Packet::DEFAULT_VERSION
