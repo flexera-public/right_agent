@@ -317,8 +317,8 @@ module RightScale
 
     # Options from agent's configuration file, or nil if file not accessible
     def self.load_cfg_file(agent_name)
-      if (file = cfg_file(agent_name, exists = true)) && File.readable?(file)
-        SerializationHelper.symbolize_keys(YAML.load(IO.read(file)))
+      if (file = cfg_file(agent_name, exists = true)) && File.readable?(file) && (cfg = YAML.load(IO.read(file)))
+        SerializationHelper.symbolize_keys(cfg)
       end
     end
 

@@ -14,6 +14,8 @@ module RightScale
   # Dependent upon existing base configuration file for agents of the given type
   module RainbowsAgentController
 
+    class NoConfigurationData < Exception; end
+
     FORCED_OPTIONS = {
       :format          => :secure,
       :threadpool_size => 1,
@@ -53,9 +55,13 @@ module RightScale
           else
             Log.info("Deployment is missing configuration file for any agents of type " +
                      "#{agent_types.inspect} in #{cfg_dir}, need to run rad!")
+            EM.stop
           end
         rescue PidFile::AlreadyRunning
           Log.error("#{agent_name} already running")
+          EM.stop
+        rescue NoConfigurationData => e
+          Log.error(e.message)
           EM.stop
         rescue Exception => e
           Log.error("Failed to start #{agent_name} agent", e, :trace)
@@ -124,11 +130,17 @@ module RightScale
     #
     # === Return
     # cfg(Hash):: Persisted configuration options
+    #
+    # === Raise
+    # NoConfigurationData:: If no configuration data found for the agent
     def self.configure(agent_type, agent_name, worker_index, options)
       cfg = AgentConfig.agent_options(agent_type)
+      raise NoConfigurationData.new("No configuration data found for agents of type #{agent_type} " +
+                                    "in #{AgentConfig.cfg_file(agent_type)}") if cfg.empty?
+      base_id = options[:base_id].to_i
       unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
-             (options[:base_id] && AgentIdentity.parse(identity).base_id != options[:base_id])
-        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, options[:base_id] || (worker_index + 1)).to_s
+             AgentIdentity.parse(identity).base_id == base_id
+        identity = AgentIdentity.new(options[:prefix] || 'rs', agent_type, base_id).to_s
       end
       cfg.merge!(:identity => identity)
       cfg_file = AgentConfig.cfg_file(agent_name)
