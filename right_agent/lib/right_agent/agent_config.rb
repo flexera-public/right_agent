@@ -258,8 +258,10 @@ module RightScale
       file = cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(file))
       File.delete(file) if File.exists?(file)
-      File.open(file, 'w') { |fd| fd.puts "# Created at #{Time.now}" }
-      File.open(file, 'a') { |fd| fd.write(YAML.dump(cfg)) }
+      File.open(file, 'w') do |fd|
+        fd.puts "# Created at #{Time.now}"
+        fd.write(YAML.dump(cfg))
+      end
       file
     end
 
@@ -306,7 +308,7 @@ module RightScale
         pid_file = PidFile.new(options[:identity])
         options.merge!(pid_file.read_pid) if pid_file.exists?
       end
-      options ||= {}
+      options || {}
     end
 
     protected
