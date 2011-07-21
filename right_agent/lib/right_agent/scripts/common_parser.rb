@@ -96,7 +96,7 @@ module RightScale
       end
 
       opts.on_tail("--help") do
-        RDoc::usage_from_file(__FILE__)
+        puts Usage.scan(__FILE__)
         exit
       end
 
