@@ -319,6 +319,7 @@ module RightScale
         if new_level != @level
           @logger.info("[setup] Setting log level to #{level_to_sym(new_level).to_s.upcase}")
           @logger.level = @level = new_level
+          @notify.each { |n| n.call(@level) } if @notify
         end
       end
       level = level_to_sym(@level)
@@ -331,6 +332,20 @@ module RightScale
     def level
       init unless @initialized
       level = level_to_sym(@level)
+    end
+
+    # Register callback to be activated when there is a logging configuration change
+    # Currently the only logging change reported is log level
+    #
+    # === Parameters
+    # callback(Proc):: Block to be activated with following parameter when log level changes:
+    #   log_level(Symbol):: Current log level
+    #
+    # === Return
+    # true:: Always return true
+    def notify(callback)
+      @notify = (@notify ||= []) << callback
+      true
     end
 
     # Force log level to debug and disregard

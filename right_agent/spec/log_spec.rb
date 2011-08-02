@@ -61,6 +61,14 @@ describe RightScale::Log do
     RightScale::Log.level.should == :debug
   end
 
+  it 'should notify of log level change' do
+    RightScale::Log.level.should == :info
+    notified = nil
+    RightScale::Log.notify(lambda{ |l| notified = l })
+    RightScale::Log.level = :debug
+    notified.should == Logger::DEBUG
+  end
+
   context "logging" do
 
     before(:each) do

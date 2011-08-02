@@ -119,6 +119,13 @@ module RightScale
 
     end # Filesystem
 
+    # Provides utilities for managing volumes (disks).
+    class VolumeManager
+      def initialize
+        raise "not yet implemented"
+      end
+    end
+
     class Shell
 
       NULL_OUTPUT_NAME = "/dev/null"
@@ -190,6 +197,11 @@ module RightScale
       def shutdown
         `shutdown -h now`
       end
+
+      # Reboot machine now
+      def reboot
+        `shutdown -r now`
+      end
     end
 
     class Rng
@@ -205,13 +217,3 @@ module RightScale
   end # Platform
 
 end # RightScale
-
-# Platform specific implementation of File.normalize_path
-class File
-
-  # On *nix systems, resolves to File.expand_path
-  def self.normalize_path(file_name, *dir_string)
-    File.expand_path(file_name, *dir_string)
-  end
-
-end

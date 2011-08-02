@@ -61,7 +61,7 @@ describe RightScale::AgentConfig do
     File.open(@cfg_agent1 = File.join(@cfg_agent1_dir, 'config.yml'), "w") { |f| f.puts(YAML.dump(@agent_options1)) }
     @agent_id2 = "rs-agent-2-2"
     @agent_options2 = {
-      :identity => @agent_id1,
+      :identity => @agent_id2,
       :root_dir => @root_dir2,
     }
     FileUtils.mkdir_p(@cfg_agent2_dir = File.join(@cfg_dir, 'agent_2'))
@@ -193,10 +193,15 @@ describe RightScale::AgentConfig do
     @agent_config.cfg_agents.should == ['agent_1', 'agent_2']
   end
 
+  it 'should return agent name for agent identity' do
+    @agent_config.cfg_dir = @cfg_dir
+    @agent_config.agent_name(@agent_id1).should == 'agent_1'
+    @agent_config.agent_name("rs-bogus-0-0").should be_nil
+  end
+
   it 'should load agent options from a configuration file and symbolize the keys' do
     @agent_config.cfg_dir = @cfg_dir
     @agent_config.load_cfg('agent_1').should == @agent_options1
-    @agent_config.load_cfg('agent_2').should be_nil
     @agent_config.load_cfg("no_agent").should be_nil
   end
 

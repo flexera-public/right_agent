@@ -42,8 +42,11 @@ module RightScale
     # Maximum seconds to wait before starting flushing offline queue when disabling offline mode
     MAX_QUEUE_FLUSH_DELAY = 120 # 2 minutes
 
-    # Maximum number of queued requests before triggering re-enroll vote
+    # Maximum number of offline queued requests before triggering restart vote
     MAX_QUEUED_REQUESTS = 1000
+
+    # Number of seconds that should be spent in offline mode before triggering a restart vote
+    RESTART_VOTE_DELAY = 900 # 15 minutes
 
     # (EM::Timer) Timer while waiting for mapper ping response
     attr_accessor :pending_ping
@@ -77,6 +80,10 @@ module RightScale
     #     exception(Exception):: Exception
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
+    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers,
+    #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below
+    #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
+    #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :retry_interval(Numeric):: Number of seconds before initial request retry, increases exponentially
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
@@ -95,6 +102,7 @@ module RightScale
       @queue_running = false
       @queue_initializing = false
       @queue = []
+      @restart_vote_count = 0
       @retry_timeout = nil_if_zero(@options[:retry_timeout])
       @retry_interval = nil_if_zero(@options[:retry_interval])
       @ping_interval = @options[:ping_interval] || 0
@@ -136,17 +144,15 @@ module RightScale
     end
 
     # Initialize the offline queue (should be called once)
-    # All requests sent prior to running this initialization are queued if they have
-    # :offline_queueing enabled and then are sent once this initialization has run
-    #
-    # === Block
-    # If a block is given it's executed before the offline queue is flushed
-    # This allows sending initialization requests before queued requests are sent
+    # All requests sent prior to running this initialization are queued if offline
+    # queueing is enabled and then are sent once this initialization has run
+    # All requests following this call and prior to calling start_offline_queue
+    # are prepended to the request queue
     #
     # === Return
     # true:: Always return true
     def initialize_offline_queue
-      unless @queue_running
+      unless @queue_running || !@options[:offline_queueing]
         @queue_running = true
         @queue_initializing = true
       end
@@ -171,7 +177,6 @@ module RightScale
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request
     # Set time-to-live to be forever
-    # Optionally buffer the request if the agent is in offline mode
     #
     # === Parameters
     # type(String):: Dispatch route for the request; typically identifies actor and action
@@ -183,14 +188,11 @@ module RightScale
     #     :account(String):: Restrict to agents with this account id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Return
     # true:: Always return true
-    def send_push(type, payload = nil, target = nil, opts = {})
-      build_push(:send_push, type, payload, target, opts)
+    def send_push(type, payload = nil, target = nil)
+      build_push(:send_push, type, payload, target)
     end
 
     # Send a request to a single target or multiple targets with no response expected
@@ -199,7 +201,6 @@ module RightScale
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request
     # Set time-to-live to be forever
-    # Optionally buffer the request if the agent is in offline mode
     #
     # === Parameters
     # type(String):: Dispatch route for the request; typically identifies actor and action
@@ -211,14 +212,11 @@ module RightScale
     #     :account(String):: Restrict to agents with this account id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Return
     # true:: Always return true
-    def send_persistent_push(type, payload = nil, target = nil, opts = {})
-      build_push(:send_persistent_push, type, payload, target, opts)
+    def send_persistent_push(type, payload = nil, target = nil)
+      build_push(:send_persistent_push, type, payload, target)
     end
 
     # Send a request to a single target with a response expected
@@ -229,7 +227,6 @@ module RightScale
     # discarded automatically unless the receiving agent is using a shared queue, in which case this
     # method should not be used for actions that are non-idempotent
     # Allow the request to expire per the agent's configured time-to-live, typically 1 minute
-    # Optionally buffer the request if the agent is in offline mode
     # Note that receiving a response does not guarantee that the request activity has actually
     # completed since the request processing may involve other asynchronous requests
     #
@@ -241,9 +238,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
     #     :account(String):: Restrict to agents with this account id
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -252,8 +246,8 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def send_retryable_request(type, payload = nil, target = nil, opts = {}, &callback)
-      build_request(:send_retryable_request, type, payload, target, opts, &callback)
+    def send_retryable_request(type, payload = nil, target = nil, &callback)
+      build_request(:send_retryable_request, type, payload, target, &callback)
     end
 
     # Send a request to a single target with a response expected
@@ -262,7 +256,6 @@ module RightScale
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request if there is the possibility of the request being duplicated
     # Set time-to-live to be forever
-    # Optionally buffer the request if the agent is in offline mode
     # Note that receiving a response does not guarantee that the request activity has actually
     # completed since the request processing may involve other asynchronous requests
     #
@@ -274,9 +267,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
     #     :account(String):: Restrict to agents with this account id
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -285,8 +275,8 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def send_persistent_request(type, payload = nil, target = nil, opts = {}, &callback)
-      build_request(:send_persistent_request, type, payload, target, opts, &callback)
+    def send_persistent_request(type, payload = nil, target = nil, &callback)
+      build_request(:send_persistent_request, type, payload, target, &callback)
     end
 
     # Handle response to a request
@@ -349,6 +339,7 @@ module RightScale
         @offlines.update
         @queue ||= []  # ensure queue is valid without losing any messages when going offline
         @queueing_mode = :offline
+        @restart_vote_timer ||= EM::Timer.new(RESTART_VOTE_DELAY) { vote_to_restart(timer_trigger=true) }
       end
     end
 
@@ -361,6 +352,8 @@ module RightScale
       if offline? && @queue_running
         Log.info("[offline] Connection to broker re-established")
         @offlines.finish
+        @restart_vote_timer.cancel if @restart_vote_timer
+        @restart_vote_timer = nil
         @stop_flushing_queue = false
         @flushing_queue = true
         # Let's wait a bit not to flood the mapper
@@ -399,9 +392,9 @@ module RightScale
         @timer.cancel
         @timer = nil
       end
-      if @reenroll_vote_timer
-        @reenroll_vote_timer.cancel
-        @reenroll_vote_timer = nil
+      if @restart_vote_timer
+        @restart_vote_timer.cancel
+        @restart_vote_timer = nil
       end
       [@pending_requests.size, request_age]
     end
@@ -506,15 +499,12 @@ module RightScale
     #     :account(String):: Restrict to agents with this account id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Return
     # true:: Always return true
-    def build_push(kind, type, payload = nil, target = nil, opts = {})
-      if should_queue?(opts)
-        queue_request(:kind => kind, :type => type, :payload => payload, :target => target, :options => opts)
+    def build_push(kind, type, payload = nil, target = nil)
+      if should_queue?
+        queue_request(:kind => kind, :type => type, :payload => payload, :target => target)
       else
         method = type.split('/').last
         @requests.update(method)
@@ -546,9 +536,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
     #     :account(String):: Restrict to agents with this account id
-    # opts(Hash):: Additional send control options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
-    #     brokers, defaults to false
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -557,10 +544,9 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def build_request(kind, type, payload, target, opts, &callback)
-      if should_queue?(opts)
-        queue_request(:kind => kind, :type => type, :payload => payload,
-                      :target => target, :options => opts, :callback => callback)
+    def build_request(kind, type, payload, target, &callback)
+      if should_queue?
+        queue_request(:kind => kind, :type => type, :payload => payload, :target => target, :callback => callback)
       else
         method = type.split('/').last
         token = AgentIdentity.generate
@@ -755,6 +741,26 @@ module RightScale
       true
     end
 
+    # Vote for restart and reset trigger
+    #
+    # === Parameters
+    # timer_trigger(Boolean):: true if vote was triggered by timer, false if it
+    #   was triggered by number of messages in in-memory queue
+    #
+    # === Return
+    # true:: Always return true
+    def vote_to_restart(timer_trigger)
+      if restart_vote = @options[:restart_callback]
+        restart_vote.call
+        if timer_trigger
+          @restart_vote_timer = EM::Timer.new(RESTART_VOTE_DELAY) { vote_to_restart(timer_trigger = true) }
+        else
+          @restart_vote_count = 0
+        end
+      end
+      true
+    end
+
     # Is agent currently offline?
     #
     # === Return
@@ -781,16 +787,10 @@ module RightScale
 
     # Should agent be queueing current request?
     #
-    # === Parameters
-    # opts(Hash):: Request options
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers
-    #
-    # enabled(Boolean):: Whether enabled to queue requests if not connected to any brokers
-    #
     # === Return
     # (Boolean):: true if should queue request, otherwise false
-    def should_queue?(opts)
-      opts[:offline_queueing] && offline? && !@flushing_queue
+    def should_queue?
+      @options[:offline_queueing] && offline? && !@flushing_queue
     end
 
     # Queue given request in memory
@@ -801,6 +801,9 @@ module RightScale
     # === Return
     # true:: Always return true
     def queue_request(request)
+      Log.info("[offline] Queuing request: #{request.inspect}")
+      @restart_vote_count += 1 if @queue_running
+      vote_to_restart(timer_trigger = false) if @restart_vote_count >= MAX_QUEUED_REQUESTS
       if @queue_initializing
         # We are in the initialization callback, requests should be put at the head of the queue
         @queue.unshift(request)
@@ -825,9 +828,9 @@ module RightScale
         unless @queue.empty?
           r = @queue.shift
           if r[:callback]
-            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options]) { |res| r[:callback].call(res) }
+            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target]) { |res| r[:callback].call(res) }
           else
-            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target], r[:options])
+            Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target])
           end
         end
         if @queue.empty?

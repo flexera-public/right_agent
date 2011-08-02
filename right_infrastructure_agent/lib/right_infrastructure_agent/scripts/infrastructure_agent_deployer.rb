@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightInfrastructureAgent Deployer (rad) - (c) 2009-2011 RightScale
+#   RightScale Infrastructure Agent Deployer (rad) - (c) 2009-2011 RightScale Inc
 #
 #   rad is a command line tool for building the configuration file for a RightInfrastructureAgent
 #
@@ -75,6 +75,7 @@
 #      --cache-reload-age       Set age in seconds of cached instance before automatically reload
 #      --home-island ID         Set identifier for RightNet island in which mapper is located
 
+require 'rubygems'
 require 'right_agent/scripts/agent_deployer'
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_infrastructure_agent'))
 

@@ -29,7 +29,6 @@ unless defined?(RightScale::Platform)
 # Note that the platform-specific submodules will be loaded on demand to resolve
 # some install-time gem dependency issues.
 
-require 'rubygems'
 require 'rbconfig'
 
 # Load ruby interpreter monkey-patches first (to ensure File.normalize_path is defined, etc.).
@@ -199,6 +198,14 @@ module RightScale
       platform_service(:filesystem)
     end
 
+    # VolumeManager config object
+    #
+    # === Return
+    # (VolumeManager):: Platform-specific volume manager config object
+    def volume_manager
+      platform_service(:volume_manager)
+    end
+
     # Shell information object
     #
     # === Return
@@ -302,7 +309,7 @@ module RightScale
 
 end # RightScale
 
-# Initialize for current platform and cause File.normalize_path to be defined
+# Initialize for current platform
 RightScale::Platform.load_platform_specific
 
 end # Unless already defined

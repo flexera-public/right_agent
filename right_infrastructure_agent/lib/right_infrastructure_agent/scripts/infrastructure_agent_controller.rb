@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightInfrastructureAgent Controller (rnac) - (c) 2009 RightScale
+#   RightScale Infrastructure Agent Controller (rnac) - (c) 2009-2011 RightScale Inc
 #
 #   rnac is a command line tool for managing a RightInfrastructureAgents,
 #   which includes mappers
@@ -51,7 +51,6 @@
 #      --stop-agent ID      Stop agent with serialized identity ID
 #      --kill, -k PIDFILE   Kill process with given process id file
 #      --killall, -K        Stop all running agents
-#      --shutdown, -S AGENT Send a terminate request to agent named AGENT
 #      --status, -U         List running agents on local machine
 #      --identity, -i ID    Use base id ID to build agent's identity
 #      --token, -t TOKEN    Use token TOKEN to build agent's identity
@@ -74,8 +73,10 @@
 #      --debugger, -D PORT  Start a debug server on PORT and immediately break
 #      --help               Display help
 
+require 'rubygems'
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_infrastructure_agent'))
 require 'right_agent/scripts/agent_controller'
+require 'ostruct'
 
 module RightScale
 
@@ -146,9 +147,9 @@ module RightScale
             ExceptionMailer.deliver_notification(:mapper_receive_loop, msg, e)
           end
 
-          super(Mapper)
+          super(@options[:agent_name], Mapper)
         else
-          super(InfrastructureAgent)
+          super(@options[:agent_name], InfrastructureAgent)
         end
 
       rescue SystemExit => e

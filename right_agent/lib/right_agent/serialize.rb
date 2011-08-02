@@ -20,10 +20,10 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-SERIALIZE_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'serialize'))
+SERIALIZE_BASE_DIR = File.join(File.dirname(__FILE__), 'serialize')
 
-require File.join(SERIALIZE_BASE_DIR, 'message_pack')
-require File.join(SERIALIZE_BASE_DIR, 'secure_serializer')
-require File.join(SERIALIZE_BASE_DIR, 'secure_serializer_initializer')
-require File.join(SERIALIZE_BASE_DIR, 'serializable')
-require File.join(SERIALIZE_BASE_DIR, 'serializer')
+require File.normalize_path(File.join(SERIALIZE_BASE_DIR, 'message_pack'))
+require File.normalize_path(File.join(SERIALIZE_BASE_DIR, 'secure_serializer'))
+require File.normalize_path(File.join(SERIALIZE_BASE_DIR, 'secure_serializer_initializer'))
+require File.normalize_path(File.join(SERIALIZE_BASE_DIR, 'serializable'))
+require File.normalize_path(File.join(SERIALIZE_BASE_DIR, 'serializer'))

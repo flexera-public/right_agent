@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightAgent Deployer (rad) - (c) 2009-2011 RightScale
+#   RightScale RightAgent Deployer (rad) - (c) 2009-2011 RightScale Inc
 #
 #   rad is a command line tool for building the configuration file for a RightAgent
 #
@@ -52,8 +52,8 @@
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
 
+require 'rubygems'
 require 'optparse'
-require 'yaml'
 require 'fileutils'
 require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
@@ -110,7 +110,7 @@ module RightScale
       options[:agent_name] = ARGV[0]
       options[:options] = { :secure => true }
       options[:quiet] = false
-      fail('No agent specified on the command line.', print_usage = true) if options[:agent_name].nil?
+      fail('No agent specified on the command line', print_usage = true) if options[:agent_name].nil?
 
       opts = OptionParser.new do |opts|
         parse_common(opts, options)

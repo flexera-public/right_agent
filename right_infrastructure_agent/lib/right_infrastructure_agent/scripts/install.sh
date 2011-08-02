@@ -70,6 +70,7 @@ do
 #
 # See $require.rb for additional information
 
+require 'rubygems'
 require File.join('$SCRIPTS_DIR', '..', '..', 'lib', 'bundler_support')
 RightScale::BundlerSupport.activate
 require '$require'

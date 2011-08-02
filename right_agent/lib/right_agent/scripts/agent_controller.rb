@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightAgent Controller (rnac) - (c) 2009-2011 RightScale
+#   RightScale RightAgent Controller (rnac) - (c) 2009-2011 RightScale Inc
 #
 #   rnac is a command line tool for managing a RightAgent
 #
@@ -45,37 +45,34 @@
 #    rnac [options]
 #
 #    options:
-#      --start, -s AGENT      Start agent named AGENT
-#      --stop, -p AGENT       Stop agent named AGENT
-#      --stop-agent ID        Stop agent with serialized identity ID
-#      --kill, -k PIDFILE     Kill process with given process id file
-#      --killall, -K          Stop all running agents
-#      --decommission, -d     Send decommission signal to instance agent
-#      --shutdown, -S [AGENT] Send a terminate request to agent named AGENT,
-#                             defaults to 'instance'
-#      --status, -U           List running agents on local machine
-#      --identity, -i ID      Use base id ID to build agent's identity
-#      --token, -t TOKEN      Use token TOKEN to build agent's identity
-#      --prefix, -x PREFIX    Use prefix PREFIX to build agent's identity
-#      --type TYPE            Use agent type TYPE to build agent's' identity,
-#                             defaults to AGENT with any trailing '_[0-9]+' removed
-#      --list, -l             List all configured agents
-#      --user, -u USER        Set AMQP user
-#      --pass, -p PASS        Set AMQP password
-#      --vhost, -v VHOST      Set AMQP vhost
-#      --host, -h HOST        Set AMQP server hostname
-#      --port, -P PORT        Set AMQP server port
-#      --cfg-dir, -c DIR      Set directory containing configuration for all agents
-#      --pid-dir, -z DIR      Set directory containing agent process id files
-#      --log-dir DIR          Set log directory
-#      --log-level LVL        Log level (debug, info, warning, error or fatal)
-#      --foreground, -f       Run agent in foreground
-#      --interactive, -I      Spawn an irb console after starting agent
-#      --test                 Use test settings
-#      --help                 Display help
+#      --start, -s AGENT   Start agent named AGENT
+#      --stop, -p AGENT    Stop agent named AGENT
+#      --stop-agent ID     Stop agent with serialized identity ID
+#      --kill, -k PIDFILE  Kill process with given process id file
+#      --killall, -K       Stop all running agents
+#      --status, -U        List running agents on local machine
+#      --identity, -i ID   Use base id ID to build agent's identity
+#      --token, -t TOKEN   Use token TOKEN to build agent's identity
+#      --prefix, -x PREFIX Use prefix PREFIX to build agent's identity
+#      --type TYPE         Use agent type TYPE to build agent's' identity,98589
+#                          defaults to AGENT with any trailing '_[0-9]+' removed
+#      --list, -l          List all configured agents
+#      --user, -u USER     Set AMQP user
+#      --pass, -p PASS     Set AMQP password
+#      --vhost, -v VHOST   Set AMQP vhost
+#      --host, -h HOST     Set AMQP server hostname
+#      --port, -P PORT     Set AMQP server port
+#      --cfg-dir, -c DIR   Set directory containing configuration for all agents
+#      --pid-dir, -z DIR   Set directory containing agent process id files
+#      --log-dir DIR       Set log directory
+#      --log-level LVL     Log level (debug, info, warning, error or fatal)
+#      --foreground, -f    Run agent in foreground
+#      --interactive, -I   Spawn an irb console after starting agent
+#      --test              Use test settings
+#      --help              Display help
 
+require 'rubygems'
 require 'optparse'
-require 'yaml'
 require 'fileutils'
 require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
@@ -145,6 +142,8 @@ module RightScale
         Log.program_name = syslog_program_name(options)
         Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
+      elsif options[:identity]
+        options[:agent_name] = AgentConfig.agent_name(options[:identity])
       end
       @options = DEFAULT_OPTIONS.clone.merge(options.merge(FORCED_OPTIONS))
       FileUtils.mkdir_p(@options[:pid_dir]) unless @options[:pid_dir].nil? || File.directory?(@options[:pid_dir])
@@ -154,12 +153,12 @@ module RightScale
       when /show|killall/
         action = 'stop' if action == 'killall'
         s = true
-        AgentConfig.cfg_agents.each { |agent_name| s &&= run_cmd(action, agent_name) }
+        AgentConfig.cfg_agents.each { |agent_name| s &&= dispatch(action, agent_name) }
         s
       when 'kill'
         kill_process
       else
-        run_cmd(action, @options[:agent_name])
+        dispatch(action, @options[:agent_name])
       end
 
       exit(1) unless success
@@ -198,16 +197,6 @@ module RightScale
     
         opts.on("-K", "--killall") do
           options[:action] = 'killall'
-        end
-
-        opts.on("-d", "--decommission") do
-          options[:action] = 'decommission'
-          options[:agent_name] = 'instance'
-        end
-
-        opts.on("-S", "--shutdown [AGENT]") do |a|
-          options[:action] = 'shutdown'
-          options[:agent_name] = a || 'instance'
         end
 
         opts.on("-U", "--status") do
@@ -286,23 +275,16 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def run_cmd(action, agent_name)
+    def dispatch(action, agent_name)
       # Setup the environment from config if necessary
       begin
-        case action
-          when 'start'        then start_agent
-          when 'stop'         then stop_agent(agent_name)
-          when 'show'         then show_agent(agent_name)
-          when 'decommission' then run_command('Decommissioning...', 'decommission')
-          when 'shutdown'     then run_command('Shutting down...', 'terminate')
-        end
+        eval("#{action}_agent(agent_name)")
       rescue SystemExit
         true
       rescue SignalException
         true
       rescue Exception => e
-        msg = "Failed to #{action} #{agent_name} (#{e.class.to_s}: #{e.message})" + "\n" + e.backtrace.join("\n")
-        puts msg
+        puts Log.format("Failed to #{action} #{agent_name}", e, :trace)
       end
       true
     end
@@ -330,59 +312,33 @@ module RightScale
       true
     end
 
-    # Trigger execution of given command in instance agent and wait for it to be done
-    #
-    # === Parameters
-    # message(String):: Console display message
-    # command(String):: Command name
-    #
-    # === Return
-    # true:: Always return true
-    def run_command(message, command)
-      options = AgentConfig.agent_options(@options[:agent_name])
-      listen_port = options[:listen_port]
-      unless listen_port
-        puts "Could not retrieve listen port for agent #{@options[:identity]}"
-        return false
-      end
-      puts message
-      begin
-        @client = CommandClient.new(listen_port, options[:cookie])
-        @client.send_command({ :name => command }, verbose = false, timeout = 100) { |r| puts r }
-      rescue Exception => e
-        puts "Failed or else time limit was exceeded (#{e}).\nConfirm that the local instance is still running.\n#{e.backtrace.join("\n")}"
-        return false
-      end
-      true
-    end
-
     # Start agent
     #
     # === Parameters
-    # agent(Agent):: Agent class
+    # agent_name(String):: Agent name
+    # agent_class(Agent):: Agent class
     #
     # === Return
     # true:: Always return true
-    def start_agent(agent = Agent)
+    def start_agent(agent_name, agent_class = Agent)
       puts "#{human_readable_name} being started"
 
       EM.error_handler do |e|
-        msg = "EM block execution failed with exception: #{e}"
-        Log.error(msg + "\n" + e.backtrace.join("\n"))
+        Log.error("EM block execution failed with exception", e, :trace)
         Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
         EM.stop
       end
 
       EM.run do
         begin
-          @@agent = agent.start(@options)
+          @@agent = agent_class.start(@options)
         rescue SystemExit
           raise # Let parents of forked (daemonized) processes die
         rescue PidFile::AlreadyRunning
           puts "#{human_readable_name} already running"
           EM.stop
         rescue Exception => e
-          puts "#{human_readable_name} failed with: #{e} in \n#{e.backtrace.join("\n")}"
+          puts Log.format("#{human_readable_name} failed", e, :trace)
           EM.stop
         end
       end
@@ -492,9 +448,7 @@ module RightScale
     def configure_agent(action, options)
       agent_type = options[:agent_type]
       agent_name = options[:agent_name]
-      cfg = AgentConfig.load_cfg(agent_type)
-      fail("Deployment is missing configuration file #{AgentConfig.cfg_file(agent_type).inspect}.") unless cfg
-      if agent_name != agent_type
+      if agent_name != agent_type && cfg = AgentConfig.load_cfg(agent_type)
         base_id = (options[:base_id] || AgentIdentity.parse(cfg[:identity]).base_id.to_s).to_i
         unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
                AgentIdentity.parse(identity).base_id == base_id
@@ -503,6 +457,8 @@ module RightScale
         cfg.merge!(:identity => identity)
         cfg_file = AgentConfig.store_cfg(agent_name, cfg)
         puts "Generated configuration file for #{agent_name} agent: #{cfg_file}"
+      elsif !(cfg = AgentConfig.load_cfg(agent_name))
+        fail("Deployment is missing configuration file #{AgentConfig.cfg_file(agent_name).inspect}")
       end
       cfg
     end
@@ -539,8 +495,9 @@ module RightScale
       exit(1)
     end
 
-  end
-end
+  end # AgentController
+
+end # RightScale
 
 #
 # Copyright (c) 2009-2011 RightScale Inc

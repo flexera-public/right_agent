@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightAgent Log Level Manager (rlog) - (c) 2009-2011 RightScale
+#   RightAgent Log Level Manager (rlog) - (c) 2009-2011 RightScale Inc
 #
 #   rlog is a command line tool for retrieving and setting the log level
 #   for a RightAgent
@@ -30,6 +30,7 @@
 #    No options prints the current agent log level
 #
 
+require 'rubygems'
 require 'optparse'
 require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))

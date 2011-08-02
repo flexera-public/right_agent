@@ -20,11 +20,11 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-COMMAND_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'command'))
+COMMAND_BASE_DIR = File.join(File.dirname(__FILE__), 'command')
 
-require File.join(COMMAND_BASE_DIR, 'command_constants')
-require File.join(COMMAND_BASE_DIR, 'command_parser')
-require File.join(COMMAND_BASE_DIR, 'command_serializer')
-require File.join(COMMAND_BASE_DIR, 'command_io')
-require File.join(COMMAND_BASE_DIR, 'command_runner')
-require File.join(COMMAND_BASE_DIR, 'command_client')
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_constants'))
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_parser'))
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_serializer'))
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_io'))
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_runner'))
+require File.normalize_path(File.join(COMMAND_BASE_DIR, 'command_client'))

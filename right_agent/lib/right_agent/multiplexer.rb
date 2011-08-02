@@ -74,7 +74,7 @@ module RightScale
       target = @targets[index]
     end
 
-    # Forward any method invokation to targets
+    # Forward any method invocation to targets
     #
     # === Parameters
     # m(Symbol):: Method that should be multiplexed

@@ -39,11 +39,11 @@ else
   raise LoadError, "Unsupported platform: #{family}"
 end
 
-RUBY_PATCH_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'ruby_patch'))
+RUBY_PATCH_BASE_DIR = File.join(File.dirname(__FILE__), 'ruby_patch')
 
-require File.join(RUBY_PATCH_BASE_DIR, 'array_patch')
-require File.join(RUBY_PATCH_BASE_DIR, 'string_patch')
-require File.join(RUBY_PATCH_BASE_DIR, 'object_patch')
-require File.join(RUBY_PATCH_BASE_DIR, 'singleton_patch')
+require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'array_patch'))
+require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'string_patch'))
+require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'object_patch'))
+require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'singleton_patch'))
 
 end # Unless already defined

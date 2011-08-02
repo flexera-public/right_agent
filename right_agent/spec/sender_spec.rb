@@ -138,7 +138,8 @@ describe RightScale::Sender do
       @timer = flexmock("timer")
       flexmock(EM::Timer).should_receive(:new).and_return(@timer)
       @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
-      @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {}).by_default
+      @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
+      @agent.should_receive(:options).and_return({}).by_default
       RightScale::Sender.new(@agent)
       @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
@@ -179,13 +180,15 @@ describe RightScale::Sender do
       @instance.send_push('/welcome/aboard', 'iZac')
     end
 
-    it 'should queue the push if in offline mode and :offline_queueing specified' do
-      @broker.should_receive(:publish).once
+    it 'should queue the push if in offline mode and :offline_queueing enabled' do
+      @agent.should_receive(:options).and_return({:offline_queueing => true})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      @instance.initialize_offline_queue
+      @broker.should_receive(:publish).never
       @instance.enable_offline_mode
       @instance.instance_variable_get(:@queueing_mode).should == :offline
-      @instance.send_push('/welcome/aboard', 'iZac', nil, :offline_queueing => false)
-      @instance.instance_variable_get(:@queue).size.should == 0
-      @instance.send_push('/welcome/aboard', 'iZac', nil, :offline_queueing => true)
+      @instance.send_push('/welcome/aboard', 'iZac')
       @instance.instance_variable_get(:@queue).size.should == 1
     end
   end
@@ -312,13 +315,15 @@ describe RightScale::Sender do
       @instance.request_age.should == 100
     end
 
-    it 'should queue the request if in offline mode and :offline_queueing specified' do
-      @broker.should_receive(:publish).once
+    it 'should queue the request if in offline mode and :offline_queueing enabled' do
+      @agent.should_receive(:options).and_return({:offline_queueing => true})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      @instance.initialize_offline_queue
+      @broker.should_receive(:publish).never
       @instance.enable_offline_mode
       @instance.instance_variable_get(:@queueing_mode).should == :offline
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', nil, :offline_queueing => false)
-      @instance.instance_variable_get(:@queue).size.should == 0
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', nil, :offline_queueing => true)
+      @instance.send_retryable_request('/welcome/aboard', 'iZac')
       @instance.instance_variable_get(:@queue).size.should == 1
     end
 
@@ -693,10 +698,38 @@ describe RightScale::Sender do
     before(:each) do
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
-      @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {}).by_default
+      @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {:offline_queueing => true}).by_default
       RightScale::Sender.new(@agent)
       @instance = RightScale::Sender.instance
       @instance.initialize_offline_queue
+    end
+
+    it 'should vote for restart after the maximum number of queued requests is reached' do
+      @instance.instance_variable_get(:@restart_vote_count).should == 0
+      EM.run do
+        @instance.enable_offline_mode
+        @instance.instance_variable_set(:@queue, ('*' * (RightScale::Sender::MAX_QUEUED_REQUESTS - 1)).split(//))
+        @instance.send_push('/dummy', 'payload')
+        EM.next_tick { EM.stop }
+      end
+      @instance.instance_variable_get(:@queue).size.should == RightScale::Sender::MAX_QUEUED_REQUESTS
+      @instance.instance_variable_get(:@restart_vote_count).should == 1
+    end
+
+    it 'should vote for restart after the threshold delay is reached' do
+      old_vote_delay = RightScale::Sender::RESTART_VOTE_DELAY
+      begin
+        RightScale::Sender.const_set(:RESTART_VOTE_DELAY, 0.1)
+        @instance.instance_variable_get(:@restart_vote_count).should == 0
+        EM.run do
+          @instance.enable_offline_mode
+          @instance.send_push('/dummy', 'payload')
+          EM.add_timer(0.5) { EM.stop }
+        end
+        @instance.instance_variable_get(:@restart_vote_count).should == 1
+      ensure
+        RightScale::Sender.const_set(:RESTART_VOTE_DELAY, old_vote_delay)
+      end
     end
 
     it 'should not flush queued requests until back online' do
@@ -705,7 +738,7 @@ describe RightScale::Sender do
         RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
-          @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
+          @instance.send_push('/dummy', 'payload')
           EM.add_timer(0.5) { EM.stop }
         end
       ensure
@@ -720,7 +753,7 @@ describe RightScale::Sender do
         RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
-          @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
+          @instance.send_push('/dummy', 'payload')
           @instance.disable_offline_mode
           EM.add_timer(1) { EM.stop }
         end
@@ -735,7 +768,7 @@ describe RightScale::Sender do
         RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
-          @instance.send_push('/dummy', 'payload', nil, :offline_queueing => true)
+          @instance.send_push('/dummy', 'payload')
           @instance.disable_offline_mode
           @instance.instance_variable_get(:@flushing_queue).should be_true
           @instance.instance_variable_get(:@stop_flushing_queue).should be_false

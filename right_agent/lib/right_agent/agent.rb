@@ -114,6 +114,8 @@ module RightScale
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
     #   :ready_callback(Proc):: Called once agent is connected ready to service (no argument)
+    #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
+    #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
     #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates

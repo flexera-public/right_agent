@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightAgent Statistics Manager (rstat) - (c) 2010-2011 RightScale
+#   RightAgent Statistics Manager (rstat) - (c) 2010-2011 RightScale Inc
 #
 #   rstat is a command line tool for displaying operation statistics for RightAgents
 #
@@ -24,6 +24,7 @@
 #      --cfg-dir, -c DIR  Set directory containing configuration for all agents
 #      --help             Display help
 
+require 'rubygems'
 require 'optparse'
 require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))

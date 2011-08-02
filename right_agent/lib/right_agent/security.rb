@@ -20,13 +20,13 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-SECURITY_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'security'))
+SECURITY_BASE_DIR = File.join(File.dirname(__FILE__), 'security')
 
-require File.join(SECURITY_BASE_DIR, 'cached_certificate_store_proxy')
-require File.join(SECURITY_BASE_DIR, 'certificate')
-require File.join(SECURITY_BASE_DIR, 'certificate_cache')
-require File.join(SECURITY_BASE_DIR, 'distinguished_name')
-require File.join(SECURITY_BASE_DIR, 'encrypted_document')
-require File.join(SECURITY_BASE_DIR, 'rsa_key_pair')
-require File.join(SECURITY_BASE_DIR, 'signature')
-require File.join(SECURITY_BASE_DIR, 'static_certificate_store')
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'cached_certificate_store_proxy'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'certificate'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'certificate_cache'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'distinguished_name'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'encrypted_document'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'rsa_key_pair'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'signature'))
+require File.normalize_path(File.join(SECURITY_BASE_DIR, 'static_certificate_store'))

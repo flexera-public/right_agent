@@ -146,6 +146,23 @@ module RightScale
       actors_dirs
     end
 
+    # Path to directory containing certificates
+    #
+    # === Parameters
+    # root_dir(String|nil):: Specific root dir to use (must be in root_dirs),
+    #   if nil use first dir in root_dirs
+    #
+    # === Return
+    # (String|nil):: Path to certs directory, or nil if cannot determine root_dir
+    def self.certs_dir(root_dir = nil)
+      if root_dir
+        root_dir = nil unless @root_dirs && @root_dirs.include?(root_dir)
+      else
+        root_dir = @root_dirs.first if @root_dirs
+      end
+      File.normalize_path(File.join(root_dir, "certs")) if root_dir
+    end
+
     # Path to security file containing X.509 data
     #
     # === Parameters
@@ -232,13 +249,29 @@ module RightScale
       cfg_files.map { |c| File.basename(File.dirname(c)) }
     end
 
+    # Agent name associated with given agent identity
+    #
+    # === Parameters
+    # agent_id(String):: Serialized agent identity
+    #
+    # === Return
+    # (String|nil):: Agent name, or nil if agent not found
+    def self.agent_name(agent_id)
+      cfg_agents.each do |a|
+        if (options = agent_options(a)) && options[:identity] == agent_id
+          return a
+        end
+      end
+      nil
+    end
+
     # Get options from agent's configuration file
     #
     # === Parameters
     # agent_name(String):: Agent name
     #
     # === Return
-    # options(Hash|nil):: Agent options with key names symbolized,
+    # (Hash|nil):: Agent options with key names symbolized,
     #   or nil if file not accessible or empty
     def self.load_cfg(agent_name)
       if (file = cfg_file(agent_name, exists = true)) && File.readable?(file) && (cfg = YAML.load(IO.read(file)))
@@ -253,7 +286,7 @@ module RightScale
     # cfg(Hash):: Configuration options
     #
     # === Return
-    # cfg_file(String):: Configuration file path name
+    # file(String):: Configuration file path name
     def self.store_cfg(agent_name, cfg)
       file = cfg_file(agent_name)
       FileUtils.mkdir_p(File.dirname(file))
@@ -331,11 +364,6 @@ module RightScale
     # Path to directory containing actor source files
     def self.actors_dir(root_dir)
       File.normalize_path(File.join(root_dir, "actors"))
-    end
-
-    # Path to directory containing certificates
-    def self.certs_dir(root_dir)
-      File.normalize_path(File.join(root_dir, "certs"))
     end
 
     # Path to agent directory containing code
