@@ -30,7 +30,7 @@ require 'openssl'
 # Cannot use File.normalize_path here because not defined until after this include
 require File.expand_path(File.join(File.dirname(__FILE__), 'right_agent', 'platform'))
 
-RIGHT_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_agent'))
+RIGHT_AGENT_BASE_DIR = File.normalize_path(File.join(File.dirname(__FILE__), 'right_agent')) unless defined?(RIGHT_AGENT_BASE_DIR)
 
 require File.join(RIGHT_AGENT_BASE_DIR, 'monkey_patches')
 require File.join(RIGHT_AGENT_BASE_DIR, 'agent_config')
