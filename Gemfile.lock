@@ -1,10 +1,4 @@
 GIT
-  remote: git@github.com:rightscale/right_agent.git
-  revision: 67bb9ae0bc675b9959a8f98dab400860dc148045
-  specs:
-    right_agent (0.1.0)
-
-GIT
   remote: git@github.com:rightscale/right_support.git
   revision: 247880513d3aa6b9118abedc402a8dd8ff900ee1
   specs:
@@ -26,8 +20,11 @@ GEM
     eventmachine (0.12.10)
     flexmock (0.9.0)
     json (1.4.6)
+    mime-types (1.16)
     msgpack (0.4.4)
     rack (1.0.1)
+    rest-client (1.6.3)
+      mime-types (>= 1.16)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
     rspec (2.6.0)
@@ -49,7 +46,7 @@ DEPENDENCIES
   flexmock (~> 0.9)
   json (>= 1.4.4, <= 1.4.6)
   msgpack (= 0.4.4)
-  right_agent!
+  rest-client (~> 1.6)
   right_popen (= 1.0.11)
   right_support!
   rspec (~> 2.5)

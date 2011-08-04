@@ -19,6 +19,11 @@ require 'rspec'
 require 'eventmachine'
 require 'fileutils'
 
+# This lets us avoid putting right_agent into the Gemfile, which helps us keep
+# r_a separate from right_infrastructure_agent
+lib_dir = File.expand_path('../../../right_agent/lib', __FILE__)
+$: << lib_dir if File.exist?(lib_dir)
+
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_infrastructure_agent'))
 
 RSpec.configure do |c|
