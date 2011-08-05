@@ -70,8 +70,9 @@ do
 #
 # See $require.rb for additional information
 
-require File.join('$SCRIPTS_DIR', '..', '..', 'lib', 'bundler_support')
-RightScale::BundlerSupport.activate
+require 'rubygems'
+require 'bundler/setup'
+
 require '$require'
 
 \$stdout.sync=true
