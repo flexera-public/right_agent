@@ -2,13 +2,13 @@ source :gemcutter
 source 'http://gems.github.com'
 
 gem 'right_support', :git => 'git@github.com:rightscale/right_support.git'
-gem 'right_agent',   :git => 'git@github.com:rightscale/right_agent.git'
 gem "amqp",          "0.6.7"
 gem 'json',          [">= 1.4.4", "<= 1.4.6"], :require => nil # must require AFTER activesupport
 gem "eventmachine",  "0.12.10"
 gem "right_popen",   "1.0.11"
 gem "msgpack",       "0.4.4"
 gem "actionmailer",  "2.3.5"
+gem "rest-client",   "~> 1.6"
 
 group :test do
   gem "rspec",       "~> 2.5"

@@ -11,7 +11,10 @@
 require 'rubygems'
 require 'right_agent'
 
-RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR = File.join(File.dirname(__FILE__), 'right_infrastructure_agent')
+unless defined?(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR)
+  RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR =
+    File.normalize_path(File.join(File.dirname(__FILE__), 'right_infrastructure_agent'))
+end
 
 require File.normalize_path(File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'rest_client'))
 require File.normalize_path(File.join(RIGHT_INFRASTRUCTURE_AGENT_BASE_DIR, 'models_helper'))

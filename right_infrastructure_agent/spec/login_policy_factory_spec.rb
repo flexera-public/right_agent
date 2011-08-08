@@ -9,9 +9,29 @@
 # License Agreement between RightScale.com, Inc. and the licensee.
 
 require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent', 'lib', 'right_agent', 'core_payload_types'))
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_infrastructure_agent', 'login_policy_factory'))
 
 require 'active_support'
+
+# LoginPolicyFactory is shared between library and right_api, which is why it lives here.
+# By creating a mock world of RightScale models, we allow this spec to run independently
+# of the Rails web apps.
+class Account; end unless defined?(Account)
+class User; end unless defined?(User)
+class Ec2Instance ; end unless defined?(Ec2Instance)
+class Role
+  def self.[](role)
+    role.hash
+  end
+end unless defined?(Role)
+module Biz
+  module ResourceUuidMixin
+    def self.obfuscate_id(object)
+      object.to_s
+    end
+  end
+end
 
 module MockHelper
   def mock_account_and_users(num_users)
@@ -89,7 +109,7 @@ describe RightScale::LoginPolicyFactory do
         end
 
         it "should specify the user's UUID" do
-          @policy.users[0].uuid.should == Biz::ResourceUuidMixin.compute_uuid(@user)
+          @policy.users[0].uuid.should == Biz::ResourceUuidMixin.obfuscate_id(@user.id)
         end
 
         it "should specify a preferred username" do

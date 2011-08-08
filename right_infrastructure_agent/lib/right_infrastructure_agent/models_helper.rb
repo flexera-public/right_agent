@@ -17,8 +17,6 @@ module RightScale
 
     include OperationResultHelper
 
-    protected
-
     # Retrieve database object
     # Audit and/or log error if given block returns nil or raises, return block result otherwise
     # Store any error message in @last_error
