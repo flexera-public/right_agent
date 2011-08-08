@@ -1,5 +1,5 @@
 #--  -*-ruby-*-
-# Copyright: Copyright (c) 2011 RightScale, Inc.
+# Copyright: Copyright (c) 2010 RightScale, Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -34,16 +34,16 @@ task :default => 'spec'
 
 # == Gem packaging == #
 
-desc "Package all gems"
-task :package => :gem
-directory 'pkg'
-task :gem => 'pkg' do
-  Dir['right*_agent'].each do |file|
-    Dir.chdir(file) { sh "env PACKAGE_DIR=../pkg rake gem" }
-  end
+desc "Package gem"
+gemtask = Rake::GemPackageTask.new(Gem::Specification.load("right_agent.gemspec")) do |package|
+  package.package_dir = ENV['PACKAGE_DIR'] || 'pkg'
+  package.need_zip = true
+  package.need_tar = true
 end
 
-CLEAN.include('pkg')
+directory gemtask.package_dir
+
+CLEAN.include(gemtask.package_dir)
 
 # == Unit tests == #
 
@@ -52,7 +52,6 @@ RSPEC_OPTS = ['--options', "\"#{File.dirname(__FILE__)}/spec/spec.opts\""]
 desc 'Run unit tests'
 RSpec::Core::RakeTask.new do |t|
   t.rspec_opts = RSPEC_OPTS
-  t.pattern = '*/spec/**/*_spec.rb'
 end
 
 namespace :spec do
@@ -65,29 +64,23 @@ namespace :spec do
 
   desc 'Print Specdoc for all unit tests'
   RSpec::Core::RakeTask.new(:doc) do |t|
-    t.pattern = '*/spec/**/*_spec.rb'
     t.rspec_opts = ["--format", "documentation"]
   end
 end
 
 # == Documentation == #
 
-desc "Generate API documentation to doc/rdocs/index.html"
+desc 'Generate API documentation to doc/rdocs/index.html'
 Rake::RDocTask.new do |rd|
   rd.rdoc_dir = 'doc/rdocs'
   rd.main = 'README.rdoc'
-  rd.rdoc_files.include 'README.rdoc', '*/README.rdoc', "*/lib/**/*.rb"
-
-  rd.options << '--inline-source'
-  rd.options << '--line-numbers'
-  rd.options << '--all'
-  rd.options << '--fileboxes'
-  rd.options << '--diagram'
+  rd.rdoc_files.include 'README.rdoc', 'lib/**/*.rb'
 end
+CLEAN.include('doc/rdocs')
 
-# == Emacs integration == #
+# == Emacs integration ==
 
-desc "Rebuild TAGS file for emacs"
+desc 'Rebuild TAGS file for emacs'
 task :tags do
-  sh "rtags -R */{lib,spec}"
+  sh 'rtags -R lib spec'
 end

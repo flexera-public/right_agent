@@ -24,7 +24,7 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '0.3.3'
+  spec.version   = '0.4.0'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -36,15 +36,12 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = '>= 1.8.7'
   spec.require_path = 'lib'
 
-  spec.add_development_dependency('rake', [">= 0.8.7"])
-  spec.add_development_dependency('ruby-debug', [">= 0.10"])
-  spec.add_development_dependency('rspec', ["~> 2.5"])
-  spec.add_development_dependency('flexmock', ["~> 0.9"])
-  #spec.add_development_dependency('right_support', :git => 'git@github.com:rightscale/right_support.git')
-  spec.add_development_dependency('amqp', "0.6.7")
-  spec.add_development_dependency('json', [">= 1.4.4", "<= 1.4.6"])
-  spec.add_development_dependency('msgpack', "0.4.4")
-  spec.add_development_dependency('eventmachine', "0.12.10")
+  spec.add_dependency('right_support')
+  spec.add_dependency('amqp', "0.6.7")
+  spec.add_dependency('json', [">= 1.4.4", "<= 1.4.6"])
+  spec.add_dependency('eventmachine', "~> 0.12.10")
+  spec.add_dependency('right_popen', "~> 1.0.11")
+  spec.add_dependency('msgpack', "0.4.4")
 
   spec.description = <<-EOF
   RightAgent provides a foundation for running an agent on a server to interface

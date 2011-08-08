@@ -4,27 +4,33 @@ GIT
   specs:
     right_support (0.9.6)
 
+PATH
+  remote: .
+  specs:
+    right_agent (0.4.0)
+      amqp (= 0.6.7)
+      eventmachine (~> 0.12.10)
+      json (>= 1.4.4, <= 1.4.6)
+      msgpack (= 0.4.4)
+      right_popen (~> 1.0.11)
+      right_support
+
 GEM
   remote: http://rubygems.org/
   remote: http://gems.github.com/
   specs:
-    actionmailer (2.3.5)
-      actionpack (= 2.3.5)
-    actionpack (2.3.5)
-      activesupport (= 2.3.5)
-      rack (~> 1.0.0)
-    activesupport (2.3.5)
     amqp (0.6.7)
       eventmachine (>= 0.12.4)
+    columnize (0.3.4)
     diff-lcs (1.1.2)
     eventmachine (0.12.10)
     flexmock (0.9.0)
     json (1.4.6)
-    mime-types (1.16)
+    linecache (0.46)
+      rbx-require-relative (> 0.0.4)
     msgpack (0.4.4)
-    rack (1.0.1)
-    rest-client (1.6.3)
-      mime-types (>= 1.16)
+    rake (0.8.7)
+    rbx-require-relative (0.0.5)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
     rspec (2.6.0)
@@ -35,18 +41,19 @@ GEM
     rspec-expectations (2.6.0)
       diff-lcs (~> 1.1.2)
     rspec-mocks (2.6.0)
+    ruby-debug (0.10.4)
+      columnize (>= 0.1)
+      ruby-debug-base (~> 0.10.4.0)
+    ruby-debug-base (0.10.4)
+      linecache (>= 0.3)
 
 PLATFORMS
   ruby
 
 DEPENDENCIES
-  actionmailer (= 2.3.5)
-  amqp (= 0.6.7)
-  eventmachine (= 0.12.10)
   flexmock (~> 0.9)
-  json (>= 1.4.4, <= 1.4.6)
-  msgpack (= 0.4.4)
-  rest-client (~> 1.6)
-  right_popen (= 1.0.11)
+  rake (>= 0.8.7)
+  right_agent!
   right_support!
   rspec (~> 2.5)
+  ruby-debug (>= 0.10)

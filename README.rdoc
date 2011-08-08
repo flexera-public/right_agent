@@ -37,7 +37,7 @@ RightAgent comes with several library modules for forming basic command line too
 
 * <b>agent_deployer</b>: Build a configuration file for running the agent (rad tool)
 * <b>agent_controller</b>: Manage an agent that has been configured (rnac tool)
-* <b>stats_manager</b>: Gather and display operation statistics for an agent (rstat tool)
+* <b>stats_manager</b>: Display operation statistics for an agent (rstat tool)
 * <b>log_level_manager</b>: Retrieve and set log level for an agent (rlog tool)
 
 == Supported Configuration
