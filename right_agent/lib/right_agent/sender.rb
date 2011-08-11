@@ -180,7 +180,10 @@ module RightScale
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
     # opts(Hash):: Additional send control options
@@ -208,7 +211,10 @@ module RightScale
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
     # opts(Hash):: Additional send control options
@@ -240,7 +246,10 @@ module RightScale
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false
@@ -273,7 +282,10 @@ module RightScale
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false
@@ -503,7 +515,10 @@ module RightScale
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :all
     # opts(Hash):: Additional send control options
@@ -545,7 +560,10 @@ module RightScale
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false

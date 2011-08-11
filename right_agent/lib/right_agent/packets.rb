@@ -46,6 +46,9 @@ module RightScale
     # Default version for packet senders unaware of this versioning
     DEFAULT_VERSION = 0
 
+    # Shard scope value meaning restrict sending request only to agents with no shard id
+    GLOBAL = 0
+
     attr_accessor :size
 
     def initialize
@@ -335,7 +338,7 @@ module RightScale
       log_msg = "#{super(filter, version)} #{trace} #{@type}"
       log_msg += " from #{id_to_s(@from)}" if filter.nil? || filter.include?(:from)
       log_msg += ", target #{id_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
-      log_msg += ", scope #{@scope}" if @scope && (filter.nil? || filter.include?(:scope))
+      log_msg += ", scope #{@scope.inspect}" if @scope && (filter.nil? || filter.include?(:scope))
       log_msg += ", fanout" if (filter.nil? || filter.include?(:fanout)) && fanout?
       log_msg += ", reply_to #{id_to_s(@reply_to)}" if @reply_to && (filter.nil? || filter.include?(:reply_to))
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty? && (filter.nil? || filter.include?(:tags))
@@ -468,7 +471,7 @@ module RightScale
       log_msg = "#{super(filter, version)} #{trace} #{@type}"
       log_msg += " from #{id_to_s(@from)}" if filter.nil? || filter.include?(:from)
       log_msg += ", target #{id_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
-      log_msg += ", scope #{@scope}" if @scope && (filter.nil? || filter.include?(:scope))
+      log_msg += ", scope #{@scope.inspect}" if @scope && (filter.nil? || filter.include?(:scope))
       log_msg += ", fanout" if (filter.nil? || filter.include?(:fanout)) && fanout?
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty? && (filter.nil? || filter.include?(:tags))
       log_msg += ", persistent" if @persistent && (filter.nil? || filter.include?(:persistent))
