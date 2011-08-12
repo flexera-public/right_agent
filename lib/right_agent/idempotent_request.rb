@@ -30,6 +30,8 @@ module RightScale
     # Wait 5 seconds before retrying in case of failure
     DEFAULT_RETRY_DELAY = 5
 
+    attr_reader :raw_response
+
     # Send idempotent request
     # Retry until timeout is reached (indefinitely if timeout <= 0)
     # Calls deferrable callback on completion, error callback on timeout
@@ -47,6 +49,7 @@ module RightScale
       @retry_on_error = options[:retry_on_error] || false
       @timeout = options[:timeout] || -1
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
+      @raw_response = nil
       @done = false
     end
 
@@ -60,7 +63,7 @@ module RightScale
       if @cancel_timer.nil? && @timeout > 0
         @cancel_timer = EM::Timer.new(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
-          Log.info(msg)
+          log_info(msg)
           cancel(msg)
         end
       end
@@ -75,8 +78,10 @@ module RightScale
     # === Return
     # true:: Always return true
     def cancel(msg)
-      @cancel_timer.cancel if @cancel_timer
-      @cancel_timer = nil
+      if @cancel_timer
+        @cancel_timer.cancel
+        @cancel_timer = nil
+      end
       @done = true
       fail(msg)
       true
@@ -93,11 +98,16 @@ module RightScale
     # true:: Always return true
     def handle_response(r)
       return true if @done
+      @raw_response = r
       res = result_from(r)
       res = OperationResult.non_delivery unless res
       if res.success?
+        if @cancel_timer
+          @cancel_timer.cancel
+          @cancel_timer = nil
+        end
         @done = true
-        succeed(res.content) 
+        succeed(res.content)
       else
         if res.non_delivery?
           Log.info("Request non-delivery (#{res.content}) for #{@operation}")

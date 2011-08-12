@@ -49,7 +49,7 @@ module RightScale
     attr_reader :broker
 
     # (Array) Tag strings published by agent
-    attr_reader :tags
+    attr_accessor :tags
 
     # (Proc) Callback procedure for exceptions
     attr_reader :exception_callback
@@ -237,23 +237,6 @@ module RightScale
     # (Actor):: Actor registered
     def register(actor, prefix = nil)
       @registry.register(actor, prefix)
-    end
-
-    # Update set of tags published by agent and notify mapper
-    # Add tags in 'new_tags' and remove tags in 'old_tags'
-    #
-    # === Parameters
-    # new_tags(Array):: Tags to be added
-    # obsolete_tags(Array):: Tags to be removed
-    #
-    # === Return
-    # true:: Always return true
-    def update_tags(new_tags, obsolete_tags)
-      @tags += (new_tags || [])
-      @tags -= (obsolete_tags || [])
-      @tags.uniq!
-      @sender.send_persistent_push("/mapper/update_tags", :new_tags => new_tags, :obsolete_tags => obsolete_tags)
-      true
     end
 
     # Connect to an additional broker or reconnect it if connection has failed
