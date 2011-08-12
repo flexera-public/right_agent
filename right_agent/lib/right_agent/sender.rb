@@ -167,7 +167,7 @@ module RightScale
     end
 
     # Send a request to a single target or multiple targets with no response expected other
-    # than optional routing success/failure
+    # than routing failures
     # Do not persist the request en route
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request
@@ -180,7 +180,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -203,7 +203,7 @@ module RightScale
     end
 
     # Send a request to a single target or multiple targets with no response expected other
-    # than optional routing success/failure
+    # than routing failures
     # Persist the request en route to reduce the chance of it being lost at the expense of some
     # additional network overhead
     # Enqueue the request if the target is not currently available
@@ -217,7 +217,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -257,7 +257,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -293,7 +293,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -526,7 +526,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, or hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -610,7 +610,7 @@ module RightScale
     # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
+    #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
@@ -628,6 +628,26 @@ module RightScale
     # true:: Always return true
     # ArgumentError:: If target is invalid
     def build_request(kind, type, payload, target, opts, &callback)
+      if target.is_a?(Hash)
+        t = SerializationHelper.symbolize_keys(target)
+        if s = target[:scope]
+          if s.is_a?(Hash)
+            s = SerializationHelper.symbolize_keys(s)
+            if ([:account, :deployment, :shard] & s.keys).empty? && !s.empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account, :deployment, and :shard allowed"
+            end
+            t[:scope] = s
+          else
+            raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account, :deployment, and/or :shard"
+          end
+        elsif !t.has_key?(:tags) && !t.empty?
+          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are :tags and :scope"
+        end
+        target = t
+      elsif !target.nil? && !target.is_a?(String)
+        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of :tags and/or :scope"
+      end
+
       if should_queue?(opts)
         queue_request(:kind => kind, :type => type, :payload => payload,
                       :target => target, :options => opts, :callback => callback)

@@ -311,6 +311,26 @@ describe RightScale::Sender do
       @instance.initialize_offline_queue
     end
 
+    it "should validate target" do
+      @broker.should_receive(:publish)
+      lambda { @instance.send_retryable_request('/foo/bar', nil) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "target") }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, {}) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags") }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:deployment => 1}) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, []) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :bogus => 1) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => 1) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:bogus => 1}) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :bogus) }.should raise_error(ArgumentError)
+    end
+
     it "should create a Request object" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
