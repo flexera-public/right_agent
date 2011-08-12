@@ -63,7 +63,7 @@ module RightScale
   module AgentConfig
 
     # Current agent protocol version
-    PROTOCOL_VERSION = 16
+    PROTOCOL_VERSION = 17
 
     # Current agent protocol version
     #

@@ -166,7 +166,8 @@ module RightScale
       true
     end
 
-    # Send a request to a single target or multiple targets with no response expected
+    # Send a request to a single target or multiple targets with no response expected other
+    # than optional routing success/failure
     # Do not persist the request en route
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request
@@ -185,18 +186,24 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false
     #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
+    #
     # === Return
     # true:: Always return true
-    def send_push(type, payload = nil, target = nil, opts = {})
-      build_push(:send_push, type, payload, target, opts)
+    def send_push(type, payload = nil, target = nil, opts = {}, &callback)
+      build_push(:send_push, type, payload, target, opts, &callback)
     end
 
-    # Send a request to a single target or multiple targets with no response expected
+    # Send a request to a single target or multiple targets with no response expected other
+    # than optional routing success/failure
     # Persist the request en route to reduce the chance of it being lost at the expense of some
     # additional network overhead
     # Enqueue the request if the target is not currently available
@@ -216,15 +223,20 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false
     #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
+    #
     # === Return
     # true:: Always return true
-    def send_persistent_push(type, payload = nil, target = nil, opts = {})
-      build_push(:send_persistent_push, type, payload, target, opts)
+    def send_persistent_push(type, payload = nil, target = nil, opts = {}, &callback)
+      build_push(:send_persistent_push, type, payload, target, opts, &callback)
     end
 
     # Send a request to a single target with a response expected
@@ -520,31 +532,70 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
     # opts(Hash):: Additional send control options
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any
     #     brokers, defaults to false
     #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
+    #
     # === Return
     # true:: Always return true
-    def build_push(kind, type, payload = nil, target = nil, opts = {})
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
+    def build_push(kind, type, payload = nil, target = nil, opts = {}, &callback)
+      if target.is_a?(Hash)
+        t = SerializationHelper.symbolize_keys(target)
+        if s = target[:scope]
+          if s.is_a?(Hash)
+            s = SerializationHelper.symbolize_keys(s)
+            if ([:account, :deployment, :shard] & s.keys).empty? && !s.empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account, :deployment, and :shard allowed"
+            end
+            t[:scope] = s
+          else
+            raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account, :deployment, and/or :shard"
+          end
+        elsif (s = t[:selector])
+          s = s.to_sym
+          unless [:any, :all].include?(s)
+            raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
+          end
+          t[:selector] = s
+        elsif !t.has_key?(:tags) && !t.empty?
+          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are :tags, :scope, and :selector"
+        end
+        target = t
+      elsif !target.nil? && !target.is_a?(String)
+        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of :tags, :scope, and/or :selector"
+      end
+
       if should_queue?(opts)
         queue_request(:kind => kind, :type => type, :payload => payload, :target => target, :options => opts)
       else
         method = type.split('/').last
-        @requests.update(method)
+        received_at = @requests.update(method)
         push = Push.new(type, payload)
         push.from = @identity
         push.token = AgentIdentity.generate
         if target.is_a?(Hash)
           push.tags = target[:tags] || []
           push.scope = target[:scope]
-          push.selector = target[:selector] || :all
+          push.selector = target[:selector] || :any
         else
           push.target = target
         end
         push.persistent = kind == :send_persistent_push
         @request_kinds.update((push.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
+        @pending_requests[push.token] = {
+          :response_handler => callback,
+          :receive_time => received_at,
+          :request_kind => kind
+        } if callback
         publish(push)
       end
       true
@@ -575,6 +626,7 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    # ArgumentError:: If target is invalid
     def build_request(kind, type, payload, target, opts, &callback)
       if should_queue?(opts)
         queue_request(:kind => kind, :type => type, :payload => payload,
@@ -721,6 +773,11 @@ module RightScale
             Log.error("Failed processing response {response.to_s([])}", e, :trace)
             @exceptions.track("response", e, response)
           end
+        end
+      elsif [:send_push, :send_persistent_push].include?(handler[:request_kind])
+        result = RightScale::OperationResult.from_results(response)
+        if result && !result.success?
+          Log.error("")
         end
       end
       true

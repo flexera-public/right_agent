@@ -39,7 +39,9 @@
 #     Deprecated Stale packet with conversion to Result packet with NON_DELIVERY OperationResult
 #     Changed InstanceSetup to use the Repose mirror to download RightScript attachments
 #     Added duration to Result packet
-# 14: Move registrar actor functionality into internal mapper actor
+# 14: Moved registrar actor functionality into internal mapper actor
 # 15: Introduced shared-registration exchange as replacement for infrastructure agent registration
 #     as replacement for registration exchange, which continues to be supported for old instances
-# 16: Add the capability for instance agents to fetch their credentials from an external source.
+# 16: Added the capability for instance agents to fetch their credentials from an external source
+# 17: Changed sender interface to allow a callback on push requests to receive mapper routing failures
+#     Reversed push selector default from :all to :any when the target is a hash
