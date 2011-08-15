@@ -46,6 +46,9 @@ module RightScale
     # Default version for packet senders unaware of this versioning
     DEFAULT_VERSION = 0
 
+    # Shard scope value meaning restrict sending request only to agents with no shard id
+    GLOBAL = 0
+
     attr_accessor :size
 
     def initialize

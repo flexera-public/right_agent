@@ -172,7 +172,8 @@ module RightScale
       true
     end
 
-    # Send a request to a single target or multiple targets with no response expected
+    # Send a request to a single target or multiple targets with no response expected other
+    # than routing failures
     # Do not persist the request en route
     # Enqueue the request if the target is not currently available
     # Never automatically retry the request
@@ -184,18 +185,27 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
+    #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
-    def send_push(type, payload = nil, target = nil)
-      build_push(:send_push, type, payload, target)
+    def send_push(type, payload = nil, target = nil, &callback)
+      build_push(:send_push, type, payload, target, &callback)
     end
 
-    # Send a request to a single target or multiple targets with no response expected
+    # Send a request to a single target or multiple targets with no response expected other
+    # than routing failures
     # Persist the request en route to reduce the chance of it being lost at the expense of some
     # additional network overhead
     # Enqueue the request if the target is not currently available
@@ -208,15 +218,23 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
+    #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
-    def send_persistent_push(type, payload = nil, target = nil)
-      build_push(:send_persistent_push, type, payload, target)
+    def send_persistent_push(type, payload = nil, target = nil, &callback)
+      build_push(:send_persistent_push, type, payload, target, &callback)
     end
 
     # Send a request to a single target with a response expected
@@ -236,8 +254,11 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -265,8 +286,11 @@ module RightScale
     # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -495,31 +519,48 @@ module RightScale
     # target(String|Hash):: Identity of specific target, or hash for selecting potentially multiple
     #   targets, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :all
+    #     defaults to :any
+    #
+    # === Block
+    # Optional block used to process routing response failures asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
+    #     use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
-    def build_push(kind, type, payload = nil, target = nil)
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
+    def build_push(kind, type, payload = nil, target = nil, &callback)
+      validate_target(target, allow_selector = true)
       if should_queue?
-        queue_request(:kind => kind, :type => type, :payload => payload, :target => target)
+        queue_request(:kind => kind, :type => type, :payload => payload, :target => target, :callback => callback)
       else
         method = type.split('/').last
-        @requests.update(method)
+        received_at = @requests.update(method)
         push = Push.new(type, payload)
         push.from = @identity
         push.token = AgentIdentity.generate
         if target.is_a?(Hash)
           push.tags = target[:tags] || []
           push.scope = target[:scope]
-          push.selector = target[:selector] || :all
+          push.selector = target[:selector] || :any
         else
           push.target = target
         end
         push.persistent = kind == :send_persistent_push
         @request_kinds.update((push.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
+        @pending_requests[push.token] = {
+          :response_handler => callback,
+          :receive_time => received_at,
+          :request_kind => kind
+        } if callback
         publish(push)
       end
       true
@@ -534,8 +575,11 @@ module RightScale
     # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
     #   randomly, or nil if routing solely using type
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Behavior to be used to resolve tag based routing with the following keys:
-    #     :account(String):: Restrict to agents with this account id
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :deployment(Integer):: Restrict to agents with this deployment id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -544,7 +588,11 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
     def build_request(kind, type, payload, target, &callback)
+      validate_target(target, allow_selector = false)
       if should_queue?
         queue_request(:kind => kind, :type => type, :payload => payload, :target => target, :callback => callback)
       else
@@ -583,6 +631,47 @@ module RightScale
             @exceptions.track(kind.to_s, e, request)
           end
         end
+      end
+      true
+    end
+
+    # Validate target argument of send
+    #
+    # === Parameters
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
+    # allow_selector(Boolean):: Whether to allow :selector
+    #
+    # === Return
+    # true:: Always return true
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
+    def validate_target(target, allow_selector)
+      if target.is_a?(Hash)
+        selector = allow_selector ? ":selector, " : ""
+        t = SerializationHelper.symbolize_keys(target)
+        if s = target[:scope]
+          if s.is_a?(Hash)
+            s = SerializationHelper.symbolize_keys(s)
+            if ([:account, :deployment, :shard] & s.keys).empty? && !s.empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account, :deployment, and :shard allowed"
+            end
+            t[:scope] = s
+          else
+            raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account, :deployment, and/or :shard"
+          end
+        elsif (s = t[:selector]) && allow_selector
+          s = s.to_sym
+          unless [:any, :all].include?(s)
+            raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
+          end
+          t[:selector] = s
+        elsif !t.has_key?(:tags) && !t.empty?
+          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{selector}:tags and/or :scope"
+        end
+        target = t
+      elsif !target.nil? && !target.is_a?(String)
+        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of #{selector}:tags and/or :scope"
       end
       true
     end
