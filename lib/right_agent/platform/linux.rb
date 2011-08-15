@@ -28,23 +28,26 @@ module RightScale
     FEDORA_REL = '/etc/fedora-release'
     FEDORA_SIG = /Fedora release ([0-9]+) \(.*\)/
 
-    attr_reader :flavor, :release
+    attr_reader :flavor, :release, :codename
 
-    # Initialize flavor and release
+    # Initialize flavor, release and codename
     def init
       system('lsb_release --help > /dev/null 2>&1')
       if $?.success?
         # Use the lsb_release utility if it's available
-        @flavor  = `lsb_release -is`.strip.downcase
-        @release =  `lsb_release -rs`.strip
+        @flavor   = `lsb_release -is`.strip.downcase
+        @release  = `lsb_release -rs`.strip
+        @codename = `lsb_release -cs`.strip
       elsif File.exist?(FEDORA_REL) && (match = FEDORA_SIG.match(File.read(FEDORA_REL)))
         # Parse the fedora-release file if it exists
         @flavor   = 'fedora'
         @release  = match[1]
+        @codename = match[2]
       else
-        @flavor = @release = 'unknown'
+        @distro = @release = @codename = 'unknown'
       end
     end
+
 
     # Is this machine running Ubuntu?
     #
