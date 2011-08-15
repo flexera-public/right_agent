@@ -46,7 +46,7 @@ module RightScale
 
     # TODO Initialize flavor and release (need to run on windows to finalize)
     def init
-      GetVersionEx = Win32API.new("kernel32", "GetVersionEx", 'P', 'L')
+      getversionex = Win32API.new("kernel32", "GetVersionEx", 'P', 'L')
       osversioninfo = [
         148,       # size of this struct (IN)
         0,         # major version (OUT)
@@ -56,7 +56,7 @@ module RightScale
         "\0" * 128 # additional info (OUT)
       ].pack('LLLLLa128')
 
-      raise 'Failed to detect Windows version' unless GetVersionEx.call(osversioninfo) == 1 # => 1, means succeeded
+      raise 'Failed to detect Windows version' if 0 == getversionex.call(osversioninfo)  # zero is failure
       version = osversioninfo.unpack('LLLLLZ128') # 'Z' means ASCIIZ string
     end
 
