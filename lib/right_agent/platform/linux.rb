@@ -48,7 +48,6 @@ module RightScale
       end
     end
 
-
     # Is this machine running Ubuntu?
     #
     # === Return
