@@ -87,12 +87,13 @@ module RightScale
     # new_tags(Array):: Tags to be added
     #
     # === Block
-    # Given block should take one argument which will be set with the raw response
+    # A block is optional. If provided, should take one argument which will be set with the
+    # raw response
     #
     # === Return
     # true always return true
     def add_tags(*new_tags)
-      update_tags(new_tags, []) { |raw_response| yield raw_response }
+      update_tags(new_tags, []) { |raw_response| yield raw_response if block_given? }
     end
 
     # Remove given tags from agent
@@ -101,12 +102,13 @@ module RightScale
     # old_tags(Array):: Tags to be removed
     #
     # === Block
-    # Given block should take one argument which will be set with the raw response
+    # A block is optional. If provided, should take one argument which will be set with the
+    # raw response
     #
     # === Return
     # true always return true
     def remove_tags(*old_tags)
-      update_tags([], old_tags) { |raw_response| yield raw_response }
+      update_tags([], old_tags) { |raw_response| yield raw_response if block_given? }
     end
 
     # Runs a tag update with a list of new and old tags.
@@ -117,7 +119,8 @@ module RightScale
     # block(Block):: optional callback for update response
     #
     # === Block
-    # Given block should take one argument which will be set with the raw response
+    # A block is optional. If provided, should take one argument which will be set with the
+    # raw response
     #
     # === Return
     # true:: Always return true
