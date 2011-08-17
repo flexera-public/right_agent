@@ -163,13 +163,21 @@ module RightScale
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'run'))
       end
 
+      def right_link_home_dir
+        unless @right_link_home_dir
+          @right_link_home_dir = ENV['RS_RIGHT_LINK_HOME'] ||
+                                 File.normalize_path(File.join(company_program_files_dir, 'RightLink'))
+        end
+        @right_link_home_dir
+      end
+
       # Path to right link configuration and internal usage scripts
       def private_bin_dir
-        return pretty_path(File.join(sandbox_dir, 'right_link', 'scripts', 'windows'))
+        return pretty_path(File.join(right_link_home_dir, 'right_link', 'scripts', 'windows'))
       end
 
       def sandbox_dir
-        File.join(company_program_files_dir, 'SandBox')
+        File.join(right_link_home_dir, 'sandbox')
       end
 
       # System root path
@@ -777,7 +785,7 @@ EOF
       def format_right_run_path(executable_path, executable_arguments)
         if @@right_run_path.nil?
           @@right_run_path = ""
-          if ENV['ProgramW6432']
+          if ENV['ProgramW6432'] && (@@right_run_path = ENV['RS_RIGHT_RUN_EXE'].to_s).empty?
             temp_path = File.join(ENV['ProgramW6432'], 'RightScale', 'Shared', 'RightRun.exe')
             if File.file?(temp_path)
               @@right_run_path = File.normalize_path(temp_path).gsub("/", "\\")
@@ -1008,7 +1016,11 @@ EOF
 
       # Returns path to sandbox ruby executable.
       def sandbox_ruby
-        return File.normalize_path(File.join(RightScale::Platform.filesystem.sandbox_dir, 'Ruby', 'bin', 'ruby.exe'))
+        unless @sandbox_ruby
+          @sandbox_ruby = ENV['RS_RUBY_EXE'] ||
+                          File.normalize_path(File.join(RightScale::Platform.filesystem.sandbox_dir, 'Ruby', 'bin', 'ruby.exe'))
+        end
+        @sandbox_ruby
       end
 
       # Gets the current system uptime.
