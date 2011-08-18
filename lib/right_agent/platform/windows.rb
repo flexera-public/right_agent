@@ -171,13 +171,17 @@ module RightScale
         @right_link_home_dir
       end
 
+      def right_link_dir
+        return pretty_path(File.join(right_link_home_dir, 'right_link'))
+      end
+
       # Path to right link configuration and internal usage scripts
       def private_bin_dir
-        return pretty_path(File.join(right_link_home_dir, 'right_link', 'scripts', 'windows'))
+        return pretty_path(File.join(right_link_dir, 'scripts', 'windows'))
       end
 
       def sandbox_dir
-        File.join(right_link_home_dir, 'sandbox')
+        return pretty_path(File.join(right_link_home_dir, 'sandbox'))
       end
 
       # System root path
