@@ -446,16 +446,10 @@ module RightScale
     # (Push):: New packet
     def self.create(o)
       i = o['data']
-      expires_at = if i.has_key?('created_at')
-        created_at = i['created_at'].to_i
-        created_at > 0 ? created_at + (15 * 60) : 0
-      else
-        i['expires_at']
-      end
       new(i['type'], i['payload'], { :from   => self.compatible(i['from']),   :scope      => i['scope'],
                                      :token  => i['token'],                   :selector   => i['selector'],
                                      :target => self.compatible(i['target']), :persistent => i['persistent'],
-                                     :tags   => i['tags'],                    :expires_at => expires_at },
+                                     :tags   => i['tags'],                    :expires_at => i['expires_at'] },
           i['version'] || [DEFAULT_VERSION, DEFAULT_VERSION], o['size'])
     end
 

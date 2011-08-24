@@ -304,10 +304,10 @@ describe "Packet: Push" do
     RightScale::Push.new('/some/foo', 'payload', :selector => 'all').fanout?.should be_true
   end
 
-  it "should convert created_at to expires_at" do
+  it "should not convert created_at to expires_at" do
     packet = RightScale::Push.new('/some/foo', 'payload', :expires_at => 100000)
     packet2 = JSON.parse(packet.to_json.sub("expires_at", "created_at"))
-    packet2.expires_at.should == 100900
+    packet2.expires_at.should == 0
     packet = RightScale::Push.new('/some/foo', 'payload', :expires_at => 0)
     packet2 = JSON.parse(packet.to_json.sub("expires_at", "created_at"))
     packet2.expires_at.should == 0
