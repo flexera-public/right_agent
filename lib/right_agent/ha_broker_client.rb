@@ -425,8 +425,7 @@ module RightScale
       @brokers.inject([]) { |c, b| b.failed? ? c << b.identity : c }
     end
 
-    # Make new connection to broker at specified address unless already connected
-    # or currently connecting
+    # Make new connection to broker at specified address
     #
     # === Parameters
     # host{String):: IP host name or address for individual broker
@@ -446,48 +445,54 @@ module RightScale
     # (Boolean):: true if connected, false if no connect attempt made
     #
     # === Raise
-    # Exception:: If host and port do not match an existing broker but index does
+    # ArgumentError:: If priority is negative or tried to change index of existing broker
     def connect(host, port, index, priority = nil, island = nil, force = false, &blk)
       identity = self.class.identity(host, port)
+      raise ArgumentError, "Priority of broker #{identity} being connected cannot be negative" unless priority.nil? || priority >= 0
+
       existing = @brokers_hash[identity]
+      raise ArgumentError, "Not allowed to change index of broker #{identity} from #{existing.index.inspect} " +
+                           "to #{index.inspect} when reconnecting" if existing && existing.index != index
+
       if existing && existing.usable? && !force
-        Log.info("Ignored request to reconnect #{identity} because already #{existing.status.to_s}")
+        Log.info("[setup] Ignored request to reconnect broker #{identity} because already #{existing.status.to_s}")
         false
       else
-        @brokers.each do |b|
-          if index == b.index && (island.nil? || in_island?(b, island.id))
-            raise Exception, "Not allowed to change host or port of existing broker #{identity}, " +
-                             "alias #{b.alias}, to #{host} and #{port.inspect}"
-          end
-        end unless existing
-
-        address = {:host => host, :port => port, :index => index}
-        broker = BrokerClient.new(identity, address, @serializer, @exceptions, @options, island, existing)
-        island_id = island && island.id
-        p, i = priority(identity, island_id)
-        if priority && priority < p
-          @brokers.insert(i + priority, broker)
-        elsif priority && priority > p
-          Log.info("Reduced priority setting for broker #{identity} from #{priority} to #{p} to avoid gap in list")
-          @brokers.insert(i + p, broker)
-        else
-          i += p
-          if @brokers[i] && @brokers[i].island_id == island_id
-            @brokers[i].close
-            @brokers[i] = broker
-          elsif @brokers[i]
-            @brokers.insert(i, broker)
-          else
-            @brokers[i] = broker
+        unless existing
+          @brokers.each do |b|
+            if index == b.index && (island.nil? || in_island?(b, island.id))
+              Log.info("Changing host and/or port of existing broker #{identity}, " +
+                       "alias #{b.alias}, to #{host.inspect} and #{port.inspect}")
+              existing = b
+              break
+            end
           end
         end
+
+        # Determine current/default priority and array index where island starts
+        island_id = island && island.id
+        p, i = priority(identity, island_id, index)
+
+        # Create new broker client
+        address = {:host => host, :port => port, :index => index}
+        broker = BrokerClient.new(identity, address, @serializer, @exceptions, @options, island, existing)
+
+        # Remove existing broker so that simplify to just adding a new broker
+        remove(existing.host, existing.port) if existing
+
+        # Slot new broker into priority position without allowing any gaps to be created
+        max_priority = island(island_id).size
+        priority = max_priority if priority && priority > max_priority
+        @brokers.insert(i + (priority || p), broker)
         @brokers_hash[identity] = broker
+
         yield broker.identity if block_given?
         true
       end
     end
 
     # Connect to any brokers in islands for which not currently connected
+    # Ignore any islands that have no broker hosts
     # Remove any broker clients for islands in which they are no longer configured
     #
     # === Parameters
@@ -499,21 +504,26 @@ module RightScale
       old = all
       new = []
       islands.each_value do |i|
-        priority = 0
-        self.class.addresses(i.broker_hosts, i.broker_ports).each do |a|
-          identity = self.class.identity(a[:host], a[:port])
-          if @brokers_hash[identity]
-            old.delete(identity)
-          else
-            new << identity if connect(a[:host], a[:port], a[:index], priority, i)
+        if i.broker_hosts && !i.broker_hosts.empty?
+          priority = 0
+          self.class.addresses(i.broker_hosts, i.broker_ports).each do |a|
+            identity = self.class.identity(a[:host], a[:port])
+            if @brokers_hash[identity]
+              old.delete(identity)
+            else
+              new << identity if connect(a[:host], a[:port], a[:index], priority, i)
+            end
+            priority += 1
           end
-          priority += 1
+        else
+          Log.info("[setup] Ignored island #{i.inspect} because it has no broker hosts")
         end
       end
 
       old.each do |identity|
-        b = @brokers_hash[identity]
-        remove(b.host, b.port)
+        if b = @brokers_hash[identity]
+          remove(b.host, b.port)
+        end
       end
       { :add => new, :remove => old, :home => home }
     end
@@ -749,13 +759,12 @@ module RightScale
     def remove(host, port, &blk)
       identity = self.class.identity(host, port)
       if broker = @brokers_hash[identity]
-        Log.info("Removing #{identity}, alias #{broker.alias} from broker list")
-        broker.close(propagate = true, normal = true, log = false)
+        broker.close
         @brokers_hash.delete(identity)
         @brokers.reject! { |b| b.identity == identity }
         yield identity if block_given?
       else
-        Log.info("Ignored request to remove #{identity} from broker list because unknown")
+        Log.info("[setup] Ignored request to remove #{identity} from broker list because unknown")
         identity = nil
       end
       identity
@@ -964,26 +973,27 @@ module RightScale
     # If broker not found, assign next available priority
     #
     # === Parameters
-    # identity(String):: Broker identity
+    # identity(String):: Broker identity to be used to find existing broker
     # island_id(Integer|nil):: Island identifier, defaults to home island
+    # index(Integer|nil):: Broker index to be used to find existing broker, ignored if nil
     #
     # === Return
     # (Array):: Priority and broker array index where island starts
-    def priority(identity, island_id = nil)
-      index = 0
+    def priority(identity, island_id = nil, index = nil)
+      i = 0
       priority = 0
       found_island = false
       @brokers.each do |b|
         if in_island?(b, island_id)
           found_island = true
-          break if b.identity == identity
+          break if b.identity == identity || b.index == index
           priority += 1
         elsif found_island
           break
         end
-        index += 1 unless found_island
+        i += 1 unless found_island
       end
-      [priority, index]
+      [priority, i]
     end
 
     # Iterate over clients that are usable, i.e., connecting or confirmed connected
