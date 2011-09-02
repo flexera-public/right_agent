@@ -54,6 +54,9 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
+    # (String) Thread name for concurrent execution or nil
+    attr_accessor :thread_name
+
     def initialize(*args)
       @executables           = args[0]
       @cookbook_repositories = args[1] if args.size > 1
@@ -61,11 +64,18 @@ module RightScale
       @full_converge         = args[3] if args.size > 3
       @cookbooks             = args[4] if args.size > 4
       @repose_servers        = args[5] if args.size > 5
+      @thread_name           = args[6] if args.size > 6
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @executables, @cookbook_repositories, @audit_id, @full_converge, @cookbooks, @repose_servers ]
+      [ @executables,
+        @cookbook_repositories,
+        @audit_id,
+        @full_converge,
+        @cookbooks,
+        @repose_servers,
+        @thread_name ]
     end
 
     # Human readable representation
