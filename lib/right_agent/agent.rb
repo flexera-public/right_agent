@@ -169,7 +169,7 @@ module RightScale
       Log.debug("Start options:")
       log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v}" }
       log_opts.each { |l| Log.debug(l) }
-      
+
       begin
         # Capture process id in file after optional daemonize
         pid_file = PidFile.new(@identity)
@@ -646,9 +646,15 @@ module RightScale
     def setup_traps
       ['INT', 'TERM'].each do |sig|
         old = trap(sig) do
-          terminate do
-            EM.stop
-            old.call if old.is_a? Proc
+          EM.next_tick do
+            begin
+              terminate do
+                EM.stop
+                old.call if old.is_a? Proc
+              end
+            rescue Exception => e
+              Log.error("Failed in termination", e, :trace)
+            end
           end
         end
       end

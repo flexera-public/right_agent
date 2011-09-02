@@ -185,12 +185,12 @@ describe RightScale::AgentConfig do
 
   it 'should return configuration file paths for all agents' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.cfg_files.should == [@cfg_agent1, @cfg_agent2]
+    @agent_config.cfg_files.should =~ [@cfg_agent1, @cfg_agent2]
   end
 
   it 'should return a list of all configured agents' do
     @agent_config.cfg_dir = @cfg_dir
-    @agent_config.cfg_agents.should == ['agent_1', 'agent_2']
+    @agent_config.cfg_agents.should =~ ['agent_1', 'agent_2']
   end
 
   it 'should return agent name for agent identity' do
