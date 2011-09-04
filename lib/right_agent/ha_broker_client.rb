@@ -1140,7 +1140,7 @@ module RightScale
         persistent = options[:persistent]
         mandatory = true
         remaining = (context.brokers - context.failed) & all_connected
-        Log.info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
+        Log.info("RETURN reason #{reason} token <#{token}> brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
                  " connected #{all_connected.inspect} remaining #{remaining.inspect}")
         if remaining.empty?
           if (persistent || one_way) &&

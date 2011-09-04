@@ -652,6 +652,11 @@ module RightScale
       str += ", last: #{last_activity_str(value['last'], single_item = true)}" if value["last"]
       str += ", rate: #{enough_precision(value['rate'])}/sec" if value["rate"]
       str += ", duration: #{enough_precision(value['duration'])} sec" if value["duration"]
+      value.each do |name, data|
+        unless ["total", "percent", "last", "rate", "duration"].include?(name)
+          str += ", #{name}: #{data.is_a?(String) ? data : data.inspect}"
+        end
+      end
       str
     end
 
