@@ -139,6 +139,8 @@ module RightScale
     # === Parameters
     # message(String):: Error description
     # exception(Exception|String):: Associated exception or other parenthetical error information
+    # backtrace(Symbol):: Exception backtrace extent: :no_trace, :caller, or :trace,
+    #   defaults to :caller
     #
     # === Return
     # (OperationResult):: Corresponding result
