@@ -31,23 +31,23 @@ module RightScale
         ExecutableBundle.new.serialized_members.count.should == 7
       end
     end
-    context 'debug_cookbooks' do
+    context 'dev_cookbooks' do
       context 'when set' do
-        let(:expected_debug_cookbooks) { [{ :foo=>'bar' }] }
-        let(:bundle) { ExecutableBundle.new(nil, nil, nil, nil, nil, nil, expected_debug_cookbooks.clone) }
+        let(:expected_dev_cookbooks) { [{ :foo=>'bar' }] }
+        let(:bundle) { ExecutableBundle.new(nil, nil, nil, nil, nil, nil, expected_dev_cookbooks.clone) }
 
         it 'should serialize in as the seventh parameter' do
-          bundle.debug_cookbooks.should == expected_debug_cookbooks
+          bundle.dev_cookbooks.should == expected_dev_cookbooks
         end
 
         it 'should serialize out as the seventh parameter' do
-          bundle.serialized_members[6].should == expected_debug_cookbooks
+          bundle.serialized_members[6].should == expected_dev_cookbooks
         end
       end
       context 'when not set' do
         let(:bundle) { ExecutableBundle.new }
         it 'should be nil' do
-          bundle.debug_cookbooks.should be_nil
+          bundle.dev_cookbooks.should be_nil
         end
 
         it "should serialize to nil" do

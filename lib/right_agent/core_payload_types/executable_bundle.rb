@@ -55,7 +55,7 @@ module RightScale
     attr_accessor :repose_servers
 
     # (Array) Chef cookbook details required to download cookbooks from the instance
-    attr_accessor :debug_cookbooks
+    attr_accessor :dev_cookbooks
 
     def initialize(*args)
       @executables           = args[0]
@@ -64,12 +64,12 @@ module RightScale
       @full_converge         = args[3] if args.size > 3
       @cookbooks             = args[4] if args.size > 4
       @repose_servers        = args[5] if args.size > 5
-      @debug_cookbooks       = args[6] if args.size > 6
+      @dev_cookbooks         = args[6] if args.size > 6
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @executables, @cookbook_repositories, @audit_id, @full_converge, @cookbooks, @repose_servers, @debug_cookbooks ]
+      [ @executables, @cookbook_repositories, @audit_id, @full_converge, @cookbooks, @repose_servers, @dev_cookbooks ]
     end
 
     # Human readable representation
