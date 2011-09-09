@@ -54,7 +54,7 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
-    # (Array) Chef cookbook details required to download cookbooks from the instance
+    # (Array) Collection of cookbooks to be checked out on the instance
     attr_accessor :dev_cookbooks
 
     def initialize(*args)
