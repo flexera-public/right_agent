@@ -38,6 +38,9 @@ module RightScale
       [ @repositories ]
     end
 
+    # Add a repository...
+    #
+    # === Parameters
     # (Hash):: collection of repos to be checked out on the instance
     # :repo_sha (String):: the hash id (SHA) of the repository
     # :repo_detail (Hash):: info needed to checkout this repo
@@ -68,9 +71,19 @@ module RightScale
     #     :password => <String>
     #  }
     # :cookbook_positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
+    #
+    # === Return
+    # result(Hash):: The entry added to the collection of repositories
     def add_repo(repo_sha, repo_detail, cookbook_positions)
       @repositories ||= {}
       @repositories[repo_sha] = { :repo => repo_detail, :positions => cookbook_positions }
+    end
+
+    #
+    # === Return
+    # (Boolean):: true if there are no repositories, false otherwise
+    def empty?
+      @repositories.count == 0
     end
   end
 end
