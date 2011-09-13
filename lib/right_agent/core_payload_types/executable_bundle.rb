@@ -35,6 +35,8 @@ module RightScale
 
     include Serializable
 
+    DEFAULT_THREAD_NAME = "default"
+
     # (Array) Collection of RightScripts and chef recipes instantiations
     attr_accessor :executables
 
@@ -54,7 +56,37 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
-    # (Array) Collection of cookbooks to be checked out on the instance
+    # (Hash):: collection of repos to be checked out on the instance
+    #   :key (String):: the hash id (SHA) of the repository
+    #  :value (Hash):: repo and cookbook detail
+    #    :repo (Hash):: repo details
+    #     {
+    #       <Symbol> Type of repository: one of :git, :svn, :download or :local
+    #         * :git denotes a 'git' repository that should be retrieved via 'git clone'
+    #         * :svn denotes a 'svn' repository that should be retrieved via 'svn checkout'
+    #         * :download denotes a tar ball that should be retrieved via HTTP GET (HTTPS if uri starts with https://)
+    #         * :local denotes cookbook that is already local and doesn't need to be retrieved
+    #       :repo_type => <Symbol>,
+    #       <String> URL to repository (e.g. git://github.com/opscode/chef-repo.git)
+    #       :url => <String>,
+    #       <String> git commit or svn branch that should be used to retrieve repository
+    #         Optional, use 'master' for git and 'trunk' for svn if tag is nil.
+    #         Not used for raw repositories.
+    #       :tag => <String>,
+    #       <Array> Path to cookbooks inside repostory
+    #         Optional (use location of repository as cookbook path if nil)
+    #       :cookbooks_path => <Array>,
+    #       <String> Private SSH key used to retrieve git repositories
+    #         Optional, not used for svn and raw repositories.
+    #       :ssh_key => <String>,
+    #       <String> Username used to retrieve svn and raw repositories
+    #         Optional, not used for git repositories.
+    #       :username => <String>,
+    #       <String> Password used to retrieve svn and raw repositories
+    #         Optional, not used for git repositories.
+    #       :password => <String>
+    #     }
+    #    :positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
     attr_accessor :dev_cookbooks
 
     def initialize(*args)
