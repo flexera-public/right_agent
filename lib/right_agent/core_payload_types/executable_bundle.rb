@@ -89,6 +89,9 @@ module RightScale
     #    :positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
     attr_accessor :dev_cookbooks
 
+    # (String) Thread name for concurrent execution or nil
+    attr_accessor :thread_name
+
     def initialize(*args)
       @executables           = args[0]
       @cookbook_repositories = args[1] if args.size > 1
@@ -97,11 +100,19 @@ module RightScale
       @cookbooks             = args[4] if args.size > 4
       @repose_servers        = args[5] if args.size > 5
       @dev_cookbooks         = args[6] if args.size > 6
+      @thread_name           = args[7] if args.size > 7
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @executables, @cookbook_repositories, @audit_id, @full_converge, @cookbooks, @repose_servers, @dev_cookbooks ]
+      [ @executables,
+        @cookbook_repositories,
+        @audit_id,
+        @full_converge,
+        @cookbooks,
+        @repose_servers,
+        @dev_cookbooks,
+        @thread_name ]
     end
 
     # Human readable representation
@@ -112,6 +123,5 @@ module RightScale
       desc = @executables.collect { |e| e.nickname }.join(', ') if @executables
       desc ||= 'empty bundle'
     end
-
   end
 end
