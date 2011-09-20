@@ -11,4 +11,5 @@ group :development do
   gem "rake",        ">= 0.8.7"
   gem "ruby-debug",  ">= 0.10"
   gem "rspec",       "~> 2.5"
+  gem "memprof",     "~> 0.3"
 end

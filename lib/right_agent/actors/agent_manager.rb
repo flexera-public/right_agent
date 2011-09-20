@@ -30,7 +30,7 @@ class AgentManager
 
   on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
 
-  expose :ping, :stats, :set_log_level, :execute, :connect, :disconnect, :terminate
+  expose :ping, :stats, :profile, :set_log_level, :execute, :connect, :disconnect, :terminate
 
   # Valid log levels
   LEVELS = [:debug, :info, :warn, :error, :fatal]
@@ -66,6 +66,48 @@ class AgentManager
   # (RightScale::OperationResult):: Always returns success
   def stats(options)
     @agent.stats(RightScale::SerializationHelper.symbolize_keys(options))
+  end
+
+  # Profile memory use
+  #
+  # === Parameters
+  # options(Hash):: Request options
+  #   :start(Boolean):: Whether to start profiling
+  #   :stats(Boolean):: Whether to display profile statistics to stdout
+  #   :reset(Boolean):: Whether to reset profile statistics when after displaying them
+  #   :stop(Boolean):: Whether to stop profiling
+  #
+  # === Return
+  # (OperationResult):: Empty success result or error result with message
+  def profile(options)
+    require 'memprof'
+
+    options = RightScale::SerializationHelper.symbolize_keys(options)
+    if options[:start]
+      RightScale::Log.info("[profile] Start")
+      $stderr.puts "[profile] Start at #{Time.now}"
+      Memprof.start
+      @profiling = true
+    end
+
+    if options[:stats]
+      return error_result("Profiling has not yet been started") unless @profiling
+      RightScale::Log.info("[profile] GC start")
+      $stderr.puts "[profile] GC at #{Time.now}"
+      GC.start
+      RightScale::Log.info("[profile] Display stats to stderr")
+      $stderr.puts "[profile] Stats at #{Time.now}#{options[:reset] ? ' with reset' : ''}"
+      options[:reset] ? Memprof.stats! : Memprof.stats
+    end
+
+    if options[:stop]
+      return error_result("Profiling has not yet been started") unless @profiling
+      RightScale::Log.info("[profile] Stop")
+      $stderr.puts "[profile] Stop at #{Time.now}"
+      Memprof.stop
+      @profiling = false
+    end
+    success_result
   end
 
   # Change log level of agent
