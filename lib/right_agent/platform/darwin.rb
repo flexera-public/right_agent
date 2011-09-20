@@ -121,6 +121,10 @@ module RightScale
         return path
       end
 
+      # for windows compatibility; just use File.symlink on Mac 
+      def create_symlink(old_name, new_name)
+        File.symlink(old_name, new_name)
+      end
     end # Filesystem
 
     # Provides utilities for managing volumes (disks).
