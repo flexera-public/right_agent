@@ -163,6 +163,10 @@ module RightScale
         return path
       end
 
+      # for windows compatibility; just use File.symlink on Linux
+      def create_symlink(old_name, new_name)
+        File.symlink(old_name, new_name)
+      end
     end
 
     # Provides utilities for managing volumes (disks).

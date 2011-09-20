@@ -35,6 +35,9 @@ module RightScale
 
     include Serializable
 
+    # Default thread name when no thread is specified for an executable bundle.
+    DEFAULT_THREAD_NAME = 'default'
+
     # (Array) Collection of RightScripts and chef recipes instantiations
     attr_accessor :executables
 
@@ -54,6 +57,39 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
+    # (Hash):: collection of repos to be checked out on the instance
+    #   :key (String):: the hash id (SHA) of the repository
+    #  :value (Hash):: repo and cookbook detail
+    #    :repo (Hash):: repo details
+    #     {
+    #       <Symbol> Type of repository: one of :git, :svn, :download or :local
+    #         * :git denotes a 'git' repository that should be retrieved via 'git clone'
+    #         * :svn denotes a 'svn' repository that should be retrieved via 'svn checkout'
+    #         * :download denotes a tar ball that should be retrieved via HTTP GET (HTTPS if uri starts with https://)
+    #         * :local denotes cookbook that is already local and doesn't need to be retrieved
+    #       :repo_type => <Symbol>,
+    #       <String> URL to repository (e.g. git://github.com/opscode/chef-repo.git)
+    #       :url => <String>,
+    #       <String> git commit or svn branch that should be used to retrieve repository
+    #         Optional, use 'master' for git and 'trunk' for svn if tag is nil.
+    #         Not used for raw repositories.
+    #       :tag => <String>,
+    #       <Array> Path to cookbooks inside repostory
+    #         Optional (use location of repository as cookbook path if nil)
+    #       :cookbooks_path => <Array>,
+    #       <String> Private SSH key used to retrieve git repositories
+    #         Optional, not used for svn and raw repositories.
+    #       :ssh_key => <String>,
+    #       <String> Username used to retrieve svn and raw repositories
+    #         Optional, not used for git repositories.
+    #       :username => <String>,
+    #       <String> Password used to retrieve svn and raw repositories
+    #         Optional, not used for git repositories.
+    #       :password => <String>
+    #     }
+    #    :positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
+    attr_accessor :dev_cookbooks
+
     def initialize(*args)
       @executables           = args[0]
       @cookbook_repositories = args[1] if args.size > 1
@@ -61,11 +97,20 @@ module RightScale
       @full_converge         = args[3] if args.size > 3
       @cookbooks             = args[4] if args.size > 4
       @repose_servers        = args[5] if args.size > 5
+      @dev_cookbooks         = args[6] if args.size > 6
+      @thread_name           = args[7] if args.size > 7
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @executables, @cookbook_repositories, @audit_id, @full_converge, @cookbooks, @repose_servers ]
+      [ @executables,
+        @cookbook_repositories,
+        @audit_id,
+        @full_converge,
+        @cookbooks,
+        @repose_servers,
+        @dev_cookbooks,
+        @thread_name ]
     end
 
     # Human readable representation
@@ -77,5 +122,17 @@ module RightScale
       desc ||= 'empty bundle'
     end
 
+    # Gets the thread name from a bundle, if any. Uses the default thread name for
+    # when a thread name is not specified (for backward compatibility, etc.).
+    #
+    # === Parameters
+    # bundle(ExecutableBundle):: bundle to inspect
+    #
+    # === Return
+    # thread_name(String):: thread name for bundle execution
+    def thread_name(value = nil)
+      @thread_name = value if value
+      return @thread_name || DEFAULT_THREAD_NAME
+    end
   end
 end

@@ -139,11 +139,13 @@ module RightScale
     # === Parameters
     # message(String):: Error description
     # exception(Exception|String):: Associated exception or other parenthetical error information
+    # backtrace(Symbol):: Exception backtrace extent: :no_trace, :caller, or :trace,
+    #   defaults to :caller
     #
     # === Return
     # (OperationResult):: Corresponding result
-    def self.error(message, exception = nil)
-      OperationResult.new(ERROR, Log.format(message, exception))
+    def self.error(message, exception = nil, backtrace = :caller)
+      OperationResult.new(ERROR, Log.format(message, exception, backtrace))
     end
 
     # Create new continue status
