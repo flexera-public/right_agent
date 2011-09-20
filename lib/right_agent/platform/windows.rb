@@ -38,6 +38,21 @@ rescue LoadError => e
 end
 
 module RightScale
+  class Win32Error < Exception
+    include ::Windows::Error
+
+    def initialize(msg = "")
+      super(msg)
+      @last_error = get_last_error
+    end
+
+    def message
+      original_message = super
+      result = ""
+      result << "#{original_message}\n  Error Detail: " unless original_message.nil? || original_message.empty?
+      result << "#{@last_error}"
+    end
+  end
 
   # Windows specific implementation
   class Platform
@@ -259,6 +274,25 @@ module RightScale
         return path
       end
 
+      # Ruby 1.8.7 on WIndows does not support File.symlink.  Windows Vista and newer
+      # versions of Windows do support symlinks via mlink, so we will use mlink if it
+      # is available, otherwise throw (on 2003 and erlier)
+      #
+      # === Parameters
+      # old_name (String):: the path to the real file/directory
+      # new_name (String):: the path to the link
+      #
+      # === Results
+      # always 0 as does File.symlink
+      #
+      # === Raises
+      # Win32Error:: if failed to create the link
+      def create_symlink(old_name, new_name)
+        flags = File.directory?(old_name) ? ::Windows::File::SYMBOLIC_LINK_FLAG_DIRECTORY : 0
+        result = ::Windows::File::CreateSymbolicLink.call(new_name, old_name, flags)
+        raise ::RightScale::Win32Error, "failed to create link from #{old_name} to #{new_name}"  unless (result == 1)
+        0
+      end
     end # Filesystem
 
     # Provides utilities for managing volumes (disks).
