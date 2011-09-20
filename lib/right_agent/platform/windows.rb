@@ -286,7 +286,7 @@ module RightScale
       def create_symlink(old_name, new_name)
         flags = File.directory?(old_name) ? ::Windows::File::SYMBOLIC_LINK_FLAG_DIRECTORY : 0
         result = ::Windows::File::CreateSymbolicLink.call(new_name, old_name, flags)
-        raise Win32Error.new("failed to create symlink from #{old_name} to #{new_name}") unless (result == true)
+        raise Win32Error.new("failed to create symlink from #{old_name} to #{new_name}") unless (result == ::Windows::Error::ERROR_SUCCESS)
         0
       end
     end # Filesystem
