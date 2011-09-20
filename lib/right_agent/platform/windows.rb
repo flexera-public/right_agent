@@ -46,9 +46,9 @@ module RightScale
 
     class Win32Error < Exception
       include ::Windows::Error
-      
+
       def initialize(msg = nil)
-        last_error = ::Windows::Error.get_last_error
+        last_error = get_last_error
         message << "#{msg}\n" unless msg.nil?
         message << "Win32Error: #{last_error}"
         super(message)
