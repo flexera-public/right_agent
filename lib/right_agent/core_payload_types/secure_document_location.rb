@@ -28,17 +28,23 @@ module RightScale
 
     include Serializable
 
-    # (String) Namespace within which the document resides
+    # (String):: Namespace within which the document resides
     attr_accessor :namespace
 
-    # (String) )Namespace-unique identifier of the document that should be retrieved.
+    # (String):: Namespace-unique identifier of the document that should be retrieved.
     attr_accessor :name
 
-    # (Integer) Monotonic version of the document to be requested
+    # (Integer):: Monotonic version of the document to be requested
     attr_accessor :version
 
-    # (String) Access token that should be used to fetch this credential
+    # (String):: Access token that should be used to fetch the document
     attr_accessor :ticket
+
+    # Array(String):: names of RightNet agents capable of providing the document.
+    # If nil, then no target should be specified when sending RightNet requests;
+    # this is used to route requests to "trusted infrastructure" nodes at the
+    # discretion of the mapper. 
+    attr_accessor :targets
 
     # Initialize fields from given arguments
     def initialize(*args)
@@ -46,11 +52,12 @@ module RightScale
       @name      = args[1] if args.size > 1
       @version   = args[2] if args.size > 2
       @ticket    = args[3] if args.size > 3
+      @targets   = args[4] if args.size > 4
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @namespace, @name, @version, @ticket ]
+      [ @namespace, @name, @version, @ticket, @targets ]
     end
   end
 end
