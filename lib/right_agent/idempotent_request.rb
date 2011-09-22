@@ -119,7 +119,11 @@ module RightScale
         end
         if res.non_delivery? || res.retry? || @retry_on_error
           Log.info("Retrying in #{@retry_delay} seconds...")
-          EM.add_timer(@retry_delay) { run }
+          if @retry_delay > 0
+            EM.add_timer(@retry_delay) { run }
+          else
+            EM.next_tick { run }
+          end
         else
           cancel(res.content)
         end
