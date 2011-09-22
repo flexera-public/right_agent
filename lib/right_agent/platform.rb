@@ -31,10 +31,14 @@ unless defined?(RightScale::Platform)
 
 require 'rbconfig'
 
+
+
 # Load ruby interpreter monkey-patches first (to ensure File.normalize_path is defined, etc.).
 require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'ruby_patch'))
 
 module RightScale
+  # Throw when the current platform is not supported for some reason
+  class PlatformNotSupported < Exception; end
 
   # A utility class that provides information about the platform on which the RightAgent is running
   # Available information includes:

@@ -38,9 +38,6 @@ rescue LoadError => e
 end
 
 module RightScale
-  # Throw when the current platform is not supported for some reason
-  class PlatformNotSupported < Exception; end
-
   # Throw when a Win32 API fails.  Message will contain the last error message
   class Win32Error < Exception
     include ::Windows::Error
