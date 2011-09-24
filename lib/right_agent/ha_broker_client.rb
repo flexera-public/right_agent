@@ -731,6 +731,22 @@ module RightScale
       identities
     end
 
+    # Delete queue from AMQP cache in all usable brokers
+    #
+    # === Parameters
+    # name(String):: Queue name
+    # options(Hash):: Queue declare options plus
+    #   :brokers(Array):: Identity of brokers in which queue is to be deleted
+    #
+    # === Return
+    # identities(Array):: Identity of brokers where queue was deleted
+    def delete_from_cache(name, options = {})
+      identities = []
+      u = usable
+      ((options[:brokers] || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete_from_cache(:queue, name) }
+      identities
+    end
+
     # Remove a broker client from the configuration
     # Invoke connection status callbacks only if connection is not already disabled
     # There is no check whether this is the last usable broker client
