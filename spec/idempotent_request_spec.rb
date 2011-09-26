@@ -43,9 +43,45 @@ describe RightScale::IdempotentRequest do
     end
   end
 
+  context ':targets option' do
+    context 'when :targets=>nil' do
+      it 'should send target-less requests' do
+        request = RightScale::IdempotentRequest.new('type', 'payload')
+        flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
+            and_yield(RightScale::OperationResult.non_delivery('test')).once
+        flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
+        request.run
+      end
+    end
+
+    context 'when one target is specified' do
+      it 'should send a targeted request' do
+        request = RightScale::IdempotentRequest.new('type', 'payload', :targets=>[1])
+        flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', 1, Proc).
+            and_yield(RightScale::OperationResult.non_delivery('test')).once
+        flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
+        request.run
+      end
+    end
+
+    context 'when many targets are specified' do
+      it 'should choose a random target' do
+        request = RightScale::IdempotentRequest.new('type', 'payload', :targets=>[1, 2, 3])
+        flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).and_return do |type, payload, tgt, block|
+          type.should == 'type'
+          payload.should == 'payload'
+          [1,2,3].should include(tgt)
+          block.call(RightScale::OperationResult.non_delivery('test'))
+        end
+        flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
+        request.run
+      end
+    end
+  end
+
   it 'should retry non-delivery responses' do
     request = RightScale::IdempotentRequest.new('type', 'payload')
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', Proc).
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
         and_yield(RightScale::OperationResult.non_delivery('test')).once
     flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
     request.run
@@ -53,7 +89,7 @@ describe RightScale::IdempotentRequest do
 
   it 'should retry retry responses' do
     request = RightScale::IdempotentRequest.new('type', 'payload')
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', Proc).
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
         and_yield(RightScale::OperationResult.retry('test')).once
     flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
     request.run
@@ -61,7 +97,7 @@ describe RightScale::IdempotentRequest do
 
   it 'should fail in case of error responses by default' do
     request = RightScale::IdempotentRequest.new('type', 'payload')
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', Proc).
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
         and_yield(RightScale::OperationResult.error('test')).once
     flexmock(request).should_receive(:fail).once
     request.run
@@ -69,7 +105,7 @@ describe RightScale::IdempotentRequest do
 
   it 'should retry error responses when told to' do
     request = RightScale::IdempotentRequest.new('type', 'payload', :retry_on_error => true)
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', Proc).
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
         and_yield(RightScale::OperationResult.error('test')).once
     flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
     request.run
@@ -77,7 +113,7 @@ describe RightScale::IdempotentRequest do
 
   it 'should ignore responses that arrive post-cancel' do
     request = RightScale::IdempotentRequest.new('type', 'payload')
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', Proc).
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
         and_yield(RightScale::OperationResult.success('test')).once
     flexmock(request).should_receive(:fail).once
     flexmock(request).should_receive(:succeed).never
@@ -88,12 +124,12 @@ describe RightScale::IdempotentRequest do
 
   it 'should ignore duplicate responses' do
     request = RightScale::IdempotentRequest.new('type', 'payload', :retry_on_error => true)
-    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).and_return do |t, p, b|
+    flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).and_return do |t, p, tgt, b|
       5.times { b.call(RightScale::OperationResult.success('test')) }
     end
     flexmock(request).should_receive(:fail).never
     flexmock(request).should_receive(:succeed).once
-    flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).never
+    flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, nil, Proc).never
     request.run
   end
 
