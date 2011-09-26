@@ -49,6 +49,7 @@ module RightScale
       @retry_on_error = options[:retry_on_error] || false
       @timeout = options[:timeout] || -1
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
+      @targets = options[:targets]
       @raw_response = nil
       @done = false
     end
@@ -59,7 +60,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def run
-      Sender.instance.send_retryable_request(@operation, @payload) { |r| handle_response(r) }
+      Sender.instance.send_retryable_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
       if @cancel_timer.nil? && @timeout > 0
         @cancel_timer = EM::Timer.new(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
@@ -118,12 +119,20 @@ module RightScale
         end
         if res.non_delivery? || res.retry? || @retry_on_error
           Log.info("Retrying in #{@retry_delay} seconds...")
-          EM.add_timer(@retry_delay) { run }
+          if @retry_delay > 0
+            EM.add_timer(@retry_delay) { run }
+          else
+            EM.next_tick { run }
+          end
         else
           cancel(res.content)
         end
       end
       true
+    end
+    
+    def retrieve_target(targets)
+      targets[rand(0xffff) % targets.size] if targets
     end
 
   end # IdempotentRequest
