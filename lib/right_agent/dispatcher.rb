@@ -50,7 +50,7 @@ module RightScale
       # === Return
       # true:: Always return true
       def store(token)
-        now ||= Time.now.to_i
+        now = Time.now.to_i
         if @cache.has_key?(token)
           @cache[token] = now
           @lru.push(@lru.delete(token))
