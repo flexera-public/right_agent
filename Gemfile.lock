@@ -1,8 +1,9 @@
 GIT
   remote: git@github.com:rightscale/right_support.git
-  revision: 247880513d3aa6b9118abedc402a8dd8ff900ee1
+  revision: 0c15c2bcb77a3b1e8de0e67874e8b63c8e342d9d
+  ref: 0c15c2bcb77a3b1e8de0e67874e8b63c8e342d9d
   specs:
-    right_support (0.9.6)
+    right_support (0.9.9)
 
 PATH
   remote: .

@@ -37,11 +37,11 @@ Gem::Specification.new do |spec|
   spec.require_path = 'lib'
 
   spec.add_dependency('right_support')
-  spec.add_dependency('amqp', "0.6.7")
-  spec.add_dependency('json', [">= 1.4.4", "<= 1.4.6"])
-  spec.add_dependency('eventmachine', "~> 0.12.10")
-  spec.add_dependency('right_popen', "~> 1.0.11")
-  spec.add_dependency('msgpack', "0.4.4")
+  spec.add_dependency('amqp', '0.6.7')
+  spec.add_dependency('json', ['>= 1.4.4', '<= 1.4.6'])
+  spec.add_dependency('eventmachine', '~> 0.12.10')
+  spec.add_dependency('right_popen', '~> 1.0.11')
+  spec.add_dependency('msgpack', '0.4.4')
 
   spec.description = <<-EOF
   RightAgent provides a foundation for running an agent on a server to interface
