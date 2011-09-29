@@ -1,8 +1,8 @@
 GIT
-  remote: git@github.com:rightscale/right_support.git
-  revision: 247880513d3aa6b9118abedc402a8dd8ff900ee1
+  remote: git://github.com/rightscale/right_support.git
+  revision: 733aa7bd89f33ac81813f0fb02403ad5bdcfdc86
   specs:
-    right_support (0.9.6)
+    right_support (1.0.0)
 
 PATH
   remote: .
@@ -54,6 +54,6 @@ DEPENDENCIES
   flexmock (~> 0.9)
   rake (>= 0.8.7)
   right_agent!
-  right_support!
+  right_support (~> 1.0.0)!
   rspec (~> 2.5)
   ruby-debug (>= 0.10)

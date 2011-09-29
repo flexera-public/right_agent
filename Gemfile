@@ -1,7 +1,7 @@
 source :gemcutter
 source 'http://gems.github.com'
 
-gem "right_support", :git => "git@github.com:rightscale/right_support.git"
+gem 'right_support',      '~> 1.0.0', :git=>'git://github.com/rightscale/right_support.git'
 
 gemspec
 
