@@ -14,7 +14,7 @@ PATH
       json (>= 1.4.4, <= 1.4.6)
       msgpack (= 0.4.4)
       right_popen (~> 1.0.11)
-      right_support (~> 0.9)
+      right_support
 
 GEM
   remote: http://rubygems.org/
