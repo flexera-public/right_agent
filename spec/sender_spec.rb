@@ -59,6 +59,8 @@ describe RightScale::Sender do
   describe "when monitoring broker connectivity" do
     before(:each) do
       flexmock(EM).should_receive(:next_tick).and_yield.by_default
+      @now = Time.at(1000000)
+      flexmock(Time).should_receive(:now).and_return(@now).by_default
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0, nil]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :options => {:ping_interval => 0}).by_default
@@ -79,7 +81,8 @@ describe RightScale::Sender do
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       flexmock(EM::Timer).should_receive(:new).with(1000, Proc).and_return(@timer).once
       instance = RightScale::Sender.new(@agent)
-      flexmock(instance).should_receive(:restart_inactivity_timer).once
+      flexmock(Time).should_receive(:now).and_return(@now + 61)
+      flexmock(instance.connectivity_checker).should_receive(:restart_inactivity_timer).once
       instance.message_received
       instance.message_received
     end
@@ -89,8 +92,9 @@ describe RightScale::Sender do
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).once.by_default
       RightScale::Sender.new(@agent)
       instance = RightScale::Sender.instance
+      flexmock(Time).should_receive(:now).and_return(@now + 61)
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).and_yield.once
-      flexmock(instance).should_receive(:check_connection).once
+      flexmock(instance.connectivity_checker).should_receive(:check).once
       instance.message_received
     end
 
@@ -107,8 +111,9 @@ describe RightScale::Sender do
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).once.by_default
       RightScale::Sender.new(@agent)
       instance = RightScale::Sender.instance
+      flexmock(Time).should_receive(:now).and_return(@now + 61)
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).and_yield.once
-      flexmock(instance).should_receive(:check_connection).and_raise(Exception)
+      flexmock(instance.connectivity_checker).should_receive(:check).and_raise(Exception)
       instance.message_received
     end
 
@@ -118,18 +123,18 @@ describe RightScale::Sender do
       broker_id = "rs-broker-localhost-5672"
       @broker.should_receive(:identity_parts).with(broker_id).and_return(["localhost", 5672, 0, 0, nil]).once
       @agent.should_receive(:connect).with("localhost", 5672, 0, 0, true).once
-      old_ping_timeout = RightScale::Sender::PING_TIMEOUT
+      old_ping_timeout = RightScale::Sender::ConnectivityChecker::PING_TIMEOUT
       begin
-        RightScale::Sender.const_set(:PING_TIMEOUT, 0.5)
+        RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, 0.5)
         EM.run do
           EM.add_timer(1) { EM.stop }
           RightScale::Sender.new(@agent)
           instance = RightScale::Sender.instance
           flexmock(instance).should_receive(:publish).with(RightScale::Request, nil).and_return([broker_id])
-          instance.__send__(:check_connection)
+          instance.connectivity_checker.check
         end
       ensure
-        RightScale::Sender.const_set(:PING_TIMEOUT, old_ping_timeout)
+        RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, old_ping_timeout)
       end
     end
   end
@@ -138,6 +143,7 @@ describe RightScale::Sender do
     before(:each) do
       @timer = flexmock("timer")
       flexmock(EM::Timer).should_receive(:new).and_return(@timer)
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
       @agent.should_receive(:options).and_return({}).by_default
@@ -217,27 +223,37 @@ describe RightScale::Sender do
       @instance.initialize_offline_queue
       @broker.should_receive(:publish).never
       @instance.enable_offline_mode
-      @instance.instance_variable_get(:@queueing_mode).should == :offline
+      @instance.offline_handler.mode.should == :offline
       @instance.send_push('/welcome/aboard', 'iZac')
-      @instance.instance_variable_get(:@queue).size.should == 1
+      @instance.offline_handler.queue.size.should == 1
     end
 
     it "should store the response handler if given" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
-      @instance.pending_requests['abc'][:response_handler].should == response_handler
+      @instance.pending_requests['abc'].response_handler.should == response_handler
     end
 
     it "should store the request receive time if there is a response handler" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
-      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-      @instance.request_age.should be_nil
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::PUSH_KINDS).youngest_age.should be_nil
       @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
-      @instance.pending_requests['abc'][:receive_time].should == Time.at(1000000)
+      @instance.pending_requests['abc'].receive_time.should == Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(Time.at(1000100))
-      @instance.request_age.should == 100
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::PUSH_KINDS).youngest_age.should == 100
+    end
+
+    it "should eventually remove push from pending requests if no response received" do
+      response_handler = lambda {}
+      flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc', 'xyz').twice
+      @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
+      @instance.pending_requests['abc'].should_not be_nil
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000121))
+      @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
+      @instance.pending_requests['xyz'].should_not be_nil
+      @instance.pending_requests['abc'].should be_nil
     end
   end
 
@@ -283,18 +299,18 @@ describe RightScale::Sender do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       @instance.send_persistent_push('/welcome/aboard', 'iZac', &response_handler)
-      @instance.pending_requests['abc'][:response_handler].should == response_handler
+      @instance.pending_requests['abc'].response_handler.should == response_handler
     end
 
     it "should store the request receive time if there is a response handler" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-      @instance.request_age.should be_nil
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::PUSH_KINDS).youngest_age.should be_nil
       @instance.send_persistent_push('/welcome/aboard', 'iZac', &response_handler)
-      @instance.pending_requests['abc'][:receive_time].should == Time.at(1000000)
+      @instance.pending_requests['abc'].receive_time.should == Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(Time.at(1000100))
-      @instance.request_age.should == 100
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::PUSH_KINDS).youngest_age.should == 100
     end
   end
 
@@ -396,17 +412,17 @@ describe RightScale::Sender do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       @instance.send_retryable_request('/welcome/aboard', 'iZac', &response_handler)
-      @instance.pending_requests['abc'][:response_handler].should == response_handler
+      @instance.pending_requests['abc'].response_handler.should == response_handler
     end
 
     it "should store the request receive time" do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-      @instance.request_age.should be_nil
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should be_nil
       @instance.send_retryable_request('/welcome/aboard', 'iZac')
-      @instance.pending_requests['abc'][:receive_time].should == Time.at(1000000)
+      @instance.pending_requests['abc'].receive_time.should == Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(Time.at(1000100))
-      @instance.request_age.should == 100
+      @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should == 100
     end
 
     it 'should queue the request if in offline mode and :offline_queueing enabled' do
@@ -416,9 +432,9 @@ describe RightScale::Sender do
       @instance.initialize_offline_queue
       @broker.should_receive(:publish).never
       @instance.enable_offline_mode
-      @instance.instance_variable_get(:@queueing_mode).should == :offline
+      @instance.offline_handler.mode.should == :offline
       @instance.send_retryable_request('/welcome/aboard', 'iZac')
-      @instance.instance_variable_get(:@queue).size.should == 1
+      @instance.offline_handler.queue.size.should == 1
     end
 
     it "should dump the pending requests" do
@@ -489,7 +505,7 @@ describe RightScale::Sender do
           @agent.should_receive(:options).and_return({:retry_timeout => 0.3, :retry_interval => 0.1})
           RightScale::Sender.new(@agent)
           @instance = RightScale::Sender.instance
-          flexmock(@instance).should_receive(:check_connection).once
+          flexmock(@instance.connectivity_checker).should_receive(:check).once
           @broker.should_receive(:publish).and_return(@broker_ids).twice
           @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
             result = RightScale::OperationResult.from_results(response)
@@ -514,7 +530,7 @@ describe RightScale::Sender do
           @agent.should_receive(:options).and_return({:retry_timeout => 0.6, :retry_interval => 0.1})
           RightScale::Sender.new(@agent)
           @instance = RightScale::Sender.instance
-          flexmock(@instance).should_receive(:check_connection).once
+          flexmock(@instance.connectivity_checker).should_receive(:check).once
           @broker.should_receive(:publish).and_return(@broker_ids).times(3)
           @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
             result = RightScale::OperationResult.from_results(response)
@@ -537,7 +553,7 @@ describe RightScale::Sender do
           @agent.should_receive(:options).and_return({:retry_timeout => 0.5, :retry_interval => 0.1})
           RightScale::Sender.new(@agent)
           @instance = RightScale::Sender.instance
-          flexmock(@instance).should_receive(:check_connection).once
+          flexmock(@instance.connectivity_checker).should_receive(:check).once
           @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
             request.expires_at.should == (expires_at ||= request.expires_at)
           end, hsh(:persistent => false, :mandatory => true)).and_return(@broker_ids).twice
@@ -554,16 +570,16 @@ describe RightScale::Sender do
 
         it "should not check connection if check already in progress" do
           flexmock(EM::Timer).should_receive(:new).and_return(@timer).never
-          @instance.pending_ping = true
+          @instance.connectivity_checker.ping_timer = true
           flexmock(@instance).should_receive(:publish).never
-          @instance.__send__(:check_connection, @broker_ids)
+          @instance.connectivity_checker.check(@broker_ids)
         end
 
         it "should publish ping to mapper" do
           flexmock(EM::Timer).should_receive(:new).and_return(@timer).once
           flexmock(@instance).should_receive(:publish).with(on { |request| request.type.should == "/mapper/ping" },
                                                             @broker_ids).and_return(@broker_ids).once
-          @instance.__send__(:check_connection, @broker_id)
+          @instance.connectivity_checker.check(@broker_id)
           @instance.pending_requests.size.should == 1
         end
 
@@ -572,19 +588,19 @@ describe RightScale::Sender do
           @timer.should_receive(:cancel).once
           flexmock(EM::Timer).should_receive(:new).and_return(@timer).once
           flexmock(@instance).should_receive(:publish).and_return(@broker_ids).once
-          @instance.__send__(:check_connection, @broker_id)
-          @instance.pending_ping.should == @timer
+          @instance.connectivity_checker.check(@broker_id)
+          @instance.connectivity_checker.ping_timer.should == @timer
           @instance.pending_requests.size.should == 1
-          @instance.pending_requests['abc'][:response_handler].call(nil)
-          @instance.pending_ping.should == nil
+          @instance.pending_requests['abc'].response_handler.call(nil)
+          @instance.connectivity_checker.ping_timer.should == nil
         end
 
         it "should try to reconnect if ping times out" do
           @log.should_receive(:warning).once
           flexmock(EM::Timer).should_receive(:new).and_yield.once
           flexmock(@agent).should_receive(:connect).once
-          @instance.__send__(:check_connection, @broker_id)
-          @instance.pending_ping.should == nil
+          @instance.connectivity_checker.check(@broker_id)
+          @instance.connectivity_checker.ping_timer.should == nil
         end
 
         it "should log error if attempt to reconnect fails" do
@@ -592,7 +608,7 @@ describe RightScale::Sender do
           @log.should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
           flexmock(@agent).should_receive(:connect).and_raise(Exception)
           flexmock(EM::Timer).should_receive(:new).and_yield.once
-          @instance.__send__(:check_connection, @broker_id)
+          @instance.connectivity_checker.check(@broker_id)
         end
       end
     end
@@ -671,7 +687,7 @@ describe RightScale::Sender do
     it "should deliver the response" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, Hash).once
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
       @instance.handle_response(response)
     end
 
@@ -691,7 +707,7 @@ describe RightScale::Sender do
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::NO_ROUTE_TO_TARGET)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
       @instance.handle_response(response)
-      @instance.instance_variable_get(:@non_deliveries).total.should == 1
+      @instance.instance_variable_get(:@non_delivery_stats).total.should == 1
     end
 
     it "should log non-delivery if there is no response handler" do
@@ -736,7 +752,7 @@ describe RightScale::Sender do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       @instance.pending_requests['token2'] = @instance.pending_requests['token1'].dup
-      @instance.pending_requests['token2'][:retry_parent] = 'token1'
+      @instance.pending_requests['token2'].retry_parent = 'token1'
       response = RightScale::Result.new('token2', 'to', RightScale::OperationResult.success, 'target1')
       @instance.handle_response(response)
       @instance.pending_requests['token1'].should be_nil
@@ -799,52 +815,52 @@ describe RightScale::Sender do
     end
 
     it 'should vote for restart after the maximum number of queued requests is reached' do
-      @instance.instance_variable_get(:@restart_vote_count).should == 0
+      @instance.offline_handler.instance_variable_get(:@restart_vote_count).should == 0
       EM.run do
         @instance.enable_offline_mode
-        @instance.instance_variable_set(:@queue, ('*' * (RightScale::Sender::MAX_QUEUED_REQUESTS - 1)).split(//))
+        @instance.offline_handler.queue = ('*' * (RightScale::Sender::OfflineHandler::MAX_QUEUED_REQUESTS - 1)).split(//)
         @instance.send_push('/dummy', 'payload')
         EM.next_tick { EM.stop }
       end
-      @instance.instance_variable_get(:@queue).size.should == RightScale::Sender::MAX_QUEUED_REQUESTS
-      @instance.instance_variable_get(:@restart_vote_count).should == 1
+      @instance.offline_handler.queue.size.should == RightScale::Sender::OfflineHandler::MAX_QUEUED_REQUESTS
+      @instance.offline_handler.instance_variable_get(:@restart_vote_count).should == 1
     end
 
     it 'should vote for restart after the threshold delay is reached' do
-      old_vote_delay = RightScale::Sender::RESTART_VOTE_DELAY
+      old_vote_delay = RightScale::Sender::OfflineHandler::RESTART_VOTE_DELAY
       begin
-        RightScale::Sender.const_set(:RESTART_VOTE_DELAY, 0.1)
-        @instance.instance_variable_get(:@restart_vote_count).should == 0
+        RightScale::Sender::OfflineHandler.const_set(:RESTART_VOTE_DELAY, 0.1)
+        @instance.offline_handler.instance_variable_get(:@restart_vote_count).should == 0
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload')
           EM.add_timer(0.5) { EM.stop }
         end
-        @instance.instance_variable_get(:@restart_vote_count).should == 1
+        @instance.offline_handler.instance_variable_get(:@restart_vote_count).should == 1
       ensure
-        RightScale::Sender.const_set(:RESTART_VOTE_DELAY, old_vote_delay)
+        RightScale::Sender::OfflineHandler.const_set(:RESTART_VOTE_DELAY, old_vote_delay)
       end
     end
 
     it 'should not flush queued requests until back online' do
-      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
       begin
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload')
           EM.add_timer(0.5) { EM.stop }
         end
       ensure
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
 
     it 'should flush queued requests once back online' do
-      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
       @broker.should_receive(:publish).once.and_return { EM.stop }
       begin
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload')
@@ -852,34 +868,31 @@ describe RightScale::Sender do
           EM.add_timer(1) { EM.stop }
         end
       ensure
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
 
     it 'should stop flushing when going back to offline mode' do
-      old_flush_delay = RightScale::Sender::MAX_QUEUE_FLUSH_DELAY
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
       begin
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
         EM.run do
           @instance.enable_offline_mode
           @instance.send_push('/dummy', 'payload')
           @instance.disable_offline_mode
-          @instance.instance_variable_get(:@flushing_queue).should be_true
-          @instance.instance_variable_get(:@stop_flushing_queue).should be_false
-          @instance.instance_variable_get(:@queueing_mode).should == :offline
+          @instance.offline_handler.state.should == :flushing
+          @instance.offline_handler.mode.should == :offline
           @instance.enable_offline_mode
-          @instance.instance_variable_get(:@flushing_queue).should be_true
-          @instance.instance_variable_get(:@stop_flushing_queue).should be_true
-          @instance.instance_variable_get(:@queueing_mode).should == :offline
+          @instance.offline_handler.state.should == :running
+          @instance.offline_handler.mode.should == :offline
           EM.add_timer(1) do
-            @instance.instance_variable_get(:@flushing_queue).should be_false
-            @instance.instance_variable_get(:@stop_flushing_queue).should be_false
-            @instance.instance_variable_get(:@queueing_mode).should == :offline
+            @instance.offline_handler.state.should == :running
+            @instance.offline_handler.mode.should == :offline
             EM.stop
           end
         end
       ensure
-        RightScale::Sender.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
       end
     end
   end

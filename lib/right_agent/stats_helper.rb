@@ -515,6 +515,7 @@ module RightScale
              sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "last reset", time_at(stats["last reset time"])) +
              sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "service up", elapsed(stats["service uptime"]))
       str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "machine up", elapsed(stats["machine uptime"])) if stats.has_key?("machine uptime")
+      str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "memory KB", stats["memory"]) if stats.has_key?("memory")
       str += sprintf("%-#{name_width}s#{SEPARATOR}%s\n", "version", stats["version"].to_i) if stats.has_key?("version")
       str += brokers_str(stats["brokers"], name_width) if stats.has_key?("brokers")
       stats.to_a.sort.each { |k, v| str += sub_stats_str(k[0..-7], v, name_width) if k.to_s =~ /stats$/ }
@@ -652,6 +653,11 @@ module RightScale
       str += ", last: #{last_activity_str(value['last'], single_item = true)}" if value["last"]
       str += ", rate: #{enough_precision(value['rate'])}/sec" if value["rate"]
       str += ", duration: #{enough_precision(value['duration'])} sec" if value["duration"]
+      value.each do |name, data|
+        unless ["total", "percent", "last", "rate", "duration"].include?(name)
+          str += ", #{name}: #{data.is_a?(String) ? data : data.inspect}"
+        end
+      end
       str
     end
 

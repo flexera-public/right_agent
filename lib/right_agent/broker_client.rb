@@ -436,6 +436,19 @@ module RightScale
       deleted
     end
 
+    # Delete object from local AMQP cache
+    #
+    # === Parameters
+    # type(Symbol):: Type of AMQP object
+    # name(String):: Name of object
+    #
+    # === Return
+    # true:: Always return true
+    def delete_from_cache(type, name)
+      @mq.__send__(type == :queue ? :queues : :exchanges).delete(name)
+      true
+    end
+
     # Close broker connection
     #
     # === Parameters
@@ -650,19 +663,6 @@ module RightScale
         @retries = 0
         @failures.update
       end
-      true
-    end
-
-    # Delete object from local AMQP cache in case it is no longer consistent with broker
-    #
-    # === Parameters
-    # type(Symbol):: Type of AMQP object
-    # name(String):: Name of object
-    #
-    # === Return
-    # true:: Always return true
-    def delete_from_cache(type, name)
-      @mq.__send__(type == :queue ? :queues : :exchanges).delete(name)
       true
     end
 

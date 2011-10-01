@@ -63,6 +63,7 @@ describe RightScale::AgentConfig do
     @agent_options2 = {
       :identity => @agent_id2,
       :root_dir => @root_dir2,
+      :pid_dir  => @pid_dir
     }
     FileUtils.mkdir_p(@cfg_agent2_dir = File.join(@cfg_dir, 'agent_2'))
     FileUtils.touch([@cfg_agent2 = File.join(@cfg_agent2_dir, 'config.yml')])
@@ -221,6 +222,14 @@ describe RightScale::AgentConfig do
     @agent_config.cfg_dir = @cfg_dir
     @agent_config.agent_options('agent_1').should == @agent_options1.merge(@agent_cookie1.merge(:pid => @pid, :log_path => @tmp_dir))
     @agent_config.agent_options("no_agent").should == {}
+  end
+
+  it 'should return the name of agents that are running' do
+    flexmock(Process).should_receive(:getpgid).with(@pid).and_return(123)
+    @agent_config.cfg_dir = @cfg_dir
+    @agent_config.cfg_agents.should =~ ['agent_1', 'agent_2']
+    @agent_config.running_agents.should =~ ['agent_1']
+    @agent_config.running_agents(/core/).should =~ []
   end
 
 end
