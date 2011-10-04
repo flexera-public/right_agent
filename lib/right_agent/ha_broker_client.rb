@@ -731,7 +731,7 @@ module RightScale
       identities
     end
 
-    # Delete queue from AMQP cache in all usable brokers
+    # Delete queue resources from AMQP in all usable brokers
     #
     # === Parameters
     # name(String):: Queue name
@@ -740,10 +740,10 @@ module RightScale
     #
     # === Return
     # identities(Array):: Identity of brokers where queue was deleted
-    def delete_from_cache(name, options = {})
+    def delete_amqp_resources(name, options = {})
       identities = []
       u = usable
-      ((options[:brokers] || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete_from_cache(:queue, name) }
+      ((options[:brokers] || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete_amqp_resources(:queue, name) }
       identities
     end
 
