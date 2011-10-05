@@ -33,7 +33,7 @@ module RightScale
     # Request that is waiting for a response
     class PendingRequest
 
-      # (String) Kind of send request
+      # (Symbol) Kind of send request
       attr_reader :kind
 
       # (Time) Time when request message was received
@@ -650,9 +650,11 @@ module RightScale
     #     defaults to :any
     #
     # === Block
-    # Optional block used to process routing response failures asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
-    #     use RightScale::OperationResult.from_results to decode
+    # Optional block used to process routing responses asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
+    #     with an initial SUCCESS response containing the targets to which the mapper published the
+    #     request and any additional responses indicating any failures to actually route the request
+    #     to those targets, use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
@@ -683,9 +685,11 @@ module RightScale
     #     defaults to :any
     #
     # === Block
-    # Optional block used to process routing response failures asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
-    #     use RightScale::OperationResult.from_results to decode
+    # Optional block used to process routing responses asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
+    #     with an initial SUCCESS response containing the targets to which the mapper published the
+    #     request and any additional responses indicating any failures to actually route the request
+    #     to those targets, use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
@@ -945,9 +949,11 @@ module RightScale
     #     defaults to :any
     #
     # === Block
-    # Optional block used to process routing response failures asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of RETRY, NON_DELIVERY, or ERROR,
-    #     use RightScale::OperationResult.from_results to decode
+    # Optional block used to process routing responses asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
+    #     with an initial SUCCESS response containing the targets to which the mapper published the
+    #     request and any additional responses indicating any failures to actually route the request
+    #     to those targets, use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
@@ -973,7 +979,10 @@ module RightScale
         end
         push.persistent = kind == :send_persistent_push
         @request_kinds.update((push.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
-        @pending_requests[push.token] = PendingRequest.new(kind, received_at, callback) if callback
+        if callback
+          push.confirm = true
+          @pending_requests[push.token] = PendingRequest.new(kind, received_at, callback)
+        end
         publish(push)
       end
       true
@@ -1150,7 +1159,7 @@ module RightScale
     def deliver(response, handler)
       @request_stats.finish(handler.receive_time, response.token)
 
-      @pending_requests.delete(response.token)
+      @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
       if parent = handler.retry_parent
         @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
       end

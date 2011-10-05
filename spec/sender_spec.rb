@@ -211,6 +211,7 @@ describe RightScale::Sender do
         push.persistent.should be_false
         push.from.should == 'agent'
         push.target.should be_nil
+        push.confirm.should be_nil
         push.expires_at.should == 0
       end, hsh(:persistent => false, :mandatory => true)).once
       @instance.send_push('/welcome/aboard', 'iZac')
@@ -231,6 +232,9 @@ describe RightScale::Sender do
     it "should store the response handler if given" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
+      @broker.should_receive(:publish).with(hsh(:name => "request"), on do |push|
+        push.confirm.should == true
+      end, hsh(:persistent => false, :mandatory => true)).once
       @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
       @instance.pending_requests['abc'].response_handler.should == response_handler
     end
@@ -282,6 +286,7 @@ describe RightScale::Sender do
         push.persistent.should be_true
         push.from.should == 'agent'
         push.target.should be_nil
+        push.confirm.should be_nil
         push.expires_at.should == 0
       end, hsh(:persistent => true, :mandatory => true)).once
       @instance.send_persistent_push('/welcome/aboard', 'iZac')
@@ -298,6 +303,9 @@ describe RightScale::Sender do
     it "should store the response handler if given" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
+      @broker.should_receive(:publish).with(hsh(:name => "request"), on do |push|
+        push.confirm.should == true
+      end, hsh(:persistent => true, :mandatory => true)).once
       @instance.send_persistent_push('/welcome/aboard', 'iZac', &response_handler)
       @instance.pending_requests['abc'].response_handler.should == response_handler
     end
@@ -684,8 +692,15 @@ describe RightScale::Sender do
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
     end
 
-    it "should deliver the response" do
+    it "should deliver the response for a Request" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
+      @instance.handle_response(response)
+    end
+
+    it "should deliver the response for a Push" do
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
       @instance.handle_response(response)
@@ -740,12 +755,20 @@ describe RightScale::Sender do
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
     end
 
-    it "should delete all associated pending requests" do
+    it "should delete all associated pending Request requests" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       @instance.handle_response(response)
       @instance.pending_requests['token1'].should be_nil
+    end
+
+    it "should not delete any pending Push requests" do
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
+      @instance.pending_requests['token1'].should_not be_nil
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      @instance.handle_response(response)
+      @instance.pending_requests['token1'].should_not be_nil
     end
 
     it "should delete any associated retry requests" do
