@@ -263,6 +263,7 @@ describe "Packet: Push" do
     packet.from.should == packet2.from
     packet.token.should == packet2.token
     packet.tries.should == packet2.tries
+    packet.confirm.should == packet2.confirm
     packet.expires_at.should == packet2.expires_at
     packet.recv_version.should == packet2.recv_version
     packet.send_version.should == packet2.send_version
@@ -276,6 +277,7 @@ describe "Packet: Push" do
     packet.from.should == packet2.from
     packet.token.should == packet2.token
     packet.tries.should == packet2.tries
+    packet.confirm.should == packet2.confirm
     packet.expires_at.should == packet2.expires_at
     packet.recv_version.should == packet2.recv_version
     packet.send_version.should == packet2.send_version
