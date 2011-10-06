@@ -460,8 +460,7 @@ module RightScale
               @exception_stats.track("cancel ping", e)
             end
           end
-
-          request = Request.new("/mapper/ping", nil, {:from => @identity, :token => AgentIdentity.generate})
+          request = Request.new("/mapper/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
           @sender.pending_requests[request.token] = PendingRequest.new(:send_persistent_request, Time.now, handler)
           ids = [id] if id
           id = @sender.publish(request, ids).first
