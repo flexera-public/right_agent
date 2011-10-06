@@ -98,6 +98,41 @@ describe RightScale::Sender do
       instance.message_received
     end
 
+    it "should check connectivity by sending mapper ping" do
+      @agent.should_receive(:options).and_return(:ping_interval => 1000)
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer).twice
+      RightScale::Sender.new(@agent)
+      instance = RightScale::Sender.instance
+      broker_id = "rs-broker-1-1"
+      flexmock(instance).should_receive(:publish).with(on do |request|
+        request.type.should == "/mapper/ping";
+        request.from.should == "agent"
+      end, [broker_id]).and_return([broker_id]).once
+      instance.connectivity_checker.check(broker_id)
+      instance.pending_requests.size.should == 1
+    end
+
+    it "should not check connectivity if terminating" do
+      @agent.should_receive(:options).and_return(:ping_interval => 1000)
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer).once
+      RightScale::Sender.new(@agent)
+      instance = RightScale::Sender.instance
+      flexmock(instance).should_receive(:publish).never
+      instance.terminate
+      instance.connectivity_checker.check
+    end
+
+    it "should not check connectivity if not connected to broker" do
+      @agent.should_receive(:options).and_return(:ping_interval => 1000)
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer).once
+      RightScale::Sender.new(@agent)
+      broker_id = "rs-broker-1-1"
+      @broker.should_receive(:connected?).with(broker_id).and_return(false)
+      instance = RightScale::Sender.instance
+      flexmock(instance).should_receive(:publish).never
+      instance.connectivity_checker.check(broker_id)
+    end
+
     it "should ignore messages received if ping disabled" do
       @agent.should_receive(:options).and_return(:ping_interval => 0)
       flexmock(EM::Timer).should_receive(:new).never
