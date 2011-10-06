@@ -380,7 +380,8 @@ module RightScale
   # Packet for a work request for an actor node that has no result, i.e., one-way request
   class Push < Packet
 
-    attr_accessor :from, :scope, :payload, :type, :token, :selector, :target, :persistent, :expires_at, :tags
+    attr_accessor :from, :scope, :payload, :type, :token, :selector, :target, :persistent, :confirm,
+                  :expires_at, :tags
 
     DEFAULT_OPTIONS = {:selector => :any}
 
@@ -397,6 +398,8 @@ module RightScale
     #   :target(String):: Target recipient
     #   :persistent(Boolean):: Indicates if this request should be saved to persistent storage
     #     by the AMQP broker
+    #   :confirm(Boolean):: Whether require confirmation response from mapper containing targets
+    #     to which request was published but not necessarily delivered
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
     #      is to be ignored by the receiver; value 0 means never expire; defaults to 0
     #   :tags(Array(Symbol)):: List of tags to be used for selecting target for this request
@@ -416,6 +419,7 @@ module RightScale
       @selector   = :any if ["least_loaded", "random"].include?(@selector.to_s)
       @target     = opts[:target]
       @persistent = opts[:persistent]
+      @confirm    = opts[:confirm]
       @expires_at = opts[:expires_at] || 0
       @tags       = opts[:tags] || []
       @version    = version
@@ -448,10 +452,11 @@ module RightScale
     # (Push):: New packet
     def self.create(o)
       i = o['data']
-      new(i['type'], i['payload'], { :from   => self.compatible(i['from']),   :scope      => i['scope'],
-                                     :token  => i['token'],                   :selector   => i['selector'],
-                                     :target => self.compatible(i['target']), :persistent => i['persistent'],
-                                     :tags   => i['tags'],                    :expires_at => i['expires_at'] },
+      new(i['type'], i['payload'], { :from    => self.compatible(i['from']),   :scope      => i['scope'],
+                                     :token   => i['token'],                   :selector   => i['selector'],
+                                     :target  => self.compatible(i['target']), :persistent => i['persistent'],
+                                     :confirm => i['confirm'],                 :expires_at => i['expires_at'],
+                                     :tags    => i['tags']},
           i['version'] || [DEFAULT_VERSION, DEFAULT_VERSION], o['size'])
     end
 
