@@ -34,6 +34,7 @@ module RightScale
       :get_log_level    => 'Get log level',
       :ping             => 'Ping agent',
       :stats            => 'Get statistics about agent operation',
+      :profile          => 'Manage memory profiling',
       :terminate        => 'Terminate agent'
     }
 
@@ -115,6 +116,21 @@ module RightScale
     # true
     def stats_command(opts)
       CommandIO.instance.reply(opts[:conn], @serializer.dump(@agent_manager.stats({:reset => opts[:reset]})))
+    end
+
+    # Profile command
+    #
+    # === Parameters
+    # opts[:conn](EM::Connection):: Connection used to send reply
+    # opts[:start](Boolean):: Whether to start profiling
+    # opts[:stats](Boolean):: Whether to display profile statistics to stdout
+    # opts[:reset](Boolean):: Whether to reset profile statistics when after displaying them
+    # opts[:stop](Boolean):: Whether to stop profiling
+    #
+    # === Return
+    # true
+    def profile_command(opts)
+      CommandIO.instance.reply(opts[:conn], @serializer.dump(@agent_manager.profile(opts)))
     end
 
     # Terminate command

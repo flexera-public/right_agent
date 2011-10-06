@@ -45,3 +45,4 @@
 # 16: Added the capability for instance agents to fetch their credentials from an external source
 # 17: Changed sender interface to allow a callback on push requests to receive mapper routing failures
 #     Reversed push selector default from :all to :any when the target is a hash
+# 18: Added respond field to Push to indicate routing feedback is desired by sender

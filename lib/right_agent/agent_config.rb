@@ -63,7 +63,7 @@ module RightScale
   module AgentConfig
 
     # Current agent protocol version
-    PROTOCOL_VERSION = 17
+    PROTOCOL_VERSION = 18
 
     # Current agent protocol version
     #
@@ -342,6 +342,22 @@ module RightScale
         options.merge!(pid_file.read_pid) if pid_file.exists?
       end
       options || {}
+    end
+
+    # Agents that are currently running
+    #
+    # === Parameters
+    # (Regexp):: Pattern that agent name must match to be included
+    #
+    # === Return
+    # (Array):: Name of running agents
+    def self.running_agents(pattern = //)
+      AgentConfig.cfg_agents.select do |agent_name|
+        agent_name =~ pattern &&
+        (pid_file = AgentConfig.pid_file(agent_name)) &&
+        (pid = pid_file.read_pid[:pid]) &&
+        (Process.getpgid(pid) rescue -1) != -1
+      end.sort
     end
 
     protected

@@ -1126,6 +1126,16 @@ describe RightScale::HABrokerClient do
         ha.delete("queue").should == [@identity4, @identity2]
       end
 
+      it "should delete queue from cache on all usable broker clients and return their identities" do
+        ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
+        @broker1.should_receive(:usable?).and_return(false)
+        @broker1.should_receive(:delete_amqp_resources).never
+        @broker2.should_receive(:delete_amqp_resources).and_return(true).once
+        @broker3.should_receive(:delete_amqp_resources).and_return(true).once
+        @broker4.should_receive(:delete_amqp_resources).and_return(true).once
+        ha.delete_amqp_resources("queue").should == [@identity3, @identity4, @identity2]
+      end
+
     end # deleting
 
     context "removing" do

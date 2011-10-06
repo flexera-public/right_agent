@@ -485,7 +485,7 @@ describe RightScale::BrokerClient do
     it "should delete the exchange or queue from the AMQP cache before declaring" do
       @mq.should_receive(:queue).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      flexmock(broker).should_receive(:delete_from_cache).with(:queue, "queue").once
+      flexmock(broker).should_receive(:delete_amqp_resources).with(:queue, "queue").once
       broker.declare(:queue, "queue", :durable => true).should be_true
     end
 
@@ -541,7 +541,7 @@ describe RightScale::BrokerClient do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:update_status, :ready)
       exchange = {:type => :direct, :name => "exchange", :options => {:declare => true}}
-      flexmock(broker).should_receive(:delete_from_cache).with(:direct, "exchange").once
+      flexmock(broker).should_receive(:delete_amqp_resources).with(:direct, "exchange").once
       broker.publish(exchange, @packet, @message).should be_true
     end
 

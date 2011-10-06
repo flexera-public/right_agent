@@ -319,7 +319,7 @@ module RightScale
       return false unless usable?
       begin
         Log.info("[setup] Declaring #{name} #{type.to_s} on broker #{@alias}")
-        delete_from_cache(:queue, name)
+        delete_amqp_resources(:queue, name)
         @mq.__send__(type, name, options)
         true
       rescue Exception => e
@@ -361,7 +361,7 @@ module RightScale
         end
         Log.debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
                   "type #{exchange[:type]}, options #{exchange[:options].inspect}")
-        delete_from_cache(exchange[:type], exchange[:name]) if exchange_options[:declare]
+        delete_amqp_resources(exchange[:type], exchange[:name]) if exchange_options[:declare]
         @mq.__send__(exchange[:type], exchange[:name], exchange_options).publish(message, options)
         true
       rescue Exception => e
@@ -434,6 +434,19 @@ module RightScale
         end
       end
       deleted
+    end
+
+    # Delete resources from local AMQP cache
+    #
+    # === Parameters
+    # type(Symbol):: Type of AMQP object
+    # name(String):: Name of object
+    #
+    # === Return
+    # true:: Always return true
+    def delete_amqp_resources(type, name)
+      @mq.__send__(type == :queue ? :queues : :exchanges).delete(name)
+      true
     end
 
     # Close broker connection
@@ -650,19 +663,6 @@ module RightScale
         @retries = 0
         @failures.update
       end
-      true
-    end
-
-    # Delete object from local AMQP cache in case it is no longer consistent with broker
-    #
-    # === Parameters
-    # type(Symbol):: Type of AMQP object
-    # name(String):: Name of object
-    #
-    # === Return
-    # true:: Always return true
-    def delete_from_cache(type, name)
-      @mq.__send__(type == :queue ? :queues : :exchanges).delete(name)
       true
     end
 

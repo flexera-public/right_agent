@@ -731,6 +731,22 @@ module RightScale
       identities
     end
 
+    # Delete queue resources from AMQP in all usable brokers
+    #
+    # === Parameters
+    # name(String):: Queue name
+    # options(Hash):: Queue declare options plus
+    #   :brokers(Array):: Identity of brokers in which queue is to be deleted
+    #
+    # === Return
+    # identities(Array):: Identity of brokers where queue was deleted
+    def delete_amqp_resources(name, options = {})
+      identities = []
+      u = usable
+      ((options[:brokers] || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete_amqp_resources(:queue, name) }
+      identities
+    end
+
     # Remove a broker client from the configuration
     # Invoke connection status callbacks only if connection is not already disabled
     # There is no check whether this is the last usable broker client
@@ -1140,8 +1156,8 @@ module RightScale
         persistent = options[:persistent]
         mandatory = true
         remaining = (context.brokers - context.failed) & all_connected
-        Log.info("RETURN reason #{reason} token #{token} brokers #{context.brokers.inspect} failed #{context.failed.inspect} " +
-                 " connected #{all_connected.inspect} remaining #{remaining.inspect}")
+        Log.info("RETURN reason #{reason} token <#{token}> to #{to} from #{context.from} brokers #{context.brokers.inspect} " +
+                 "failed #{context.failed.inspect} remaining #{remaining.inspect} connected #{all_connected.inspect}")
         if remaining.empty?
           if (persistent || one_way) &&
              ["ACCESS_REFUSED", "NO_CONSUMERS"].include?(reason) &&
@@ -1170,6 +1186,9 @@ module RightScale
                  "because no message context available for re-routing it to #{to}")
       end
       true
+    rescue Exception => e
+      Log.error("Failed to handle #{reason} return from #{identity} for message being routed to #{to}", e, :trace)
+      @exceptions.track("return", e)
     end
 
     # Helper for deferring block execution until specified number of actions have completed
