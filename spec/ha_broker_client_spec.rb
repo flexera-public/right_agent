@@ -623,6 +623,21 @@ describe RightScale::HABrokerClient do
         ha.brokers[1].alias == "b1"
       end
 
+      it "should be able to change host and port of an existing broker client" do
+        ha = RightScale::HABrokerClient.new(@serializer, :host => "a, b")
+        ha.brokers.size.should == 2
+        @broker_a.should_receive(:close).and_return(true).once
+        flexmock(RightScale::BrokerClient).should_receive(:new).with(@identity_c, @address_c.merge(:index => 0),
+                 @serializer, @exceptions, Hash, nil, nil).and_return(@broker_c).once
+        res = ha.connect("c", 5672, 0)
+        res.should be_true
+        ha.brokers.size.should == 2
+        ha.brokers[0].alias == "b0"
+        ha.brokers[0].identity == @address_c
+        ha.brokers[1].alias == "b1"
+        ha.brokers[1].identity == @address_b
+      end
+
       it "should slot broker client into specified priority position when at end of list" do
         ha = RightScale::HABrokerClient.new(@serializer, :host => "a, b")
         ha.brokers.size.should == 2
@@ -666,11 +681,6 @@ describe RightScale::HABrokerClient do
         identity.should == @identity_b
         ha.brokers.size.should == 2
         ha.brokers[1].alias == "b1"
-      end
-
-      it "should raise an exception if try to change host and port of an existing broker client" do
-        ha = RightScale::HABrokerClient.new(@serializer, :host => "a, b")
-        lambda { ha.connect("c", 5672, 0) }.should raise_error(Exception, /Not allowed to change host or port/)
       end
 
     end # connecting

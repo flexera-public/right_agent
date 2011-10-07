@@ -454,17 +454,19 @@ module RightScale
         Log.info("Ignored request to reconnect #{identity} because already #{existing.status.to_s}")
         false
       else
+        old_identity = identity
         @brokers.each do |b|
           if index == b.index && (island.nil? || in_island?(b, island.id))
-            raise Exception, "Not allowed to change host or port of existing broker #{identity}, " +
-                             "alias #{b.alias}, to #{host} and #{port.inspect}"
+            # Changing host and/or port of existing broker client
+            old_identity = b.identity
+            break
           end
         end unless existing
 
         address = {:host => host, :port => port, :index => index}
         broker = BrokerClient.new(identity, address, @serializer, @exceptions, @options, island, existing)
         island_id = island && island.id
-        p, i = priority(identity, island_id)
+        p, i = priority(old_identity, island_id)
         if priority && priority < p
           @brokers.insert(i + priority, broker)
         elsif priority && priority > p
@@ -505,7 +507,12 @@ module RightScale
           if @brokers_hash[identity]
             old.delete(identity)
           else
-            new << identity if connect(a[:host], a[:port], a[:index], priority, i)
+            begin
+              new << identity if connect(a[:host], a[:port], a[:index], priority, i)
+            rescue Exception => e
+              Log.error("Failed to connect to broker #{identity}", e, :trace)
+              @exceptions.track("connect update", e)
+            end
           end
           priority += 1
         end
