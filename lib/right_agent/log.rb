@@ -402,7 +402,7 @@ module RightScale
           logger.formatter.datetime_format = "%b %d %H:%M:%S"
         else
           $stderr.puts "Logging to syslog" if opts[:print]
-          logger = RightSupport::SystemLogger.new(@program_name || identity || 'RightAgent')
+          logger = RightSupport::Log::SystemLogger.new(@program_name || identity || 'RightAgent')
         end
 
         @logger = Multiplexer.new(logger)
