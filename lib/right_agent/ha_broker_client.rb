@@ -519,8 +519,12 @@ module RightScale
       end
 
       old.each do |identity|
-        b = @brokers_hash[identity]
-        remove(b.host, b.port)
+        if b = @brokers_hash[identity]
+          remove(b.host, b.port)
+        else
+          Log.error("Could not remove broker #{identity} during connection update because not found, " +
+                    "current broker configuration: #{status.inspect}")
+        end
       end
       { :add => new, :remove => old, :home => home }
     end
