@@ -27,9 +27,10 @@ describe RightScale::HABrokerClient do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    flexmock(RightScale::Log).should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    flexmock(RightScale::Log).should_receive(:info).by_default
+    @log = flexmock(RightScale::Log)
+    @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+    @log.should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+    @log.should_receive(:info).by_default
   end
 
   describe "Context" do
@@ -595,7 +596,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should not do anything except log a message if asked to reconnect an already connected broker client" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Ignored request to reconnect/).once
+        @log.should_receive(:info).with(/Ignored request to reconnect/).once
         ha = RightScale::HABrokerClient.new(@serializer, :host => "a, b")
         ha.brokers.size.should == 2
         @broker_a.should_receive(:status).and_return(:connected).once
@@ -610,7 +611,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should reconnect already connected broker client if force specified" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Ignored request to reconnect/).never
+        @log.should_receive(:info).with(/Ignored request to reconnect/).never
         ha = RightScale::HABrokerClient.new(@serializer, :host => "a, b")
         ha.brokers.size.should == 2
         @broker_a.should_receive(:close).and_return(true).once
@@ -661,7 +662,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should slot broker client into nex priority position if specified priority would leave a gap" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Reduced priority setting for broker/).once
+        @log.should_receive(:info).with(/Reduced priority setting for broker/).once
         ha = RightScale::HABrokerClient.new(@serializer, :host => "a")
         ha.brokers.size.should == 1
         res = ha.connect("c", 5672, 2, 2)
@@ -935,7 +936,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should log an error if a selected broker is unknown but still publish with any remaining brokers" do
-        flexmock(RightScale::Log).should_receive(:error).with(/Invalid broker identity "rs-broker-fifth-5672"/).once
+        @log.should_receive(:error).with(/Invalid broker identity "rs-broker-fifth-5672"/).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         ha.publish({:type => :direct, :name => "exchange"}, @packet,
                    :brokers =>["rs-broker-fifth-5672", @identity1]).should == [@identity1]
@@ -1035,8 +1036,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should republish using a broker not yet tried if possible and log that re-routing" do
-          flexmock(RightScale::Log).should_receive(:info).with(/RE-ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/RE-ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           @context.record_failure(@identity3)
           @broker4.should_receive(:publish).and_return(true).once
@@ -1044,8 +1045,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should republish to same broker without mandatory if message is persistent and no other brokers available" do
-          flexmock(RightScale::Log).should_receive(:info).with(/RE-ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/RE-ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           @context.record_failure(@identity3)
           @context.record_failure(@identity4)
@@ -1055,8 +1056,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should republish to same broker without mandatory if message is one-way and no other brokers available" do
-          flexmock(RightScale::Log).should_receive(:info).with(/RE-ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/RE-ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           @context.record_failure(@identity3)
           @context.record_failure(@identity4)
@@ -1066,8 +1067,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should update status to :stopping if message returned because access refused" do
-          flexmock(RightScale::Log).should_receive(:info).with(/RE-ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/RE-ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           @context.record_failure(@identity3)
           @broker4.should_receive(:publish).and_return(true).once
@@ -1076,8 +1077,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should log info and make non-delivery call even if persistent when returned because of no queue" do
-          flexmock(RightScale::Log).should_receive(:info).with(/NO ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/NO ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           called = 0
           ha.non_delivery { |reason, type, token, from, to| called += 1 }
@@ -1091,8 +1092,8 @@ describe RightScale::HABrokerClient do
         end
 
         it "should log info and make non-delivery call if no route can be found" do
-          flexmock(RightScale::Log).should_receive(:info).with(/NO ROUTE/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/RETURN reason/).once
+          @log.should_receive(:info).with(/NO ROUTE/).once
+          @log.should_receive(:info).with(/RETURN reason/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           called = 0
           ha.non_delivery { |reason, type, token, from, to| called += 1 }
@@ -1105,7 +1106,7 @@ describe RightScale::HABrokerClient do
         end
 
         it "should log info if no message context available for re-routing it" do
-          flexmock(RightScale::Log).should_receive(:info).with(/Dropping/).once
+          @log.should_receive(:info).with(/Dropping/).once
           ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
           ha.__send__(:handle_return, @identity4, "any reason", @message, "to", nil)
         end
@@ -1151,7 +1152,7 @@ describe RightScale::HABrokerClient do
     context "removing" do
 
       it "should remove broker client after disconnecting and pass identity to block" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Removing/).once
+        @log.should_receive(:info).with(/Removing/).once
         @broker2.should_receive(:close).with(true, true, false).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         identity = nil
@@ -1166,7 +1167,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should remove broker when no block supplied but still return a result" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Removing/).once
+        @log.should_receive(:info).with(/Removing/).once
         @broker2.should_receive(:close).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         result = ha.remove("second", 5672)
@@ -1179,7 +1180,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should remove last broker if requested" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Removing/).times(4)
+        @log.should_receive(:info).with(/Removing/).times(4)
         @broker1.should_receive(:close).once
         @broker2.should_receive(:close).once
         @broker3.should_receive(:close).once
@@ -1204,7 +1205,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should return nil and not execute block if broker is unknown" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Ignored request to remove/).once
+        @log.should_receive(:info).with(/Ignored request to remove/).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         ha.remove("fifth", 5672).should be_nil
         ha.brokers.size.should == 4
@@ -1351,23 +1352,24 @@ describe RightScale::HABrokerClient do
         @broker4.should_receive(:stats).and_return("stats4")
         ha.stats.should == {"brokers" => ["stats3", "stats4", "stats1", "stats2"],
                             "exceptions" => nil,
+                            "heartbeat" => nil,
                             "returns" => nil}
       end
 
       it "should log broker client status update if there is a change" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Broker b0 is now connected/).once
+        @log.should_receive(:info).with(/Broker b0 is now connected/).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         ha.__send__(:update_status, @broker3, false)
       end
 
       it "should not log broker client status update if there is no change" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Broker b0 is now connected/).never
+        @log.should_receive(:info).with(/Broker b0 is now connected/).never
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         ha.__send__(:update_status, @broker3, true)
       end
 
       it "should log broker client status update when become disconnected" do
-        flexmock(RightScale::Log).should_receive(:info).with(/Broker b0 is now disconnected/).once
+        @log.should_receive(:info).with(/Broker b0 is now disconnected/).once
         ha = RightScale::HABrokerClient.new(@serializer, :islands => @islands, :home_island => @home)
         @broker3.should_receive(:status).and_return(:disconnected)
         @broker3.should_receive(:connected?).and_return(false)
@@ -1650,7 +1652,7 @@ describe RightScale::HABrokerClient do
       end
 
       it "should close all broker connections even if encounter an exception" do
-        flexmock(RightScale::Log).should_receive(:error).with(/Failed to close/, Exception, :trace).once
+        @log.should_receive(:error).with(/Failed to close/, Exception, :trace).once
         @broker1.should_receive(:close).and_return(true).and_yield.once
         @broker2.should_receive(:close).and_raise(Exception).once
         @broker3.should_receive(:close).and_return(true).and_yield.once

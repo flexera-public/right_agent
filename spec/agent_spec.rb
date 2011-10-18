@@ -37,7 +37,8 @@ describe RightScale::Agent do
   describe "Default Option" do
 
     before(:all) do
-      flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+      @log = flexmock(RightScale::Log)
+      @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
       @timer = flexmock("timer")
@@ -101,6 +102,11 @@ describe RightScale::Agent do
       @agent.options[:root_dir].should == Dir.pwd
     end
 
+    it "for heartbeat is 60" do
+      @agent.options.should include(:heartbeat)
+      @agent.options[:heartbeat].should == 60
+    end
+
   end
 
   describe "Options from config.yml" do
@@ -120,7 +126,8 @@ describe RightScale::Agent do
   describe "Passed in Options" do
 
     before(:each) do
-      flexmock(RightScale::Log).should_receive(:error).never.by_default
+      @log = flexmock(RightScale::Log)
+      @log.should_receive(:error).never.by_default
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
       @timer = flexmock("timer")
@@ -204,6 +211,12 @@ describe RightScale::Agent do
       @agent.options[:ping_time].should == 5
     end
 
+    it "for heartbeat should override default (60)" do
+      @agent = RightScale::Agent.new(:heartbeat => 45, :identity => @identity)
+      @agent.options.should include(:heartbeat)
+      @agent.options[:heartbeat].should == 45
+    end
+
     it "for root_dir should override default (#{File.dirname(__FILE__)})" do
       root_dir = File.normalize_path(File.join(File.dirname(__FILE__), '..', '..'))
       @agent = RightScale::Agent.new(:root_dir => root_dir, :identity => @identity)
@@ -234,7 +247,8 @@ describe RightScale::Agent do
   describe "" do
 
     before(:each) do
-      flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+      @log = flexmock(RightScale::Log)
+      @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
       @timer = flexmock("timer")
@@ -244,14 +258,16 @@ describe RightScale::Agent do
       flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@periodic_timer)
       @periodic_timer.should_receive(:cancel).by_default
       @broker_id = "rs-broker-123-1"
-      @broker_ids = ["rs-broker-123-1", "rs-broker-123-2"]
+      @broker_id2 = "rs-broker-123-2"
+      @broker_ids = [@broker_id, @broker_id2]
       @broker = flexmock("broker", :subscribe => @broker_ids, :publish => @broker_ids.first(1), :prefetch => true,
                          :all => @broker_ids, :connected => @broker_ids.first(1), :failed => @broker_ids.last(1),
                          :unusable => @broker_ids.last(1), :close_one => true, :non_delivery => true,
-                         :stats => "", :identity_parts => ["123", 2, 1, 1, nil], :status => "status",
-                         :hosts => ["123"], :ports => [1, 2], :get => true, :alias_ => "b1",
-                         :aliases => ["b1"]).by_default
-      @broker.should_receive(:connection_status).and_yield(:connected)
+                         :stats => "", :status => "status", :hosts => ["123"], :ports => [1, 2], :get => true,
+                         :alias_ => "b1", :aliases => ["b1"]).by_default
+      @broker.should_receive(:connection_status).and_yield(:connected).by_default
+      @broker.should_receive(:identity_parts).with(@broker_id).and_return(["123", 1, 0, 0, nil])
+      @broker.should_receive(:identity_parts).with(@broker_id2).and_return(["123", 2, 1, 1, nil])
       flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
@@ -321,7 +337,7 @@ describe RightScale::Agent do
           @agent.run
           @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:connection_status).and_yield(:failed)
-          flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
+          @log.should_receive(:error).with(/Failed to connect to broker/).once
           flexmock(@agent).should_receive(:update_configuration).never
           @agent.connect("123", 2, 1, 1)
         end
@@ -361,7 +377,7 @@ describe RightScale::Agent do
           @broker.should_receive(:remove).never
           @broker.should_receive(:close_one).never
           flexmock(@agent).should_receive(:update_configuration).never
-          flexmock(RightScale::Log).should_receive(:error).with(/Not disconnecting.*last connected broker/).once
+          @log.should_receive(:error).with(/Not disconnecting.*last connected broker/).once
           @agent.disconnect("123", 1)
         end
       end
@@ -416,6 +432,126 @@ describe RightScale::Agent do
           @sender.should_receive(:handle_response).with(result).once
           @sender.should_receive(:message_received).once
           @agent.run
+        end
+      end
+
+    end
+
+    describe "Tuning heartbeat" do
+
+      it "should tune heartbeat for all broker connections" do
+        run_in_em do
+          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          @agent.tune_heartbeat(45).should be_nil
+        end
+      end
+
+      it "should tune heartbeat for all broker connections as deferred task" do
+        run_in_em do
+          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          flexmock(@agent).should_receive(:finish_setup)
+          @agent.defer_task { @agent.tune_heartbeat(45).should be_nil }
+          @agent.__send__(:check_status)
+          @agent.instance_variable_get(:@deferred_tasks).should == []
+        end
+      end
+
+      it "should disable heartbeat for all broker connections" do
+        run_in_em do
+          @log.should_receive(:info).with(/Disabled heartbeat for broker/).twice
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 0).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(0).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          @agent.tune_heartbeat(0).should be_nil
+        end
+      end
+
+      it "should log error if any broker connect attempts fail" do
+        run_in_em do
+          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
+          @log.should_receive(:error).with("Failed to reconnect to broker #{@broker_id} to tune heartbeat", Exception, :trace).once
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_raise(Exception).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          @agent.tune_heartbeat(45).should == "Failed to tune heartbeat for brokers [\"#{@broker_id}\"]"
+        end
+      end
+
+      it "should log error if any brokers do not connect" do
+        run_in_em do
+          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
+          @log.should_receive(:error).with(/Failed to reconnect to broker #{@broker_id} to tune heartbeat, status/).once
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id]}, Proc).and_yield(:failed)
+          @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id2]}, Proc).and_yield(:connected)
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          @agent.tune_heartbeat(45).should be_nil
+        end
+      end
+
+      it "should log error if any broker queue setup fails" do
+        run_in_em do
+          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
+          @log.should_receive(:error).with(/Failed to setup queues for broker #{@broker_id} when tuning heartbeat/, Exception, :trace).once
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).and_raise(Exception)
+          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
+          @agent.tune_heartbeat(45).should be_nil
+        end
+      end
+
+      it "should log error if an exception is raised" do
+        run_in_em do
+          @log.should_receive(:error).with(/Failed tuning broker connection heartbeat/, Exception, :trace).once
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_raise(Exception).once
+          @agent.run
+          @broker.should_receive(:heartbeat=).with(45).once
+          @agent.tune_heartbeat(45).should =~ /Failed tuning broker connection heartbeat/
         end
       end
 
@@ -477,8 +613,8 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting 9 seconds for/).once
+          @log.should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          @log.should_receive(:info).with(/Termination waiting 9 seconds for/).once
           @agent.terminate
         end
       end
@@ -492,8 +628,8 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).never
+          @log.should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          @log.should_receive(:info).with(/Termination waiting/).never
           @agent.terminate
         end
       end
@@ -508,10 +644,10 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
-          flexmock(RightScale::Log).should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/Termination waiting/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/Continuing with termination/).once
-          flexmock(RightScale::Log).should_receive(:info).with(/The following 1 request/).once
+          @log.should_receive(:info).with(/Agent rs-instance-123-1 terminating/).once
+          @log.should_receive(:info).with(/Termination waiting/).once
+          @log.should_receive(:info).with(/Continuing with termination/).once
+          @log.should_receive(:info).with(/The following 1 request/).once
           @agent.terminate
         end
       end

@@ -538,6 +538,7 @@ module RightScale
     #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
     #     "total"(Integer):: Total exceptions for this category
     #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
+    #   "heartbeat"(Integer|nil):: Number of seconds between AMQP heartbeats, or nil if heartbeat disabled
     #   "returns"(Hash|nil):: Message return activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per request type, or nil if none
     # name_width(Integer):: Fixed width for left-justified name display
@@ -570,6 +571,13 @@ module RightScale
         "none\n"
       else
         exceptions_str(brokers["exceptions"], sub_value_indent) + "\n"
+      end
+      str += value_indent
+      str += sprintf("%-#{sub_name_width}s#{SEPARATOR}", "heartbeat")
+      str += if [nil, 0].include?(brokers["heartbeat"])
+        "none\n"
+      else
+        "#{brokers["heartbeat"]} sec\n"
       end
       str += value_indent
       str += sprintf("%-#{sub_name_width}s#{SEPARATOR}", "returns")

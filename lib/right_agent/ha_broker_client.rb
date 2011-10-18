@@ -109,6 +109,8 @@ module RightScale
     #   :vhost(String):: Virtual host path name
     #   :insist(Boolean):: Whether to suppress redirection of connection
     #   :reconnect_interval(Integer):: Number of seconds between reconnect attempts, defaults to RECONNECT_INTERVAL
+    #   :heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
+    #     connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
     #   :host{String):: Comma-separated list of AMQP broker host names; if only one, it is reapplied
     #     to successive ports; if none, defaults to localhost; each host may be followed by ':'
     #     and a short string to be used as a broker index; the index defaults to the list index,
@@ -423,6 +425,18 @@ module RightScale
     # (Array):: Serialized identity of failed broker clients
     def failed
       @brokers.inject([]) { |c, b| b.failed? ? c << b.identity : c }
+    end
+
+    # Change connection heartbeat frequency to be used for any new connections
+    #
+    # === Parameters
+    # heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
+    #   connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
+    #
+    # === Return
+    # (Integer|nil):: New heartbeat setting
+    def heartbeat=(heartbeat)
+      @options[:heartbeat] = heartbeat
     end
 
     # Make new connection to broker at specified address unless already connected
@@ -918,12 +932,14 @@ module RightScale
     #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
     #     "total"(Integer):: Total exceptions for this category
     #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
+    #   "heartbeat"(Integer|nil):: Number of seconds between AMQP heartbeats, or nil if heartbeat disabled
     #   "returns"(Hash|nil):: Message return activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per return reason, or nil if none
     def stats(reset = false)
       stats = {
         "brokers"    => @brokers.map { |b| b.stats },
         "exceptions" => @exceptions.stats,
+        "heartbeat"  => @options[:heartbeat],
         "returns"    => @returns.all
       }
       reset_stats if reset

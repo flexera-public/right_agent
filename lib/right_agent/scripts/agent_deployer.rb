@@ -34,6 +34,7 @@
 #      --vhost, -v VHOST        Set agent AMQP virtual host
 #      --host, -h HOST          Set AMQP broker host
 #      --port, -P PORT          Set AMQP broker port
+#      --heartbeat, -b SEC      Set number of seconds between AMQP broker connection heartbeats, 0 means disable
 #      --prefetch COUNT         Set maximum requests AMQP broker is to prefetch before current is ack'd
 #      --http-proxy PROXY       Use a proxy for all agent-originated HTTP traffic
 #      --http-no-proxy NOPROXY  Comma-separated list of proxy exceptions (e.g. metadata server)
@@ -186,6 +187,10 @@ module RightScale
           options[:prefetch] = count.to_i
         end
 
+        opts.on('-b', '--heartbeat SEC') do |sec|
+          options[:heartbeat] = sec.to_i
+        end
+
         opts.on('-o', '--options OPT') do |e|
           fail("Invalid option definition #{e}' (use '=' to separate name and value)") unless e.include?('=')
           key, val = e.split(/=/)
@@ -282,6 +287,7 @@ module RightScale
       cfg[:port]               = options[:port] if options[:port]
       cfg[:host]               = options[:host] if options[:host]
       cfg[:prefetch]           = options[:prefetch] || 1
+      cfg[:heartbeat]          = options[:heartbeat] if options[:heartbeat]
       cfg[:time_to_live]       = options[:time_to_live] || 60
       cfg[:retry_timeout]      = options[:retry_timeout] || 2 * 60
       cfg[:retry_interval]     = options[:retry_interval] || 15

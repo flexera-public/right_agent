@@ -37,8 +37,8 @@ module RightScale
       :failed        # Failed to connect due to internal failure or AMQP failure to connect
     ]
 
-    # (MQ) AMQP client
-    attr_reader :mq
+    # (AMQP::Channel) Channel of AMQP connection used by this client
+    attr_reader :channel
 
     # (String) Broker identity
     attr_reader :identity
@@ -99,6 +99,8 @@ module RightScale
     #   :vhost(String):: Virtual host path name
     #   :insist(Boolean):: Whether to suppress redirection of connection
     #   :reconnect_interval(Integer):: Number of seconds between reconnect attempts
+    #   :heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
+    #     connection alive, e.g., when AMQP broker is behind a firewall
     #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for the agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
     #     if the agent crashes. Value 0 means unlimited prefetch.
@@ -217,13 +219,13 @@ module RightScale
 
       begin
         Log.info("[setup] Subscribing queue #{queue[:name]}#{to_exchange} on broker #{@alias}")
-        q = @mq.queue(queue[:name], queue_options)
+        q = @channel.queue(queue[:name], queue_options)
         @queues << q
         if exchange
-          x = @mq.__send__(exchange[:type], exchange[:name], exchange_options)
+          x = @channel.__send__(exchange[:type], exchange[:name], exchange_options)
           binding = q.bind(x, options[:key] ? {:key => options[:key]} : {})
           if exchange2 = options[:exchange2]
-            q.bind(@mq.__send__(exchange2[:type], exchange2[:name], exchange2[:options] || {}))
+            q.bind(@channel.__send__(exchange2[:type], exchange2[:name], exchange2[:options] || {}))
           end
           q = binding
         end
@@ -320,7 +322,7 @@ module RightScale
       begin
         Log.info("[setup] Declaring #{name} #{type.to_s} on broker #{@alias}")
         delete_amqp_resources(:queue, name)
-        @mq.__send__(type, name, options)
+        @channel.__send__(type, name, options)
         true
       rescue Exception => e
         Log.error("Failed declaring #{type.to_s} #{name} on broker #{@alias}", e, :trace)
@@ -362,7 +364,7 @@ module RightScale
         Log.debug("... publish options #{options.inspect}, exchange #{exchange[:name]}, " +
                   "type #{exchange[:type]}, options #{exchange[:options].inspect}")
         delete_amqp_resources(exchange[:type], exchange[:name]) if exchange_options[:declare]
-        @mq.__send__(exchange[:type], exchange[:name], exchange_options).publish(message, options)
+        @channel.__send__(exchange[:type], exchange[:name], exchange_options).publish(message, options)
         true
       rescue Exception => e
         Log.error("Failed publishing to exchange #{exchange.inspect} on broker #{@alias}", e, :trace)
@@ -390,7 +392,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def return_message
-      @mq.return_message do |info, message|
+      @channel.return_message do |info, message|
         begin
           to = if info.exchange && !info.exchange.empty? then info.exchange else info.routing_key end
           reason = info.reply_text
@@ -418,14 +420,14 @@ module RightScale
         begin
           @queues.reject! do |q|
             if q.name == name
-              @mq.queue(name, options.merge(:no_declare => true)).delete
+              @channel.queue(name, options.merge(:no_declare => true)).delete
               deleted = true
             end
           end
           unless deleted
             # Allowing declare to happen since queue may not exist and do not want NOT_FOUND
             # failure to cause AMQP channel to close
-            @mq.queue(name, options).delete
+            @channel.queue(name, options).delete
             deleted = true
           end
         rescue Exception => e
@@ -445,7 +447,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def delete_amqp_resources(type, name)
-      @mq.__send__(type == :queue ? :queues : :exchanges).delete(name)
+      @channel.__send__(type == :queue ? :queues : :exchanges).delete(name)
       true
     end
 
@@ -533,18 +535,13 @@ module RightScale
     # Makes client callback with :connected or :disconnected status if boundary crossed
     #
     # === Parameters
-    # status(Symbol):: Status of connection (:connected, :ready, :disconnected, :stopping, :failed, :closed)
+    # status(Symbol):: Status of connection (:connected, :disconnected, :stopping, :failed, :closed)
     #
     # === Return
     # true:: Always return true
     def update_status(status)
       # Do not let closed connection regress to failed
       return true if status == :failed && @status == :closed
-
-      # Wait until connection is ready (i.e. handshake with broker is completed) before
-      # changing our status to connected
-      return true if status == :connected
-      status = :connected if status == :ready
 
       before = @status
       @status = status
@@ -587,11 +584,12 @@ module RightScale
                                    :host               => address[:host],
                                    :port               => address[:port],
                                    :insist             => @options[:insist] || false,
+                                   :heartbeat          => @options[:heartbeat],
                                    :reconnect_delay    => lambda { rand(reconnect_interval) },
                                    :reconnect_interval => reconnect_interval)
-        @mq = MQ.new(@connection)
-        @mq.__send__(:connection).connection_status { |status| update_status(status) }
-        @mq.prefetch(@options[:prefetch]) if @options[:prefetch]
+        @channel = AMQP::Channel.new(@connection)
+        @channel.__send__(:connection).connection_status { |status| update_status(status) }
+        @channel.prefetch(@options[:prefetch]) if @options[:prefetch]
       rescue Exception => e
         @status = :failed
         @failures.update
