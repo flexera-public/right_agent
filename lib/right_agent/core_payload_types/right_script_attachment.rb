@@ -68,6 +68,7 @@ module RightScale
     def fill_out(session)
       session['scope'] = "attachments"
       if @digest
+        session['scope'] = "attachments/1"
         session['resource'] = @digest
       else
         session['resource'] = to_hash
