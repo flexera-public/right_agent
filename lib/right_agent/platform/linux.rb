@@ -75,6 +75,15 @@ module RightScale
       @flavor =~ /suse/
     end
 
+    # Is this machine running rhel?
+    #
+    # === Return
+    # true:: If Linux flavor is rhel
+    # false:: Otherwise
+    def rhel?
+      @flavor =~ /redhatenterpriseserver/
+    end
+
     class Filesystem
 
       # Is given command available in the PATH?
