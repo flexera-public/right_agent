@@ -27,17 +27,18 @@ describe RightScale::BrokerClient do
   include FlexMock::ArgumentTypes
 
   before(:each) do
-    flexmock(RightScale::Log).should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    flexmock(RightScale::Log).should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    flexmock(RightScale::Log).should_receive(:info).by_default
+    @log = flexmock(RightScale::Log)
+    @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+    @log.should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
+    @log.should_receive(:info).by_default
     @serializer = flexmock("serializer")
     @exceptions = flexmock("exception_stats")
     @exceptions.should_receive(:track).never.by_default
     @connection = flexmock("connection")
     @connection.should_receive(:connection_status).by_default
     flexmock(AMQP).should_receive(:connect).and_return(@connection).by_default
-    @mq = flexmock("mq")
-    @mq.should_receive(:connection).and_return(@connection).by_default
+    @channel = flexmock("AMQP connection channel")
+    @channel.should_receive(:connection).and_return(@connection).by_default
     @identity = "rs-broker-localhost-5672"
     @address = {:host => "localhost", :port => 5672, :index => 0}
     @options = {}
@@ -48,8 +49,8 @@ describe RightScale::BrokerClient do
     before(:each) do
       @amqp = flexmock(AMQP)
       @amqp.should_receive(:connect).and_return(@connection).by_default
-      @mq.should_receive(:prefetch).never.by_default
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      @channel.should_receive(:prefetch).never.by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
       @island = flexmock("island", :id => 2, :broker_hosts => "local_host").by_default
     end
 
@@ -110,16 +111,16 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an info message when it creates an AMQP connection" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting to broker/).once
+      @log.should_receive(:info).with(/Connecting to broker/).once
       RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
     end
 
     it "should log an error and set status to :failed if it fails to create an AMQP connection" do
       @exceptions.should_receive(:track).once
       @connection.should_receive(:close).once
-      flexmock(RightScale::Log).should_receive(:info).once
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed connecting/, Exception, :trace).once
-      flexmock(MQ).should_receive(:new).with(@connection).and_raise(Exception)
+      @log.should_receive(:info).once
+      @log.should_receive(:error).with(/Failed connecting/, Exception, :trace).once
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :failed,
                                 :disconnects => 0, :failures => 1, :retries => 0}
@@ -131,7 +132,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should set broker prefetch value if specified" do
-      @mq.should_receive(:prefetch).with(1).once
+      @channel.should_receive(:prefetch).with(1).once
       RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, {:prefetch => 1})
     end
 
@@ -149,17 +150,17 @@ describe RightScale::BrokerClient do
       @bind = flexmock("bind")
       @queue = flexmock("queue")
       @queue.should_receive(:bind).and_return(@bind).by_default
-      @mq.should_receive(:queue).and_return(@queue).by_default
-      @mq.should_receive(:direct).and_return(@direct).by_default
-      @mq.should_receive(:fanout).and_return(@fanout).by_default
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      @channel.should_receive(:queue).and_return(@queue).by_default
+      @channel.should_receive(:direct).and_return(@direct).by_default
+      @channel.should_receive(:fanout).and_return(@fanout).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should subscribe queue to exchange" do
       @queue.should_receive(:bind).and_return(@bind).once
       @bind.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) {|_, _|}
     end
 
@@ -167,7 +168,7 @@ describe RightScale::BrokerClient do
       @queue.should_receive(:bind).and_return(@bind).twice
       @bind.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       options = {:exchange2 => {:type => :fanout, :name => "exchange2", :options => {:durable => true}}}
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, options) {|_, _|}
     end
@@ -181,7 +182,7 @@ describe RightScale::BrokerClient do
     it "should subscribe queue to empty exchange if no exchange specified" do
       @queue.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.subscribe({:name => "queue"}) {|b, p| p.should == nil}
     end
 
@@ -215,7 +216,7 @@ describe RightScale::BrokerClient do
       @info.should_receive(:ack).once
       @bind.should_receive(:subscribe).and_yield(@info, @message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                                 :ack => true, RightScale::Request => true) {|b, p| p.should == @packet}
       result.should be_true
@@ -230,64 +231,64 @@ describe RightScale::BrokerClient do
     end
  
     it "should receive message causing it to be unserialized and logged" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Subscribing/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/RECV/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Subscribing/).once
+      @log.should_receive(:info).with(/RECV/).once
       @serializer.should_receive(:load).with(@message).and_return(@packet).once
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                        RightScale::Request => nil) {|b, p| p.class.should == RightScale::Request}
     end
 
     it "should receive message and log exception if subscribe block fails" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Subscribing/).once
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed executing block/, Exception, :trace).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Subscribing/).once
+      @log.should_receive(:error).with(/Failed executing block/, Exception, :trace).once
       @exceptions.should_receive(:track).once
       @serializer.should_receive(:load).with(@message).and_return(@packet).once
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                                 RightScale::Request => nil) {|b, p| raise Exception}
       result.should be_false
     end
 
     it "should ignore 'nil' message when using ack" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Subscribing/).once
-      flexmock(RightScale::Log).should_receive(:debug).with(/nil message ignored/).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Subscribing/).once
+      @log.should_receive(:debug).with(/nil message ignored/).once
       @bind.should_receive(:subscribe).and_yield(@info, "nil").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       called = 0
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, :ack => true) { |b, m| called += 1 }
       called.should == 0
     end
 
     it "should ignore 'nil' message when not using ack" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Subscribing/).once
-      flexmock(RightScale::Log).should_receive(:debug).with(/nil message ignored/).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Subscribing/).once
+      @log.should_receive(:debug).with(/nil message ignored/).once
       @bind.should_receive(:subscribe).and_yield("nil").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       called = 0
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) { |b, m| called += 1 }
       called.should == 0
     end
 
     it "should not unserialize the message if requested" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Subscribing/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV/).never
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Subscribing/).once
+      @log.should_receive(:info).with(/^RECV/).never
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, :no_unserialize => true) do |b, m|
         b.should == "rs-broker-localhost-5672"
         m.should == @message
@@ -295,13 +296,13 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error if a subscribe fails" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/RECV/).never
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed subscribing/, Exception, :trace).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/RECV/).never
+      @log.should_receive(:error).with(/Failed subscribing/, Exception, :trace).once
       @exceptions.should_receive(:track).once
       @bind.should_receive(:subscribe).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) {|b, p|}
       result.should be_false
     end
@@ -317,74 +318,74 @@ describe RightScale::BrokerClient do
     end
 
     it "should unserialize the message, log it, and return it" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil).should == @packet
     end
 
     it "should log a warning if the message is not of the right type and return nil" do
-      flexmock(RightScale::Log).should_receive(:warning).with(/Received invalid.*packet type/).once
+      @log.should_receive(:warning).with(/Received invalid.*packet type/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message).should be_nil
     end
 
     it "should show the category in the warning message if specified" do
-      flexmock(RightScale::Log).should_receive(:warning).with(/Received invalid xxxx packet type/).once
+      @log.should_receive(:warning).with(/Received invalid xxxx packet type/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Result => nil, :category => "xxxx")
     end
 
     it "should display broker alias in the log" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV b0 /).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV b0 /).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil)
     end
 
     it "should filter the packet display for :info level" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV.*TO YOU/).once
-      flexmock(RightScale::Log).should_receive(:debug).with(/^RECV.*TO YOU/).never
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV.*TO YOU/).once
+      @log.should_receive(:debug).with(/^RECV.*TO YOU/).never
       @packet.should_receive(:to_s).with([:to], :recv_version).and_return("TO YOU").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => [:to])
     end
 
     it "should not filter the packet display for :debug level" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV.*ALL/).never
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV.*ALL/).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV.*ALL/).never
+      @log.should_receive(:info).with(/^RECV.*ALL/).once
       @packet.should_receive(:to_s).with(nil, :recv_version).and_return("ALL").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => [:to])
     end
 
     it "should display additional data in log" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV.*More data/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV.*More data/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil, :log_data => "More data")
     end
 
     it "should not log a message if requested not to" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV/).never
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV/).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil, :no_log => true)
     end
 
     it "should not log a message if requested not to unless debug level" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RECV/).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RECV/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil, :no_log => true)
     end
 
     it "should log an error if exception prevents normal logging and should then return nil" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed receiving from queue/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed receiving from queue/, Exception, :trace).once
       @serializer.should_receive(:load).with(@message).and_raise(Exception).once
       @exceptions.should_receive(:track).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
@@ -392,7 +393,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should make callback when there is a receive failure" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed receiving from queue/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed receiving from queue/, Exception, :trace).once
       @serializer.should_receive(:load).with(@message).and_raise(Exception).once
       @exceptions.should_receive(:track).once
       called = 0
@@ -404,8 +405,8 @@ describe RightScale::BrokerClient do
     end
 
     it "should display RE-RECV if the message being received is a retry" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RE-RECV/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RE-RECV/).once
       @packet.should_receive(:tries).and_return(["try1"]).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:receive, "queue", @message, RightScale::Request => nil).should == @packet
@@ -419,9 +420,9 @@ describe RightScale::BrokerClient do
       @direct = flexmock("direct")
       @bind = flexmock("bind", :subscribe => true)
       @queue = flexmock("queue", :bind => @bind, :name => "queue1")
-      @mq.should_receive(:queue).and_return(@queue).by_default
-      @mq.should_receive(:direct).and_return(@direct).by_default
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      @channel.should_receive(:queue).and_return(@queue).by_default
+      @channel.should_receive(:direct).and_return(@direct).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should unsubscribe a queue by name" do
@@ -456,7 +457,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error if unsubscribe raises an exception and activate block if provided" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed unsubscribing/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed unsubscribing/, Exception, :trace).once
       @queue.should_receive(:unsubscribe).and_raise(Exception).once
       @exceptions.should_receive(:track).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
@@ -471,34 +472,34 @@ describe RightScale::BrokerClient do
   context "when declaring" do
 
     before(:each) do
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
-      @mq.should_receive(:queues).and_return({}).by_default
-      @mq.should_receive(:exchanges).and_return({}).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      @channel.should_receive(:queues).and_return({}).by_default
+      @channel.should_receive(:exchanges).and_return({}).by_default
     end
 
     it "should declare exchange and return true" do
-      @mq.should_receive(:exchange).once
+      @channel.should_receive(:exchange).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.declare(:exchange, "x", :durable => true).should be_true
     end
 
     it "should delete the exchange or queue from the AMQP cache before declaring" do
-      @mq.should_receive(:queue).once
+      @channel.should_receive(:queue).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       flexmock(broker).should_receive(:delete_amqp_resources).with(:queue, "queue").once
       broker.declare(:queue, "queue", :durable => true).should be_true
     end
 
     it "should log declaration" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Declaring/).once
-      @mq.should_receive(:queue).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Declaring/).once
+      @channel.should_receive(:queue).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.declare(:queue, "q").should be_true
     end
 
     it "should return false if client not usable" do
-      @mq.should_receive(:exchange).never
+      @channel.should_receive(:exchange).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:update_status, :disconnected)
       broker.declare(:exchange, "x", :durable => true).should be_false
@@ -506,11 +507,11 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error if the declare fails and return false" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Declaring/).once
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed declaring/, Exception, :trace).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Declaring/).once
+      @log.should_receive(:error).with(/Failed declaring/, Exception, :trace).once
       @exceptions.should_receive(:track).once
-      @mq.should_receive(:queue).and_raise(Exception).once
+      @channel.should_receive(:queue).and_raise(Exception).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.declare(:queue, "q").should be_false
     end
@@ -523,30 +524,30 @@ describe RightScale::BrokerClient do
       @message = flexmock("message")
       @packet = flexmock("packet", :class => RightScale::Request, :to_s => true, :version => [12, 12]).by_default
       @direct = flexmock("direct")
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should serialize message, publish it, and return true" do
-      @mq.should_receive(:direct).with("exchange", :durable => true).and_return(@direct).once
+      @channel.should_receive(:direct).with("exchange", :durable => true).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :persistent => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange", :options => {:durable => true}},
                      @packet, @message, :persistent => true).should be_true
     end
 
     it "should delete the exchange or queue from the AMQP cache if :declare specified" do
-      @mq.should_receive(:direct).with("exchange", {:declare => true}).and_return(@direct)
+      @channel.should_receive(:direct).with("exchange", {:declare => true}).and_return(@direct)
       @direct.should_receive(:publish).with(@message, {})
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       exchange = {:type => :direct, :name => "exchange", :options => {:declare => true}}
       flexmock(broker).should_receive(:delete_amqp_resources).with(:direct, "exchange").once
       broker.publish(exchange, @packet, @message).should be_true
     end
 
     it "should return false if client not connected" do
-      @mq.should_receive(:direct).never
+      @channel.should_receive(:direct).never
       @direct.should_receive(:publish).with(@message, :persistent => true).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.publish({:type => :direct, :name => "exchange", :options => {:durable => true}},
@@ -554,111 +555,111 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error if the publish fails" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed publishing/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed publishing/, Exception, :trace).once
       @exceptions.should_receive(:track).once
-      @mq.should_receive(:direct).and_raise(Exception)
+      @channel.should_receive(:direct).and_raise(Exception)
       @direct.should_receive(:publish).with(@message, {}).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_false
     end
 
     it "should log that message is being sent with info about which broker used" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND b0/).once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND b0/).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
     it "should log broker choices for :debug level" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:debug).with(/... publish options/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND b0/).once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:debug).with(/... publish options/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND b0/).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
     it "should not log a message if requested not to" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND/).never
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND/).never
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :no_log => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :no_log => true).should be_true
     end
 
     it "should not log a message if requested not to unless debug level" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND/).once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND/).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :no_log => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :no_log => true).should be_true
     end
 
     it "should display broker alias in the log" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND b0 /).once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND b0 /).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
     it "should filter the packet display for :info level" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND.*TO YOU/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND.*TO YOU/).never
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND.*TO YOU/).once
+      @log.should_receive(:info).with(/^SEND.*TO YOU/).never
       @packet.should_receive(:to_s).with([:to], :send_version).and_return("TO YOU").once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_filter => [:to]).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_filter => [:to]).should be_true
     end
 
     it "should not filter the packet display for :debug level" do
-      flexmock(RightScale::Log).should_receive(:level).and_return(:debug)
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND.*ALL/).never
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND.*ALL/).once
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND.*ALL/).never
+      @log.should_receive(:info).with(/^SEND.*ALL/).once
       @packet.should_receive(:to_s).with(nil, :send_version).and_return("ALL").once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_filter => [:to]).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_filter => [:to]).should be_true
     end
     
     it "should display additional data in log" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^SEND.*More data/).once
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^SEND.*More data/).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_data => "More data").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_data => "More data").should be_true
     end
 
     it "should display RE-SEND if the message being sent is a retry" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/^RE-SEND/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/^RE-SEND/).once
       @packet = flexmock("packet", :class => RightScale::Request, :to_s => true, :tries => ["try1"], :version => [12, 12])
-      @mq.should_receive(:direct).with("exchange", {}).and_return(@direct).once
+      @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
@@ -686,8 +687,8 @@ describe RightScale::BrokerClient do
     end
 
     it "should invoke block and log the return" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting to broker/).once
-      flexmock(RightScale::Log).should_receive(:debug).with(/RETURN b0/).once
+      @log.should_receive(:info).with(/Connecting to broker/).once
+      @log.should_receive(:debug).with(/RETURN b0/).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       called = 0
       broker.return_message do |to, reason, message|
@@ -696,7 +697,7 @@ describe RightScale::BrokerClient do
         reason.should == "NO_CONSUMERS"
         message.should == @message
       end
-      broker.instance_variable_get(:@mq).on_return_message.call(@info, @message)
+      broker.instance_variable_get(:@channel).on_return_message.call(@info, @message)
       called.should == 1
     end
 
@@ -710,12 +711,12 @@ describe RightScale::BrokerClient do
         message.should == @message
       end
       @info.should_receive(:exchange).and_return("")
-      broker.instance_variable_get(:@mq).on_return_message.call(@info, @message)
+      broker.instance_variable_get(:@channel).on_return_message.call(@info, @message)
       called.should == 1
     end
 
     it "should log an error if there is a failure while processing the return" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed return/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed return/, Exception, :trace).once
       @exceptions.should_receive(:track).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       called = 0
@@ -723,7 +724,7 @@ describe RightScale::BrokerClient do
         called += 1
         raise Exception
       end
-      broker.instance_variable_get(:@mq).on_return_message.call(@info, @message)
+      broker.instance_variable_get(:@channel).on_return_message.call(@info, @message)
       called.should == 1
     end
 
@@ -735,9 +736,9 @@ describe RightScale::BrokerClient do
       @direct = flexmock("direct")
       @bind = flexmock("bind", :subscribe => true)
       @queue = flexmock("queue", :bind => @bind, :name => "queue1")
-      @mq.should_receive(:queue).and_return(@queue).by_default
-      @mq.should_receive(:direct).and_return(@direct).by_default
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      @channel.should_receive(:queue).and_return(@queue).by_default
+      @channel.should_receive(:direct).and_return(@direct).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should delete the named queue and return true" do
@@ -760,7 +761,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error and return false if the delete fails" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed deleting queue/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed deleting queue/, Exception, :trace).once
       @exceptions.should_receive(:track).once
       @queue.should_receive(:delete).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
@@ -776,17 +777,17 @@ describe RightScale::BrokerClient do
     include RightScale::StatsHelper
 
     before(:each) do
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should distinguish whether the client is usable based on whether connecting or connected" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.usable?.should be_true
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.usable?.should be_true
       broker.__send__(:update_status, :disconnected)
       broker.usable?.should be_false
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker b0/).once
+      @log.should_receive(:error).with(/Failed to connect to broker b0/).once
       broker.__send__(:update_status, :failed)
       broker.usable?.should be_false
     end
@@ -794,11 +795,11 @@ describe RightScale::BrokerClient do
     it "should distinguish whether the client is connected" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.connected?.should be_false
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.connected?.should be_true
       broker.__send__(:update_status, :disconnected)
       broker.connected?.should be_false
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker b0/).once
+      @log.should_receive(:error).with(/Failed to connect to broker b0/).once
       broker.__send__(:update_status, :failed)
       broker.connected?.should be_false
     end
@@ -806,11 +807,11 @@ describe RightScale::BrokerClient do
     it "should distinguish whether the client has failed" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.failed?.should be_false
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.failed?.should be_false
       broker.__send__(:update_status, :disconnected)
       broker.failed?.should be_false
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker b0/).once
+      @log.should_receive(:error).with(/Failed to connect to broker b0/).once
       broker.__send__(:update_status, :failed)
       broker.failed?.should be_true
     end
@@ -819,10 +820,10 @@ describe RightScale::BrokerClient do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :connecting,
                                 :disconnects => 0, :failures => 0, :retries => 0}
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :connected,
                                 :disconnects => 0, :failures => 0, :retries => 0}
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
+      @log.should_receive(:error).with(/Failed to connect to broker/).once
       broker.__send__(:update_status, :failed)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :failed,
                                 :disconnects => 0, :failures => 1, :retries => 0}
@@ -833,11 +834,11 @@ describe RightScale::BrokerClient do
       broker.stats.should == {"alias" => "b0", "identity" => "rs-broker-localhost-5672",
                               "status" => "connecting", "disconnects" => nil, "disconnect last" => nil,
                               "failures" => nil, "failure last" => nil, "retries" => nil}
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.stats.should == {"alias" => "b0", "identity" => "rs-broker-localhost-5672",
                               "status" => "connected", "disconnects" => nil, "disconnect last" => nil,
                               "failures" => nil, "failure last" => nil, "retries" => nil}
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
+      @log.should_receive(:error).with(/Failed to connect to broker/).once
       broker.__send__(:update_status, :failed)
       broker.stats.should == {"alias" => "b0", "identity" => "rs-broker-localhost-5672",
                               "status" => "failed", "disconnects" => nil, "disconnect last" => nil,
@@ -851,7 +852,7 @@ describe RightScale::BrokerClient do
       callback = lambda { |b, c| called += 1; b.should == broker; c.should == connected_before }
       options = {:update_status_callback => callback}
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, options)
-      broker.__send__(:update_status, :ready)
+      broker.__send__(:update_status, :connected)
       broker.last_failed.should be_false
       called.should == 1
       connected_before = true
@@ -862,7 +863,7 @@ describe RightScale::BrokerClient do
       broker.__send__(:update_status, :disconnected)
       broker.disconnects.total.should == 1
       called.should == 2
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker b0/).once
+      @log.should_receive(:error).with(/Failed to connect to broker b0/).once
       connected_before = false
       broker.__send__(:update_status, :failed)
       broker.last_failed.should be_true
@@ -874,7 +875,7 @@ describe RightScale::BrokerClient do
   context "when closing" do
 
     before(:each) do
-      flexmock(MQ).should_receive(:new).with(@connection).and_return(@mq).by_default
+      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should close broker connection and send status update" do
@@ -900,16 +901,16 @@ describe RightScale::BrokerClient do
     end
 
     it "should log that closing connection" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Closed connection to broker b0/).once
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Closed connection to broker b0/).once
       @connection.should_receive(:close).and_yield.once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.close
     end
 
     it "should not log if requested not to" do
-      flexmock(RightScale::Log).should_receive(:info).with(/Connecting/).once
-      flexmock(RightScale::Log).should_receive(:info).with(/Closed connection to broker b0/).never
+      @log.should_receive(:info).with(/Connecting/).once
+      @log.should_receive(:info).with(/Closed connection to broker b0/).never
       @connection.should_receive(:close).and_yield.once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.close(propagate = true, normal = true, log = false)
@@ -938,7 +939,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should change failed status to closed" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to connect to broker/).once
+      @log.should_receive(:error).with(/Failed to connect to broker/).once
       @connection.should_receive(:close).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.__send__(:update_status, :failed)
@@ -948,7 +949,7 @@ describe RightScale::BrokerClient do
     end
 
     it "should log an error if closing connection fails but still set status to :closed" do
-      flexmock(RightScale::Log).should_receive(:error).with(/Failed to close broker b0/, Exception, :trace).once
+      @log.should_receive(:error).with(/Failed to close broker b0/, Exception, :trace).once
       @exceptions.should_receive(:track).once
       @connection.should_receive(:close).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)

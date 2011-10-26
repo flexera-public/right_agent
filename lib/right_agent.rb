@@ -22,7 +22,6 @@
 
 require 'rubygems'
 require 'amqp'
-require 'mq'
 require 'json'
 require 'yaml'
 require 'openssl'

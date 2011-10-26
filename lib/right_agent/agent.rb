@@ -73,6 +73,7 @@ module RightScale
       :check_interval     => 5 * 60,
       :grace_timeout      => 30,
       :prefetch           => 1,
+      :heartbeat          => 60
     }
 
     # Initializes a new agent and establishes an AMQP connection.
@@ -97,12 +98,14 @@ module RightScale
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
     #     by the receiver, 0 means never expire, defaults to 0
-    #   :connect_timeout:: Number of seconds to wait for a broker connection to be established
+    #   :connect_timeout(Integer):: Number of seconds to wait for a broker connection to be established
     #   :reconnect_interval(Integer):: Number of seconds between broker reconnect attempts
     #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
     #     to check connectivity, defaults to 0 meaning do not ping
-    #   :check_interval:: Number of seconds between publishing stats and checking for broker connections
+    #   :check_interval(Integer):: Number of seconds between publishing stats and checking for broker connections
     #     that failed during agent launch and then attempting to reconnect via the mapper
+    #   :heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
+    #     connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
     #   :grace_timeout(Integer):: Maximum number of seconds to wait after last request received before
     #     terminating regardless of whether there are still unfinished requests
     #   :dup_check(Boolean):: Whether to check for and reject duplicate requests, e.g., due to retries
@@ -153,6 +156,7 @@ module RightScale
       @tags << opts[:tag] if opts[:tag]
       @tags.flatten!
       @options.freeze
+      @deferred_tasks = []
       @terminating = false
       @last_stat_reset_time = @service_start_time = Time.now
       reset_agent_stats
@@ -237,6 +241,57 @@ module RightScale
     # (Actor):: Actor registered
     def register(actor, prefix = nil)
       @registry.register(actor, prefix)
+    end
+
+    # Tune connection heartbeat frequency for all brokers
+    # Causes a reconnect to each broker
+    #
+    # === Parameters
+    # heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
+    #   connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
+    #
+    # === Return
+    # res(String|nil):: Error message if failed, otherwise nil
+    def tune_heartbeat(heartbeat)
+      res = nil
+      begin
+        @broker.heartbeat = heartbeat
+        update_configuration(:heartbeat => heartbeat)
+        ids = []
+        all = @broker.all
+        all.each do |id|
+          begin
+            host, port, index, priority, island_id = @broker.identity_parts(id)
+            @broker.connect(host, port, index, priority, island = nil, force = true) do |id|
+              @broker.connection_status(:one_off => @options[:connect_timeout], :brokers => [id]) do |status|
+                begin
+                  if status == :connected
+                    setup_queues([id])
+                    tuned = (heartbeat && heartbeat != 0) ? "Tuned heartbeat to #{heartbeat} seconds" : "Disabled heartbeat"
+                    Log.info("[setup] #{tuned} for broker #{id}")
+                  else
+                    Log.error("Failed to reconnect to broker #{id} to tune heartbeat, status #{status.inspect}")
+                  end
+                rescue Exception => e
+                  Log.error("Failed to setup queues for broker #{id} when tuning heartbeat", e, :trace)
+                  @exceptions.track("tune heartbeat", e)
+                end
+              end
+            end
+            ids << id
+          rescue Exception => e
+            res = Log.format("Failed to reconnect to broker #{id} to tune heartbeat", e)
+            Log.error("Failed to reconnect to broker #{id} to tune heartbeat", e, :trace)
+            @exceptions.track("tune heartbeat", e)
+          end
+        end
+        res = "Failed to tune heartbeat for brokers #{(all - ids).inspect}" unless (all - ids).empty?
+      rescue Exception => e
+        res = Log.format("Failed tuning broker connection heartbeat", e)
+        Log.error("Failed tuning broker connection heartbeat", e, :trace)
+        @exceptions.track("tune heartbeat", e)
+      end
+      res
     end
 
     # Connect to an additional broker or reconnect it if connection has failed
@@ -382,6 +437,17 @@ module RightScale
         @exceptions.track("identity queue", e, packet)
       end
       true
+    end
+
+    # Defer task until next status check
+    #
+    # === Block
+    # Required block to be activated on next status check
+    #
+    # === Return
+    # true:: Always return true
+    def defer_task(&task)
+      @deferred_tasks << task
     end
 
     # Gracefully terminate execution by allowing unfinished tasks to complete
@@ -675,12 +741,22 @@ module RightScale
       true
     end
 
-    # Check status of agent by gathering current operation statistics and publishing them and
-    # by completing any queue setup that can be completed now based on broker status
+    # Check status of agent by gathering current operation statistics and publishing them,
+    # executing any deferred tasks, and finishing any queue setup
     #
     # === Return
     # true:: Always return true
     def check_status
+      @deferred_tasks.reject! do |t|
+        begin
+          t.call
+        rescue Exception => e
+          Log.error("Failed to perform deferred task", e)
+          @exceptions.track("check status", e)
+        end
+        true
+      end
+
       begin
         finish_setup
       rescue Exception => e

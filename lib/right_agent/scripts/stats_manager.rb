@@ -14,6 +14,9 @@
 #     rstat AGENT --json
 #     rstat AGENT --j
 #
+#   Log details of statistics retrieval
+#     rstat AGENT -v
+#
 # === Usage:
 #    rstat [AGENT] [options]
 #
@@ -21,6 +24,7 @@
 #      --reset, -r        As part of gathering the stats from an agent also reset the stats
 #      --timeout, -t SEC  Override default timeout in seconds to wait for a response from an agent
 #      --json, -j         Display the stats data in JSON format
+#      --verbose, -v      Log debug information
 #      --cfg-dir, -c DIR  Set directory containing configuration for all agents
 #      --help             Display help
 
@@ -61,7 +65,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def manage(options)
-      init_log
+      init_log if options[:verbose]
       AgentConfig.cfg_dir = options[:cfg_dir]
       options[:timeout] ||= DEFAULT_TIMEOUT
       request_stats(options)
@@ -90,6 +94,10 @@ module RightScale
 
         opts.on('-j', '--json') do
           options[:json] = true
+        end
+
+        opts.on('-v', '--verbose') do
+          options[:verbose] = true
         end
 
         opts.on("-c", "--cfg-dir DIR") do |d|

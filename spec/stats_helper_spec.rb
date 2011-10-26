@@ -301,6 +301,7 @@ describe RightScale::StatsHelper do
                                {"alias" => "b2", "identity" => "rs-broker-localhost-5674", "status" => "failed",
                                 "disconnect last" => nil, "disconnects" => nil,
                                 "failure last" => {"elapsed" => 1000}, "failures" => 3, "retries" => 2}],
+                  "heartbeat" => nil,
                   "exceptions" => {}}
     end
 
@@ -437,12 +438,14 @@ describe RightScale::StatsHelper do
                        "             b1: rs-broker-localhost-5673 disconnected, disconnects: 2 (16 min 40 sec ago), failures: none\n" +
                        "             b2: rs-broker-localhost-5674 failed, disconnects: none, failures: 3 (16 min 40 sec ago w/ 2 retries)\n" +
                        "             exceptions        : none\n" +
+                       "             heartbeat         : none\n" +
                        "             returns           : none\n"
     end
 
     it "should display broker exceptions and returns" do
       @exceptions.track("testing", Exception.new("Test error"))
       @brokers["exceptions"] = @exceptions.stats
+      @brokers["heartbeat"] = 60
       activity = RightScale::StatsHelper::ActivityStats.new
       activity.update("no queue")
       activity.finish(@now - 10)
@@ -457,6 +460,7 @@ describe RightScale::StatsHelper do
                        "             exceptions        : testing total: 1, most recent:\n" +
                        "                                 (1) Mon Jan 12 05:46:40 Exception: Test error\n" +
                        "                                     \n" +
+                       "             heartbeat         : 60 sec\n" +
                        "             returns           : no queue consumers: 67%, no queue: 33%, total: 3, \n" +
                        "                                 last: no queue consumers (10 sec ago), rate: 0/sec\n"
     end
@@ -616,6 +620,7 @@ describe RightScale::StatsHelper do
                        "              b1: rs-broker-localhost-5673 disconnected, disconnects: 2 (16 min 40 sec ago), failures: none\n" +
                        "              b2: rs-broker-localhost-5674 failed, disconnects: none, failures: 3 (16 min 40 sec ago w/ 2 retries)\n" +
                        "              exceptions        : none\n" +
+                       "              heartbeat         : none\n" +
                        "              returns           : none\n" +
                        "stuff       : activity %        : testing: 100%, total: 1\n" +
                        "              activity last     : testing: 10 sec ago\n" +

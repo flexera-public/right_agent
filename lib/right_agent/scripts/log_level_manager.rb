@@ -94,8 +94,8 @@ module RightScale
       opts = OptionParser.new do |opts|
 
         opts.on('-l', '--log-level LEVEL') do |l|
-          fail("Invalid log level '#{l}'") unless AgentManager::LEVELS.include?(l.to_sym)
-          options[:level] = l
+          fail("Invalid log level '#{l}'") unless AgentManager::LEVELS.include?(l.downcase.to_sym)
+          options[:level] = l.downcase
         end
 
         opts.on("-c", "--cfg-dir DIR") do |d|
@@ -136,12 +136,11 @@ module RightScale
     def request_log_level(agent_name, command, options)
       res = false
       config_options = AgentConfig.agent_options(agent_name)
-      unless config_options.empty?
-        listen_port = config_options[:listen_port]
+      unless config_options.empty? || (listen_port = config_options[:listen_port]).nil?
         fail("Could not retrieve #{agent_name} agent listen port") unless listen_port
         client = CommandClient.new(listen_port, config_options[:cookie])
         begin
-          client.send_command(command, options[:verbose]) do |level|
+          client.send_command(command, options[:verbose], timeout = 5) do |level|
             puts "Agent #{agent_name} log level: #{level.to_s.upcase}"
           end
           res = true
