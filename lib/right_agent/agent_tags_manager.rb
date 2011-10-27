@@ -40,7 +40,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def tags
-      do_query do |result|
+      do_query(nil, @agent.identity) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
         else
@@ -178,7 +178,7 @@ module RightScale
     # true:: Always return true
     def do_query(tags = nil, agent_ids = nil, raw = false)
       agent_check
-      payload = {:agent_ids => [@agent.identity]}
+      payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       payload[:agent_ids] = ensure_flat_array_value(agent_ids) unless agent_ids.nil? || agent_ids.empty?
       request = RightScale::IdempotentRequest.new("/mapper/query_tags", payload)
