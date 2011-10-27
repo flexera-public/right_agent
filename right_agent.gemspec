@@ -24,7 +24,7 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '0.5.7'
+  spec.version   = '0.5.8'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -38,20 +38,19 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency('right_support', '~> 1.0')
   spec.add_dependency('amqp', '0.7.1')
-  spec.add_dependency('json', ['>= 1.4.4', '<= 1.4.6'])
+  spec.add_dependency('json', ['~> 1.4'])
   spec.add_dependency('eventmachine', '~> 0.12.10')
   spec.add_dependency('right_popen', '~> 1.0.11')
   spec.add_dependency('msgpack', '0.4.4')
 
   spec.description = <<-EOF
-  RightAgent provides a foundation for running an agent on a server to interface
-  in a secure fashion with other agents in the RightScale system. A RightAgent
-  uses RabbitMQ as the message bus and the RightScale mapper as the routing node.
-  Servers running a RightAgent establish a queue on startup for receiving packets
-  routed to it via the mapper. The packets are structured to invoke services in
-  the agent represented by actors and methods. The RightAgent may respond to these
-  requests with a result packet that the mapper then routes to the originator.
-  Similarly a RightAgent can also make requests of other RightAgents in the
+RightAgent provides a foundation for running an agent on a server to interface
+in a secure fashion with other agents in the RightScale system. A RightAgent
+uses RabbitMQ as the message bus and the RightScale mapper as the routing node.
+Servers running a RightAgent establish a queue on startup for receiving packets
+routed to it via the mapper. The packets are structured to invoke services in
+the agent represented by actors and methods. The RightAgent may respond to these
+requests with a result packet that the mapper then routes to the originator.
 EOF
 
   candidates = Dir.glob("{lib,spec}/**/*") +
