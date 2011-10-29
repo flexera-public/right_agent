@@ -73,10 +73,9 @@
 
 require 'rubygems'
 require 'optparse'
-require 'fileutils'
-require File.expand_path(File.join(File.dirname(__FILE__), 'usage'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'common_parser'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'thin_command_client'))
+require File.normalize_path(File.join(File.dirname(__FILE__), 'usage'))
+require File.normalize_path(File.join(File.dirname(__FILE__), 'common_parser'))
 
 module RightScale
 
@@ -115,6 +114,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def control(options)
+
       # Initialize directory settings
       AgentConfig.cfg_dir = options[:cfg_dir]
       AgentConfig.pid_dir = options[:pid_dir]
@@ -169,7 +169,7 @@ module RightScale
     # === Return
     # options(Hash):: Parsed options
     def parse_args
-      options = {}
+      options = {:thin_command_client => false}
 
       opts = OptionParser.new do |opts|
         parse_common(opts, options)
@@ -194,7 +194,7 @@ module RightScale
           options[:pid_file] = file
           options[:action] = 'kill'
         end
-    
+
         opts.on("-K", "--killall") do
           options[:action] = 'killall'
         end
@@ -228,7 +228,7 @@ module RightScale
 
         opts.on("-f", "--foreground") do
           options[:daemonize] = false
-          #Squelch Ruby VM warnings about various things 
+          #Squelch Ruby VM warnings about various things
           $VERBOSE = nil
         end
 
@@ -248,6 +248,14 @@ module RightScale
       rescue Exception => e
         exit 0 if e.is_a?(SystemExit)
         fail(e.message, print_usage = true)
+      end
+
+      # allow specific arguments to use a thin command client for faster
+      # execution (on Windows, etc.)
+      unless options[:thin_command_client]
+        # require full right_agent for any commands which do not specify thin
+        # command client.
+        require File.normalize_path(File.join(File.dirname(__FILE__), '..', '..', 'right_agent'))
       end
       resolve_identity(options)
       options
@@ -344,7 +352,7 @@ module RightScale
       end
       true
     end
-    
+
     # Stop agent process
     #
     # === Parameters
