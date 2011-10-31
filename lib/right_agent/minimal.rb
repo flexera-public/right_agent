@@ -32,6 +32,9 @@ unless defined?(RIGHT_AGENT_BASE_DIR)
 end
 
 # require minimal gems needed to create a CommandClient and send a command.
+#
+# FIX: acent_controller is currently the only minimal-load use case so these requires are
+# oriented toward that. any additional use cases may require a rethink of minimal loading.
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'agent_config'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'command'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'log'))

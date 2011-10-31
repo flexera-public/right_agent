@@ -73,7 +73,7 @@
 
 require 'rubygems'
 require 'optparse'
-require File.expand_path(File.join(File.dirname(__FILE__), '..', 'thin_command_client'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'minimal'))
 require File.normalize_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.normalize_path(File.join(File.dirname(__FILE__), 'common_parser'))
 
