@@ -1206,6 +1206,7 @@ EOF
         process_handle = GetCurrentProcess()
         process_memory_counters = "\0" * SIZEOF_PROCESS_MEMORY_COUNTERS
         result = @@get_process_memory_info.call(process_handle, process_memory_counters, process_memory_counters.size)
+        # note that the 'B' return type is a Fixnum (i.e. not TrueClass or FalseClass) of 'zero' on failure or 'non-zero' on success
         raise ::RightScale::Win32Error.new("Failed to get resident set size for process") if 0 == result
 
         # current .WorkingSetSize (bytes) is equivalent of Linux' ps resident set size (KB)
