@@ -136,7 +136,7 @@ begin
 
     # Apply :no_declare option
     def validate_parameters_match!(entity, parameters)
-      unless entity.opts == parameters || parameters[:passive] || parameters[:no_declare]
+      unless entity.opts == parameters || parameters[:passive] || parameters[:no_declare] || entity.opts[:no_declare]
         raise AMQP::IncompatibleOptionsError.new(entity.name, entity.opts, parameters)
       end
     end
