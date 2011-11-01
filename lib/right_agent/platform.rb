@@ -234,6 +234,14 @@ module RightScale
       platform_service(:rng)
     end
 
+    # Platform process facilities.
+    #
+    # === Return
+    # (Object):: Platform-specific process facilities object
+    def process
+      platform_service(:process)
+    end
+
     private
 
     # Load platform specific implementation

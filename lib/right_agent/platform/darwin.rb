@@ -222,6 +222,20 @@ module RightScale
       end
     end
 
+    class Process
+      # queries resident set size (current working set size in Windows).
+      #
+      # === Parameters
+      # pid(Fixnum):: process ID or nil for current process
+      #
+      # === Return
+      # result(Fixnum):: current set size in KB
+      def resident_set_size(pid=nil)
+        pid = $$ unless pid
+        return `ps -o rss= -p #{pid}`.to_i
+      end
+    end
+
   end # Platform
 
 end # RightScale
