@@ -27,6 +27,9 @@ module RightScale
 
     include StatsHelper
 
+    # Response queue name
+    RESPONSE_QUEUE = "response"
+
     # Cache for requests that have been dispatched recently
     # This cache is intended for use in checking for duplicate requests
     class Dispatched
@@ -180,7 +183,7 @@ module RightScale
             OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
           end
           result = Result.new(token, request.reply_to, non_delivery, @identity, request.from, request.tries, request.persistent)
-          exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @secure}}
+          exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
           @broker.publish(exchange, result, :persistent => true, :mandatory => true)
         end
         return nil
@@ -222,7 +225,7 @@ module RightScale
           if request.kind_of?(Request)
             duration = @requests.finish(received_at, token)
             r = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
-            exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @secure}}
+            exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
             @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
           end
         rescue HABrokerClient::NoConnectedBrokers => e

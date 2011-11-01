@@ -3,6 +3,9 @@ source 'http://gems.github.com'
 
 gemspec
 
+# Clients of this gem tend to use 1.6 so we want tests to use that version
+gem 'json', '~> 1.6'
+
 group :development do
   gem "rspec",       "~> 2.5"
   gem "flexmock",    "~> 0.9"

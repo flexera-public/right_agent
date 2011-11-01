@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    right_agent (0.5.8)
+    right_agent (0.5.9)
       amqp (= 0.7.1)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
@@ -54,6 +54,7 @@ PLATFORMS
 
 DEPENDENCIES
   flexmock (~> 0.9)
+  json (~> 1.6)
   memprof (~> 0.3)
   rake (>= 0.8.7)
   right_agent!

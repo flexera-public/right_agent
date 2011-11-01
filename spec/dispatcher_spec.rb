@@ -96,6 +96,7 @@ describe "RightScale::Dispatcher" do
     @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :registry => @registry, :options => {}).by_default
     @dispatcher = RightScale::Dispatcher.new(@agent)
     @dispatcher.em = EMMock
+    @response_queue = RightScale::Dispatcher::RESPONSE_QUEUE
   end
 
   describe "Dispatched cache" do
@@ -199,6 +200,17 @@ describe "RightScale::Dispatcher" do
     res.results.should == ['hello', 'you']
   end
 
+  it "should publish result of request to response queue" do
+    req = RightScale::Request.new('/foo', 'you', :token => 'token')
+    req.reply_to = "rs-mapper-1-1"
+    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
+                                          on {|arg| arg.class == RightScale::Result &&
+                                                    arg.to == "rs-mapper-1-1" &&
+                                                    arg.results == ['hello', 'you']},
+                                          hsh(:persistent => true, :mandatory => true)).once
+    res = @dispatcher.dispatch(req)
+  end
+
   it "should handle custom prefixes" do
     @registry.register(Foo.new, 'umbongo')
     req = RightScale::Request.new('/umbongo/bar', 'you')
@@ -257,13 +269,15 @@ describe "RightScale::Dispatcher" do
   it "should send non-delivery result if Request is rejected because its time-to-live has expired" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
     flexmock(RightScale::Log).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
-    @broker.should_receive(:publish).with(Hash, on {|arg| arg.class == RightScale::Result &&
-                                                          arg.results.non_delivery? &&
-                                                          arg.results.content == RightScale::OperationResult::TTL_EXPIRATION},
+    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
+                                          on {|arg| arg.class == RightScale::Result &&
+                                                    arg.to == @response_queue &&
+                                                    arg.results.non_delivery? &&
+                                                    arg.results.content == RightScale::OperationResult::TTL_EXPIRATION},
                                           hsh(:persistent => true, :mandatory => true)).once
     @dispatcher = RightScale::Dispatcher.new(@agent)
     @dispatcher.em = EMMock
-    req = RightScale::Request.new('/foo/bar', 'you', :expires_at => @now.to_i + 8)
+    req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => @response_queue, :expires_at => @now.to_i + 8})
     flexmock(Time).should_receive(:now).and_return(@now += 10)
     @dispatcher.dispatch(req).should be_nil
   end
@@ -271,13 +285,15 @@ describe "RightScale::Dispatcher" do
   it "should send error result instead of non-delivery if agent does not know about non-delivery" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
     flexmock(RightScale::Log).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
-    @broker.should_receive(:publish).with(Hash, on {|arg| arg.class == RightScale::Result &&
-                                                          arg.results.error? &&
-                                                          arg.results.content =~ /Could not deliver/},
+    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
+                                          on {|arg| arg.class == RightScale::Result &&
+                                                    arg.to == "rs-mapper-1-1" &&
+                                                    arg.results.error? &&
+                                                    arg.results.content =~ /Could not deliver/},
                                           hsh(:persistent => true, :mandatory => true)).once
     @dispatcher = RightScale::Dispatcher.new(@agent)
     @dispatcher.em = EMMock
-    req = RightScale::Request.new('/foo/bar', 'you', {:expires_at => @now.to_i + 8}, [12, 13])
+    req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
     flexmock(Time).should_receive(:now).and_return(@now += 10)
     @dispatcher.dispatch(req).should be_nil
   end

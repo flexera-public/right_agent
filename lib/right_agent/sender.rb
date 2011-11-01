@@ -1168,7 +1168,7 @@ module RightScale
           begin
             handler.response_handler.call(response)
           rescue Exception => e
-            Log.error("Failed processing response {response.to_s([])}", e, :trace)
+            Log.error("Failed processing response #{response.to_s([])}", e, :trace)
             @exception_stats.track("response", e, response)
           end
         end
