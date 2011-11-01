@@ -1183,6 +1183,36 @@ EOF
       end
     end
 
+    class Process
+      include ::Windows::Process
+
+      @@get_process_memory_info = nil
+
+      # see PROCESS_MEMORY_COUNTERS structure: "http://msdn.microsoft.com/en-us/library/ms684877%28VS.85%29.aspx"
+      SIZEOF_PROCESS_MEMORY_COUNTERS = 10 * 4
+
+      # queries resident set size (current working set size in Windows).
+      #
+      # === Parameters
+      # pid(Fixnum):: process ID or nil for current process
+      #
+      # === Return
+      # result(Fixnum):: current set size in KB
+      def resident_set_size(pid=nil)
+        @@get_process_memory_info = ::Win32::API.new("GetProcessMemoryInfo", 'LPL', 'B', 'psapi') unless @@get_process_memory_info
+
+        # FIX: call OpenProcess and ensure proper access and close if given PID.
+        raise NotImplementedError.new("pid != nil not yet implemented") if pid
+        process_handle = GetCurrentProcess()
+        process_memory_counters = "\0" * SIZEOF_PROCESS_MEMORY_COUNTERS
+        result = @@get_process_memory_info.call(process_handle, process_memory_counters, process_memory_counters.size)
+        raise ::RightScale::Win32Error.new("Failed to get resident set size for process") if 0 == result
+
+        # current .WorkingSetSize (bytes) is equivalent of Linux' ps resident set size (KB)
+        return process_memory_counters[12..16].unpack("L")[0] / 1024  # bytes to KB
+      end
+    end
+
     protected
 
     # internal class for querying OS version, etc.
