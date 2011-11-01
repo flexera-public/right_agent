@@ -33,7 +33,7 @@ GEM
       mime-types (>= 1.16)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
-    right_support (1.0.9)
+    right_support (1.0.11)
     rspec (2.6.0)
       rspec-core (~> 2.6.0)
       rspec-expectations (~> 2.6.0)

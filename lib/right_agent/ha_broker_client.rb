@@ -583,9 +583,10 @@ module RightScale
     # identities(Array):: Identity of brokers where successfully subscribed
     def subscribe(queue, exchange = nil, options = {}, &blk)
       identities = []
-      each_usable(options[:brokers]) { |b| identities << b.identity if b.subscribe(queue, exchange, options, &blk) }
+      brokers = options.delete(:brokers)
+      each_usable(brokers) { |b| identities << b.identity if b.subscribe(queue, exchange, options, &blk) }
       Log.info("Could not subscribe to queue #{queue.inspect} on exchange #{exchange.inspect} " +
-               "on brokers #{each_usable(options[:brokers]).inspect} when selected #{options[:brokers].inspect} " +
+               "on brokers #{each_usable(brokers).inspect} when selected #{brokers.inspect} " +
                "from usable #{usable.inspect}") if identities.empty?
       identities
     end
@@ -628,9 +629,10 @@ module RightScale
     # identities(Array):: Identity of brokers where successfully declared
     def declare(type, name, options = {})
       identities = []
-      each_usable(options[:brokers]) { |b| identities << b.identity if b.declare(type, name, options) }
-      Log.info("Could not declare #{type.to_s} #{name.inspect} on brokers #{each_usable(options[:brokers]).inspect} " +
-               "when selected #{options[:brokers].inspect} from usable #{usable.inspect}") if identities.empty?
+      brokers = options.delete(:brokers)
+      each_usable(brokers) { |b| identities << b.identity if b.declare(type, name, options) }
+      Log.info("Could not declare #{type.to_s} #{name.inspect} on brokers #{each_usable(brokers).inspect} " +
+               "when selected #{brokers.inspect} from usable #{usable.inspect}") if identities.empty?
       identities
     end
 
@@ -752,7 +754,8 @@ module RightScale
     def delete(name, options = {})
       identities = []
       u = usable
-      ((options[:brokers] || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete(name, options) }
+      brokers = options.delete(:brokers)
+      ((brokers || u) & u).each { |i| identities << i if (b = @brokers_hash[i]) && b.delete(name, options) }
       identities
     end
 
