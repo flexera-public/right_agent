@@ -90,6 +90,9 @@ begin
         "#{RightScale::AgentIdentity.new('rs', 'broker', @settings[:port].to_i, @settings[:host].gsub('-', '~')).to_s}")
       log 'reconnecting'
       EM.reconnect(@settings[:host], @settings[:port], self)
+    rescue Exception => e
+      RightScale::Log.error("Exception caught during AMQP reconnect", e, :trace)
+      reconnect if @reconnecting
     end
 
     # Catch exceptions that would otherwise cause EM to stop or be in a bad state if a top
