@@ -28,6 +28,9 @@ begin
       begin
         EM.run{
           @conn ||= connect *args
+          @conn.callback { AMQP.channel = AMQP::Channel.new(@conn) }
+
+          # callback passed to .start must come last
           @conn.callback(&blk) if blk
           @conn
         }
@@ -50,6 +53,7 @@ begin
 
       timeout @settings[:timeout] if @settings[:timeout]
       errback{ @on_disconnect.call } unless @reconnecting
+      @connection_status = @settings[:connection_status]
 
       # TCP connection "openness"
       @tcp_connection_established = false
@@ -158,11 +162,19 @@ begin
   # Exchange)
   AMQP::Queue.class_eval do
     def initialize(mq, name, opts = {}, &block)
+      raise ArgumentError, "queue name must not be nil. Use '' (empty string) for server-named queues." if name.nil?
+
       @mq = mq
       @opts = self.class.add_default_options(name, opts, block)
       @bindings ||= {}
-      @name = name unless name.empty?
       @status = @opts[:nowait] ? :unknown : :unfinished
+
+      if name.empty?
+        @mq.queues_awaiting_declare_ok.push(self)
+      else
+        @name = name
+      end
+
       unless opts[:no_declare]
         @mq.callback{
           @mq.send AMQP::Protocol::Queue::Declare.new(@opts)
