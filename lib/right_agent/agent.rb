@@ -69,6 +69,7 @@ module RightScale
       :retry_timeout      => nil,
       :connect_timeout    => 60,
       :reconnect_interval => 60,
+      :offline_queueing   => false,
       :ping_interval      => 0,
       :check_interval     => 5 * 60,
       :grace_timeout      => 30,
@@ -100,6 +101,9 @@ module RightScale
     #     by the receiver, 0 means never expire, defaults to 0
     #   :connect_timeout(Integer):: Number of seconds to wait for a broker connection to be established
     #   :reconnect_interval(Integer):: Number of seconds between broker reconnect attempts
+    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers,
+    #     also requires agent invocation of Sender initialize_offline_queue and start_offline_queue methods,
+    #     as well as enable_offline_mode and disable_offline_mode as broker connections status changes
     #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
     #     to check connectivity, defaults to 0 meaning do not ping
     #   :check_interval(Integer):: Number of seconds between publishing stats and checking for broker connections

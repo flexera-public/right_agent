@@ -177,7 +177,8 @@ module RightScale
     # All security files matching pattern
     #
     # === Parameters
-    # pattern(String):: Pattern for security files of interest, e.g., '*.cert'
+    # pattern(String):: Pattern for security files of interest, e.g., '*.cert' or
+    #   '*.{cert,key}'
     #
     # === Return
     # files(Array):: Path name of files found

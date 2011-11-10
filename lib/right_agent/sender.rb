@@ -545,7 +545,8 @@ module RightScale
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers,
-    #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below
+    #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below,
+    #     as well as enable_offline_mode and disable_offline_mode as broker connections status changes
     #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
     #     to check connectivity, defaults to 0 meaning do not ping
     #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
