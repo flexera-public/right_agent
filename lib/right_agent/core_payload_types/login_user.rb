@@ -28,7 +28,8 @@ module RightScale
 
     include Serializable
 
-    attr_accessor :uuid, :username, :public_key, :public_keys, :common_name, :superuser, :expires_at
+    attr_accessor :uuid, :username, :public_key, :public_keys, :common_name,
+                  :superuser, :expires_at, :home_archive_url
 
     # Initialize fields from given arguments
     def initialize(*args)
@@ -39,6 +40,7 @@ module RightScale
       @superuser   = args[4] || false
       @expires_at  = Time.at(args[5]) if args[5] && (args[5] != 0) # nil -> 0 because of expires_at.to_i below
       @public_keys = args[6]
+      @home_archive_url = args[7]
 
       # we now expect an array of public_keys to be passed while supporting the
       # singular public_key as a legacy member. when serialized back from a
@@ -55,7 +57,7 @@ module RightScale
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @uuid, @username, @public_key, @common_name, @superuser, @expires_at.to_i, @public_keys ]
+      [ @uuid, @username, @public_key, @common_name, @superuser, @expires_at.to_i, @public_keys, @home_archive_url ]
     end
 
   end
