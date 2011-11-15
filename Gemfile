@@ -6,6 +6,10 @@ gemspec
 # Clients of this gem tend to use 1.6 so we want tests to use that version
 gem 'json', '~> 1.6'
 
+# Lock eventmachine to a published and well-tested version to avoid picking up
+# proprietary builds that happen to be installed locally
+gem 'eventmachine', '0.12.10'
+
 group :development do
   gem "rspec",       "~> 2.5"
   gem "flexmock",    "~> 0.9"
