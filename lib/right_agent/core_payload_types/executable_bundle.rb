@@ -41,7 +41,7 @@ module RightScale
     # Regular expression to define what a valid thread name looks like: an alpha character
     # followed by 0 or more alphanumerics or underscores. Only lower-case characters are
     # allowed.
-    VALID_THREAD_NAME   = /[a-z][a-z0-9_]*/
+    VALID_THREAD_NAME   = /^[a-z][a-z0-9_]*$/
 
     # (Array) Collection of RightScripts and chef recipes instantiations
     attr_accessor :executables
