@@ -22,10 +22,11 @@
 
 module RightScale
 
-  # Run commands exposed by an agent
-  # External processes can send commands through a socket with the specified port
+  # Run commands exposed by an agent.
+  # External processes can send commands through a socket with the specified port.
+  # Command runner accepts connections and deserializes commands using YAML.
+  # Each command is expected to be a hash containing the :name and :options keys.
   class CommandRunner
-
     class << self
       # (Integer) Port command runner is listening on
       attr_reader :listen_port
@@ -34,14 +35,18 @@ module RightScale
       attr_reader :cookie
     end
 
-    # Command runner listens to commands and deserializes them using YAML
-    # Each command is expected to be a hash containing the :name and :options keys
+    # Start a command runner listening on a local TCP port.
     #
     # === Parameters
     # socket_port(Integer):: Base socket port on which to listen for connection,
     #                        increment and retry if port already taken
     # identity(String):: Agent identity
     # commands(Hash):: Commands exposed by agent
+    #
+    # === Block
+    # If a block is provided, this method will yield after all setup has been completed,
+    # passing its PidFile to the block. This provides a customization hook, e.g. for
+    # changing the pid file's access mode or ownership.
     #
     # === Return
     # cmd_options[:cookie](String):: Command protocol cookie
@@ -52,6 +57,7 @@ module RightScale
     def self.start(socket_port, identity, commands)
       cmd_options = nil
       @listen_port = socket_port
+
       begin
         CommandIO.instance.listen(socket_port) do |c, conn|
           begin
@@ -77,6 +83,7 @@ module RightScale
         pid_file = PidFile.new(identity)
         if pid_file.exists?
           pid_file.set_command_options(cmd_options)
+          yield(pid_file) if block_given?
         else
           Log.warning("Failed to update listen port in PID file - no pid file found for agent with identity #{identity}")
         end
