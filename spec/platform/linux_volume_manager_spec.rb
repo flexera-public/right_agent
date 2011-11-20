@@ -21,7 +21,8 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
-# Override the current environment, and load the linux platform
+# Override the current environment, and load the linux platform. Could this screw up the
+# REVIEW: Ruby VM for other specs which come after it?
 load File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'platform', 'linux.rb'))
 
 
@@ -59,6 +60,39 @@ EOF
         blkid_resp = ''
 
         @platform.volume_manager.parse_volumes(blkid_resp).should == []
+      end
+
+      it 'can filter results with only one condition' do
+        blkid_resp = <<EOF
+/dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
+/dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
+/dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
+/dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
+EOF
+        volume_hash_ary = [
+          {:device => "/dev/xvdh1", :sec_type => "msdos", :label => "METADATA", :uuid => "681B-8C5D", :type => "vfat", :filesystem => "vfat"}
+        ]
+
+        condition = {:uuid => "681B-8C5D"}
+
+        @platform.volume_manager.parse_volumes(blkid_resp, condition).should == volume_hash_ary
+      end
+
+      it 'can filter results with many conditions' do
+        blkid_resp = <<EOF
+/dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
+/dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
+/dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
+/dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
+EOF
+        volume_hash_ary = [
+          {:device => "/dev/xvda1", :uuid => "f4746f9c-0557-4406-9267-5e918e87ca2e", :type => "ext3", :filesystem => "ext3"},
+          {:device => "/dev/xvda2", :uuid => "14d88b9e-9fe6-4974-a8d6-180acdae4016", :type => "ext3", :filesystem => "ext3"}
+        ]
+
+        condition = {:filesystem => "ext3"}
+
+        @platform.volume_manager.parse_volumes(blkid_resp, condition).should == volume_hash_ary
       end
     end
 
