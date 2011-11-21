@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    right_agent (0.6.2)
+    right_agent (0.6.3)
       amqp (= 0.7.5)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
@@ -33,8 +33,8 @@ GEM
       mime-types (>= 1.16)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
-    right_support (1.1.0)
-      json (~> 1.4)
+    right_support (1.1.1)
+      yajl-ruby (~> 1.1)
     rspec (2.6.0)
       rspec-core (~> 2.6.0)
       rspec-expectations (~> 2.6.0)
@@ -49,6 +49,7 @@ GEM
     ruby-debug-base (0.10.4)
       linecache (>= 0.3)
     term-ansicolor (1.0.6)
+    yajl-ruby (1.1.0)
 
 PLATFORMS
   ruby
