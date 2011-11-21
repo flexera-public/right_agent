@@ -292,6 +292,9 @@ module RightScale
           raise VolumeError.new("Attempted to mount volume \"#{volume[:device]}\" at \"#{mountpoint}\" but \"#{device_from_mountpoint_match}\" was already mounted there.")
         end
 
+        # The volume is already mounted at the correct mountpoint
+        return true if /^#{volume[:device]} on #{mountpoint}/.match(mount_list_output)
+
         # TODO: Maybe validate that the mountpoint is valid *nix path?
         exit_code, mount_output = blocking_popen("mount -t #{volume[:filesystem].strip} #{volume[:device]} #{mountpoint}")
         raise VolumeError.new("Failed to mount volume to \"#{mountpoint}\" with device \"#{volume[:device]}\"; Exit Status: #{exit_code}\nError: #{mount_output}") unless exit_code == 0

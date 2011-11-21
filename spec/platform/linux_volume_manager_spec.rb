@@ -110,6 +110,20 @@ EOF
         @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
       end
 
+      it 'does not attempt to re-mount the volume' do
+        mount_resp = <<EOF
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+/dev/xvdh1 on /var/spool/softlayer type vfat (rw) [METADATA]
+EOF
+
+        mount_popen_mock = flexmock(:read => mount_resp)
+        flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
+        flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).never.and_yield(flexmock(:read => ""))
+
+        @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
+      end
+
       it 'raises argument error when the volume parameter is not a hash' do
         lambda { @platform.volume_manager.mount_volume("", "") }.should raise_error(ArgumentError)
       end
