@@ -97,6 +97,19 @@ EOF
     end
 
     context :mount_volume do
+      it 'mounts the specified volume if it is not already mounted' do
+        mount_resp = <<EOF
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+EOF
+
+        mount_popen_mock = flexmock(:read => mount_resp)
+        flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
+        flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).once.and_yield(flexmock(:read => ""))
+
+        @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
+      end
+
       it 'raises argument error when the volume parameter is not a hash' do
         lambda { @platform.volume_manager.mount_volume("", "") }.should raise_error(ArgumentError)
       end
@@ -105,6 +118,51 @@ EOF
         lambda { @platform.volume_manager.mount_volume({}, "") }.should raise_error(ArgumentError)
       end
 
+      it 'raises volume error when the device is already mounted to a different mountpoint' do
+        mount_resp = <<EOF
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+none on /sys type sysfs (rw,noexec,nosuid,nodev)
+none on /sys/kernel/debug type debugfs (rw)
+none on /sys/kernel/security type securityfs (rw)
+none on /dev type devtmpfs (rw,mode=0755)
+none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
+none on /dev/shm type tmpfs (rw,nosuid,nodev)
+none on /var/run type tmpfs (rw,nosuid,mode=0755)
+none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
+none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
+/dev/xvda1 on /boot type ext3 (rw,noatime)
+/dev/xvdh1 on /mnt type vfat (rw) [METADATA]
+EOF
+
+        mount_popen_mock = flexmock(:read => mount_resp)
+        flexmock(IO).should_receive(:popen).with('mount',Proc).and_yield(mount_popen_mock)
+
+        lambda { @platform.volume_manager.mount_volume({:device => "/dev/xvdh1"}, "/var/spool/softlayer")}.should raise_error(RightScale::Platform::VolumeManager::VolumeError)
+      end
+
+      it 'raises volume error when a different device is already mounted to the specified mountpoint' do
+        mount_resp = <<EOF
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+none on /sys type sysfs (rw,noexec,nosuid,nodev)
+none on /sys/kernel/debug type debugfs (rw)
+none on /sys/kernel/security type securityfs (rw)
+none on /dev type devtmpfs (rw,mode=0755)
+none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
+none on /dev/shm type tmpfs (rw,nosuid,nodev)
+none on /var/run type tmpfs (rw,nosuid,mode=0755)
+none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
+none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
+/dev/xvda1 on /boot type ext3 (rw,noatime)
+/dev/xvdh2 on /var/spool/softlayer type vfat (rw) [METADATA]
+EOF
+
+        mount_popen_mock = flexmock(:read => mount_resp)
+        flexmock(IO).should_receive(:popen).with('mount',Proc).and_yield(mount_popen_mock)
+
+        lambda { @platform.volume_manager.mount_volume({:device => "/dev/xvdh1"}, "/var/spool/softlayer")}.should raise_error(RightScale::Platform::VolumeManager::VolumeError)
+      end
     end
   end
 end
