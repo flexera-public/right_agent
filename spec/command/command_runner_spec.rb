@@ -48,6 +48,30 @@ describe RightScale::CommandRunner do
     @socket_port = TEST_SOCKET_PORT
   end
 
+  context :start do
+    before(:each) do
+      @pid_file = flexmock(RightScale::PidFile)
+      @pid_file.should_receive(:exists?).and_return(true)
+      @pid_file.should_receive(:set_command_options).and_return(true)
+      flexmock(RightScale::PidFile).should_receive(:new).and_return(@pid_file)
+    end
+
+    context 'when a block is provided' do
+      before(:each) do
+        @block = Proc.new do |pid_file|
+          @callback_pid_file = pid_file
+        end
+      end
+
+      it 'should yield its PidFile' do
+        commands = { :test => lambda { |opt, _| } }
+        flexmock(RightScale::CommandIO).should_receive(:instance).and_return(RightScale::CommandIOMock.instance)
+        RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands, &@block)
+        @callback_pid_file.should == @pid_file
+      end
+    end
+  end
+
   it 'should handle invalid formats' do
     flexmock(RightScale::CommandIO.instance).should_receive(:listen).and_yield(['invalid yaml'])
     flexmock(RightScale::Log).should_receive(:info).once

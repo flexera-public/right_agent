@@ -33,7 +33,7 @@ module RightScale
 
     class AlreadyRunning < Exception; end
 
-    attr_reader :identity
+    attr_reader :identity, :pid_file, :cookie_file
 
     # Initialize pid file location from agent identity and pid directory
     def initialize(identity, pid_dir = nil)
