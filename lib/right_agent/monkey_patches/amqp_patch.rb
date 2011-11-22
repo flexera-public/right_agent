@@ -141,11 +141,10 @@ begin
       @on_return_message = blk
     end
 
-    # Apply :no_declare option
+    # Eliminate validation because options on instance queue delete may not
+    # match those on initial declare even when take :no_declare into account 
     def validate_parameters_match!(entity, parameters)
-      unless entity.opts == parameters || parameters[:passive] || parameters[:no_declare] || entity.opts[:no_declare]
-        raise AMQP::IncompatibleOptionsError.new(entity.name, entity.opts, parameters)
-      end
+      true
     end
 
     # Make it log to RightScale when logging enabled
