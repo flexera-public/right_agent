@@ -21,6 +21,8 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
 
+require File.join(File.dirname(__FILE__), 'dev_repository')
+
 module RightScale
   # Sequence of cookbooks to be checked out on the instance.
   class DevRepositories
@@ -76,7 +78,15 @@ module RightScale
     # result(Hash):: The entry added to the collection of repositories
     def add_repo(repo_sha, repo_detail, cookbook_positions)
       @repositories ||= {}
-      @repositories[repo_sha] = { :repo => repo_detail, :positions => cookbook_positions }
+      @repositories[repo_sha] = DevRepository.new(repo_detail[:repo_type],
+                                                  repo_detail[:url],
+                                                  repo_detail[:tag],
+                                                  repo_detail[:cookboooks_path],
+                                                  repo_detail[:ssh_key],
+                                                  repo_detail[:username],
+                                                  repo_detail[:password],
+                                                  repo_sha,
+                                                  cookbook_positions)
     end
 
     #

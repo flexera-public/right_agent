@@ -27,8 +27,8 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'r
 module RightScale
   describe DevRepositories do
     before(:each) do
-      @expected_repo1 = {"111" => {:repo => {:url => "bunk"}, :positions => [1,2,3]}}
-      @expected_repo2 = {"222" => {:repo => {:url => "err"},  :positions => [4,5,6]}}
+      @expected_repo1 = { "111" => DevRepository.new(:git, "bunk", nil, nil, nil, nil, nil, "111", [1,2,3]) }
+      @expected_repo2 = { "222" => DevRepository.new(:git, "err", nil, nil, nil, nil, nil, "222", [4,5,6]) }
     end
 
     context 'empty?' do
@@ -42,7 +42,7 @@ module RightScale
 
       it 'should should not be empty when a repo is added' do
         dev_repos = DevRepositories.new
-        dev_repos.add_repo("111", {:url=>"bunk"}, [1,2,3])
+        dev_repos.add_repo("111", {:repo_type=>:git, :url=>"bunk"}, [1,2,3])
         dev_repos.empty?.should be_false
       end
     end
@@ -50,13 +50,13 @@ module RightScale
     context 'add_repo' do
       it 'when initially empty, should add without error' do
         dev_repos = DevRepositories.new
-        dev_repos.add_repo("111", {:url=>"bunk"}, [1,2,3])
+        dev_repos.add_repo("111", {:repo_type=>:git, :url=>"bunk"}, [1,2,3])
         dev_repos.serialized_members.first.should == @expected_repo1
       end
 
       it 'when initialized with data, should add without error' do
         dev_repos = DevRepositories.new(@expected_repo1)
-        dev_repos.add_repo("222", {:url=>"err"}, [4,5,6])
+        dev_repos.add_repo("222", {:repo_type=>:git, :url=>"err"}, [4,5,6])
         dev_repos.serialized_members.first.should == @expected_repo1.merge(@expected_repo2)
       end
     end
