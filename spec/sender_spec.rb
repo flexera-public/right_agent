@@ -872,6 +872,101 @@ describe RightScale::Sender do
       @instance.initialize_offline_queue
     end
 
+    it 'should queue requests prior to offline handler initialization and then flush once started' do
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      begin
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        EM.run do
+          @instance.send_push('/dummy', 'payload')
+          @instance.offline_handler.offline?.should be_true
+          @instance.offline_handler.state.should == :created
+          @instance.offline_handler.instance_variable_get(:@queue).size.should == 1
+          @instance.initialize_offline_queue
+          @broker.should_receive(:publish).once.and_return { EM.stop }
+          @instance.start_offline_queue
+          EM.add_timer(1) { EM.stop }
+        end
+      ensure
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+      end
+    end
+
+    it 'should not queue requests prior to offline handler startup if not offline' do
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      begin
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        EM.run do
+          @instance.send_push('/dummy', 'payload')
+          @instance.offline_handler.offline?.should be_true
+          @instance.offline_handler.state.should == :created
+          @instance.offline_handler.instance_variable_get(:@queue).size.should == 1
+          @instance.initialize_offline_queue
+          @broker.should_receive(:publish).with(Hash, on {|arg| arg.type == "/dummy2"}, Hash).once
+          @instance.send_push('/dummy2', 'payload')
+          @instance.offline_handler.offline?.should be_false
+          @instance.offline_handler.mode.should == :initializing
+          @instance.offline_handler.state.should == :initializing
+          @instance.offline_handler.instance_variable_get(:@queue).size.should == 1
+          @instance.offline_handler.instance_variable_get(:@queue).first[:type].should == "/dummy"
+          @broker.should_receive(:publish).with(Hash, on {|arg| arg.type == "/dummy"}, Hash).once
+          @instance.start_offline_queue
+          EM.add_timer(1) do
+            @instance.offline_handler.mode.should == :online
+            @instance.offline_handler.state.should == :running
+            @instance.offline_handler.instance_variable_get(:@queue).size.should == 0
+            EM.stop
+          end
+        end
+      ensure
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+      end
+    end
+
+    it 'should queue requests at front if received after offline handler initialization but before startup' do
+      old_flush_delay = RightScale::Sender::OfflineHandler::MAX_QUEUE_FLUSH_DELAY
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      begin
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, 0.1)
+        EM.run do
+          @instance.send_push('/dummy', 'payload')
+          @instance.offline_handler.offline?.should be_true
+          @instance.offline_handler.state.should == :created
+          @instance.offline_handler.instance_variable_get(:@queue).size.should == 1
+          @instance.initialize_offline_queue
+          @instance.offline_handler.offline?.should be_false
+          @instance.offline_handler.mode.should == :initializing
+          @instance.offline_handler.state.should == :initializing
+          @instance.enable_offline_mode
+          @instance.send_push('/dummy2', 'payload')
+          @instance.offline_handler.offline?.should be_true
+          @instance.offline_handler.mode.should == :offline
+          @instance.offline_handler.state.should == :initializing
+          @instance.offline_handler.instance_variable_get(:@queue).size.should == 2
+          @instance.offline_handler.instance_variable_get(:@queue).first[:type].should == "/dummy2"
+          @instance.start_offline_queue
+          @instance.offline_handler.mode.should == :offline
+          @instance.offline_handler.state.should == :running
+          @broker.should_receive(:publish).with(Hash, on {|arg| arg.type == "/dummy2"}, Hash).once
+          @broker.should_receive(:publish).with(Hash, on {|arg| arg.type == "/dummy"}, Hash).once
+          @instance.disable_offline_mode
+          @instance.offline_handler.state.should == :flushing
+          EM.add_timer(1) do
+            @instance.offline_handler.mode.should == :online
+            @instance.offline_handler.state.should == :running
+            @instance.offline_handler.instance_variable_get(:@queue).size.should == 0
+            EM.stop
+          end
+        end
+      ensure
+        RightScale::Sender::OfflineHandler.const_set(:MAX_QUEUE_FLUSH_DELAY, old_flush_delay)
+      end
+    end
+
     it 'should vote for restart after the maximum number of queued requests is reached' do
       @instance.offline_handler.instance_variable_get(:@restart_vote_count).should == 0
       EM.run do
