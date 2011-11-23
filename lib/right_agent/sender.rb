@@ -202,8 +202,12 @@ module RightScale
       # true:: Always return true
       def start
         if @state == :initializing
-          @state = :running
-          flush unless @mode == :offline
+          if @mode == :offline
+            @state = :running
+          else
+            @state = :flushing
+            flush
+          end
           @mode = :online if @mode == :initializing
         end
         true
@@ -243,7 +247,7 @@ module RightScale
           Log.info("[offline] Disconnect from broker detected, entering offline mode")
           Log.info("[offline] Messages will be queued in memory until connection to broker is re-established")
           @offline_stats.update
-          @queue ||= []  # ensure queue is valid without losing any messages when going offline
+          @queue ||= []  # Ensure queue is valid without losing any messages when going offline
           @mode = :offline
           start_timer
         end
