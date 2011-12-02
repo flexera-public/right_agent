@@ -184,7 +184,7 @@ module RightScale
       request = RightScale::IdempotentRequest.new("/mapper/query_tags", payload)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|
-        RightScale::RightLinkLog.error("Failed to query tags: #{message}")
+        Log.error("Failed to query tags: #{message}")
         yield((raw ? request.raw_response : nil) || message)
       end
       request.run
