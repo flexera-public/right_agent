@@ -319,8 +319,9 @@ module RightScale
         if new_level != @level
           @logger.info("[setup] Setting log level to #{level_to_sym(new_level).to_s.upcase}")
           @logger.level = @level = new_level
-          @notify.each { |n| n.call(@level) } if @notify
         end
+        # Notify even if unchanged since don't know when callback was set
+        @notify.each { |n| n.call(@level) } if @notify
       end
       level = level_to_sym(@level)
     end
