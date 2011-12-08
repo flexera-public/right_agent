@@ -24,6 +24,7 @@
 require File.expand_path(File.join(File.dirname(__FILE__), 'right_agent', 'minimal'))
 
 require 'amqp'
+require 'mq'
 require 'json'
 require 'yaml'
 require 'openssl'
