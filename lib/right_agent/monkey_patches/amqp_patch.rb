@@ -53,7 +53,10 @@ begin
 
       timeout @settings[:timeout] if @settings[:timeout]
       errback{ @on_disconnect.call } unless @reconnecting
-      @connection_status = @settings[:connection_status]
+
+      # Not arbitrarily resetting @connection_status here because initialize is called
+      # on reconnect and do not want to destroy any existing setting
+      @connection_status = @settings[:connection_status] if @settings[:connection_status]
 
       # TCP connection "openness"
       @tcp_connection_established = false
