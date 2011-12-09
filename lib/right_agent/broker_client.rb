@@ -543,6 +543,11 @@ module RightScale
       # Do not let closed connection regress to failed
       return true if status == :failed && @status == :closed
 
+      # Wait until connection is ready (i.e. handshake with broker is completed) before
+      # changing our status to connected
+      return true if status == :connected
+      status = :connected if status == :ready
+
       before = @status
       @status = status
 
@@ -587,7 +592,7 @@ module RightScale
                                    :heartbeat          => @options[:heartbeat],
                                    :reconnect_delay    => lambda { rand(reconnect_interval) },
                                    :reconnect_interval => reconnect_interval)
-        @channel = AMQP::Channel.new(@connection)
+        @channel = MQ.new(@connection)
         @channel.__send__(:connection).connection_status { |status| update_status(status) }
         @channel.prefetch(@options[:prefetch]) if @options[:prefetch]
       rescue Exception => e

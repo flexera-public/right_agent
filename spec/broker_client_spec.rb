@@ -50,7 +50,7 @@ describe RightScale::BrokerClient do
       @amqp = flexmock(AMQP)
       @amqp.should_receive(:connect).and_return(@connection).by_default
       @channel.should_receive(:prefetch).never.by_default
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
       @island = flexmock("island", :id => 2, :broker_hosts => "local_host").by_default
     end
 
@@ -120,7 +120,7 @@ describe RightScale::BrokerClient do
       @connection.should_receive(:close).once
       @log.should_receive(:info).once
       @log.should_receive(:error).with(/Failed connecting/, Exception, :trace).once
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_raise(Exception)
+      flexmock(MQ).should_receive(:new).with(@connection).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :failed,
                                 :disconnects => 0, :failures => 1, :retries => 0}
@@ -153,14 +153,14 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:queue).and_return(@queue).by_default
       @channel.should_receive(:direct).and_return(@direct).by_default
       @channel.should_receive(:fanout).and_return(@fanout).by_default
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should subscribe queue to exchange" do
       @queue.should_receive(:bind).and_return(@bind).once
       @bind.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) {|_, _|}
     end
 
@@ -168,7 +168,7 @@ describe RightScale::BrokerClient do
       @queue.should_receive(:bind).and_return(@bind).twice
       @bind.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       options = {:exchange2 => {:type => :fanout, :name => "exchange2", :options => {:durable => true}}}
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, options) {|_, _|}
     end
@@ -182,7 +182,7 @@ describe RightScale::BrokerClient do
     it "should subscribe queue to empty exchange if no exchange specified" do
       @queue.should_receive(:subscribe).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.subscribe({:name => "queue"}) {|b, p| p.should == nil}
     end
 
@@ -216,7 +216,7 @@ describe RightScale::BrokerClient do
       @info.should_receive(:ack).once
       @bind.should_receive(:subscribe).and_yield(@info, @message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                                 :ack => true, RightScale::Request => true) {|b, p| p.should == @packet}
       result.should be_true
@@ -237,7 +237,7 @@ describe RightScale::BrokerClient do
       @serializer.should_receive(:load).with(@message).and_return(@packet).once
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                        RightScale::Request => nil) {|b, p| p.class.should == RightScale::Request}
     end
@@ -250,7 +250,7 @@ describe RightScale::BrokerClient do
       @serializer.should_receive(:load).with(@message).and_return(@packet).once
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"},
                                 RightScale::Request => nil) {|b, p| raise Exception}
       result.should be_false
@@ -263,7 +263,7 @@ describe RightScale::BrokerClient do
       @log.should_receive(:debug).with(/nil message ignored/).once
       @bind.should_receive(:subscribe).and_yield(@info, "nil").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       called = 0
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, :ack => true) { |b, m| called += 1 }
       called.should == 0
@@ -276,7 +276,7 @@ describe RightScale::BrokerClient do
       @log.should_receive(:debug).with(/nil message ignored/).once
       @bind.should_receive(:subscribe).and_yield("nil").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       called = 0
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) { |b, m| called += 1 }
       called.should == 0
@@ -288,7 +288,7 @@ describe RightScale::BrokerClient do
       @log.should_receive(:info).with(/^RECV/).never
       @bind.should_receive(:subscribe).and_yield(@message).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}, :no_unserialize => true) do |b, m|
         b.should == "rs-broker-localhost-5672"
         m.should == @message
@@ -302,7 +302,7 @@ describe RightScale::BrokerClient do
       @exceptions.should_receive(:track).once
       @bind.should_receive(:subscribe).and_raise(Exception)
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       result = broker.subscribe({:name => "queue"}, {:type => :direct, :name => "exchange"}) {|b, p|}
       result.should be_false
     end
@@ -422,7 +422,7 @@ describe RightScale::BrokerClient do
       @queue = flexmock("queue", :bind => @bind, :name => "queue1")
       @channel.should_receive(:queue).and_return(@queue).by_default
       @channel.should_receive(:direct).and_return(@direct).by_default
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should unsubscribe a queue by name" do
@@ -472,7 +472,7 @@ describe RightScale::BrokerClient do
   context "when declaring" do
 
     before(:each) do
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
       @channel.should_receive(:queues).and_return({}).by_default
       @channel.should_receive(:exchanges).and_return({}).by_default
     end
@@ -524,14 +524,14 @@ describe RightScale::BrokerClient do
       @message = flexmock("message")
       @packet = flexmock("packet", :class => RightScale::Request, :to_s => true, :version => [12, 12]).by_default
       @direct = flexmock("direct")
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should serialize message, publish it, and return true" do
       @channel.should_receive(:direct).with("exchange", :durable => true).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :persistent => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange", :options => {:durable => true}},
                      @packet, @message, :persistent => true).should be_true
     end
@@ -540,7 +540,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {:declare => true}).and_return(@direct)
       @direct.should_receive(:publish).with(@message, {})
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       exchange = {:type => :direct, :name => "exchange", :options => {:declare => true}}
       flexmock(broker).should_receive(:delete_amqp_resources).with(:direct, "exchange").once
       broker.publish(exchange, @packet, @message).should be_true
@@ -560,7 +560,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).and_raise(Exception)
       @direct.should_receive(:publish).with(@message, {}).never
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_false
     end
 
@@ -570,7 +570,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
@@ -582,7 +582,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
@@ -592,7 +592,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :no_log => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :no_log => true).should be_true
     end
 
@@ -603,7 +603,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :no_log => true).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :no_log => true).should be_true
     end
 
@@ -613,7 +613,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
@@ -625,7 +625,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_filter => [:to]).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_filter => [:to]).should be_true
     end
 
@@ -638,7 +638,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_filter => [:to]).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_filter => [:to]).should be_true
     end
     
@@ -648,7 +648,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, :log_data => "More data").once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message, :log_data => "More data").should be_true
     end
 
@@ -659,7 +659,7 @@ describe RightScale::BrokerClient do
       @channel.should_receive(:direct).with("exchange", {}).and_return(@direct).once
       @direct.should_receive(:publish).with(@message, {}).once
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.publish({:type => :direct, :name => "exchange"}, @packet, @message).should be_true
     end
 
@@ -738,7 +738,7 @@ describe RightScale::BrokerClient do
       @queue = flexmock("queue", :bind => @bind, :name => "queue1")
       @channel.should_receive(:queue).and_return(@queue).by_default
       @channel.should_receive(:direct).and_return(@direct).by_default
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should delete the named queue and return true" do
@@ -777,13 +777,13 @@ describe RightScale::BrokerClient do
     include RightScale::StatsHelper
 
     before(:each) do
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should distinguish whether the client is usable based on whether connecting or connected" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.usable?.should be_true
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.usable?.should be_true
       broker.__send__(:update_status, :disconnected)
       broker.usable?.should be_false
@@ -795,7 +795,7 @@ describe RightScale::BrokerClient do
     it "should distinguish whether the client is connected" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.connected?.should be_false
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.connected?.should be_true
       broker.__send__(:update_status, :disconnected)
       broker.connected?.should be_false
@@ -807,7 +807,7 @@ describe RightScale::BrokerClient do
     it "should distinguish whether the client has failed" do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.failed?.should be_false
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.failed?.should be_false
       broker.__send__(:update_status, :disconnected)
       broker.failed?.should be_false
@@ -820,7 +820,7 @@ describe RightScale::BrokerClient do
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, @options)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :connecting,
                                 :disconnects => 0, :failures => 0, :retries => 0}
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.summary.should == {:alias => "b0", :identity => @identity, :status => :connected,
                                 :disconnects => 0, :failures => 0, :retries => 0}
       @log.should_receive(:error).with(/Failed to connect to broker/).once
@@ -834,7 +834,7 @@ describe RightScale::BrokerClient do
       broker.stats.should == {"alias" => "b0", "identity" => "rs-broker-localhost-5672",
                               "status" => "connecting", "disconnects" => nil, "disconnect last" => nil,
                               "failures" => nil, "failure last" => nil, "retries" => nil}
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.stats.should == {"alias" => "b0", "identity" => "rs-broker-localhost-5672",
                               "status" => "connected", "disconnects" => nil, "disconnect last" => nil,
                               "failures" => nil, "failure last" => nil, "retries" => nil}
@@ -852,7 +852,7 @@ describe RightScale::BrokerClient do
       callback = lambda { |b, c| called += 1; b.should == broker; c.should == connected_before }
       options = {:update_status_callback => callback}
       broker = RightScale::BrokerClient.new(@identity, @address, @serializer, @exceptions, options)
-      broker.__send__(:update_status, :connected)
+      broker.__send__(:update_status, :ready)
       broker.last_failed.should be_false
       called.should == 1
       connected_before = true
@@ -875,7 +875,7 @@ describe RightScale::BrokerClient do
   context "when closing" do
 
     before(:each) do
-      flexmock(AMQP::Channel).should_receive(:new).with(@connection).and_return(@channel).by_default
+      flexmock(MQ).should_receive(:new).with(@connection).and_return(@channel).by_default
     end
 
     it "should close broker connection and send status update" do
