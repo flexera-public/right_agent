@@ -175,6 +175,23 @@ module RightScale
       if id == modified_id then modified_id else "*#{modified_id}" end
     end
 
+    # Generate log friendly serialized identity for one or more ids
+    # Limit to 1000 bytes
+    #
+    # === Parameters
+    # ids(Array|String):: Serialized identity or array of serialized identities
+    #
+    # === Return
+    # (String):: Log friendly serialized identity
+    def ids_to_s(ids)
+      if ids.is_a?(Array)
+        s = ids.each { |i| id_to_s(i) }.join(', ')
+        s.size > 1000 ? "[#{s[0, 1000]}...]" : "[#{s}]"
+      else
+        id_to_s(ids)
+      end
+    end
+
     # Convert serialized AgentIdentity to compatible format
     #
     # === Parameters
@@ -266,7 +283,7 @@ module RightScale
     #   :reply_to(String):: Identity of the node that actor replies to, usually a mapper itself
     #   :selector(Symbol):: Selector used to route the request: :any or :all, defaults to :any,
     #     :all deprecated for version 13 and above
-    #   :target(String):: Target recipient
+    #   :target(String|Array):: Target recipient(s)
     #   :persistent(Boolean):: Indicates if this request should be saved to persistent storage
     #     by the AMQP broker
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
@@ -339,7 +356,7 @@ module RightScale
       log_msg = "#{super(filter, version)} #{trace} #{@type}"
       log_msg += " #{payload}" if payload
       log_msg += " from #{id_to_s(@from)}" if filter.nil? || filter.include?(:from)
-      log_msg += ", target #{id_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
+      log_msg += ", target #{ids_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
       log_msg += ", scope #{@scope.inspect}" if @scope && (filter.nil? || filter.include?(:scope))
       log_msg += ", fanout" if (filter.nil? || filter.include?(:fanout)) && fanout?
       log_msg += ", reply_to #{id_to_s(@reply_to)}" if @reply_to && (filter.nil? || filter.include?(:reply_to))
@@ -395,7 +412,7 @@ module RightScale
     #   :scope(Hash):: Define behavior that should be used to resolve tag based routing
     #   :token(String):: Generated request id that a mapper uses to identify replies
     #   :selector(Symbol):: Selector used to route the request: :any or :all, defaults to :any
-    #   :target(String):: Target recipient
+    #   :target(String|Array):: Target recipient(s)
     #   :persistent(Boolean):: Indicates if this request should be saved to persistent storage
     #     by the AMQP broker
     #   :confirm(Boolean):: Whether require confirmation response from mapper containing targets
@@ -473,7 +490,7 @@ module RightScale
       log_msg = "#{super(filter, version)} #{trace} #{@type}"
       log_msg += " #{payload}" if payload
       log_msg += " from #{id_to_s(@from)}" if filter.nil? || filter.include?(:from)
-      log_msg += ", target #{id_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
+      log_msg += ", target #{ids_to_s(@target)}" if @target && (filter.nil? || filter.include?(:target))
       log_msg += ", scope #{@scope.inspect}" if @scope && (filter.nil? || filter.include?(:scope))
       log_msg += ", fanout" if (filter.nil? || filter.include?(:fanout)) && fanout?
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty? && (filter.nil? || filter.include?(:tags))

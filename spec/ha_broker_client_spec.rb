@@ -71,15 +71,19 @@ describe RightScale::HABrokerClient do
 
   describe "Caching" do
 
+    require 'digest/md5'
+
     before(:each) do
-      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @now = Time.at(1000000)
+      @max_age = RightScale::HABrokerClient::Published::MAX_AGE
+      flexmock(Time).should_receive(:now).and_return(@now).by_default
       @published = RightScale::HABrokerClient::Published.new
-      @message1 = MessagePack.dump(:signature => "signature1")
-      @key1 = @message1[@message1 =~ /signature/, 1000]
-      @message2 = JSON.dump(:signature => "signature2")
-      @key2 = @message2[@message2 =~ /signature/, 1000]
-      @message3 = MessagePack.dump(:data => "just data")
-      @key3 = @message3
+      @message1 = MessagePack.dump({:data => "a message"})
+      @key1 = Digest::MD5.hexdigest(@message1)
+      @message2 = JSON.dump({:data => "another message"})
+      @key2 = Digest::MD5.hexdigest(@message2)
+      @message3 = MessagePack.dump({:data => "yet another message"})
+      @key3 = Digest::MD5.hexdigest(@message3)
       @packet1 = flexmock("packet1", :class => RightScale::Request, :name => "request", :type => "type1",
                           :from => "from1", :token => "token1", :one_way => false)
       @packet2 = flexmock("packet2", :class => RightScale::Request, :name => "request", :type => "type2",
@@ -101,28 +105,28 @@ describe RightScale::HABrokerClient do
 
     it "should store message info" do
       @published.store(@message1, @context1)
-      @published.instance_variable_get(:@cache)[@key1].should == [1000000, @context1]
+      @published.instance_variable_get(:@cache)[@key1].should == [@now.to_i, @context1]
       @published.instance_variable_get(:@lru).should == [@key1]
     end
 
     it "should update timestamp and lru list when store to existing entry" do
       @published.store(@message1, @context1)
-      @published.instance_variable_get(:@cache)[@key1].should == [1000000, @context1]
+      @published.instance_variable_get(:@cache)[@key1].should == [@now.to_i, @context1]
       @published.instance_variable_get(:@lru).should == [@key1]
       @published.store(@message2, @context2)
       @published.instance_variable_get(:@lru).should == [@key1, @key2]
-      flexmock(Time).should_receive(:now).and_return(Time.at(1000010))
+      flexmock(Time).should_receive(:now).and_return(Time.at(@now + @max_age - 1))
       @published.store(@message1, @context1)
-      @published.instance_variable_get(:@cache)[@key1].should == [1000010, @context1]
+      @published.instance_variable_get(:@cache)[@key1].should == [(@now + @max_age - 1).to_i, @context1]
       @published.instance_variable_get(:@lru).should == [@key2, @key1]
     end
 
     it "should remove old cache entries when store new one" do
       @published.store(@message1, @context1)
       @published.store(@message2, @context2)
-      @published.instance_variable_get(:@cache).keys.should == [@key1, @key2]
+      (@published.instance_variable_get(:@cache).keys - [@key1, @key2]).should == []
       @published.instance_variable_get(:@lru).should == [@key1, @key2]
-      flexmock(Time).should_receive(:now).and_return(Time.at(1000031))
+      flexmock(Time).should_receive(:now).and_return(Time.at(@now + @max_age + 1))
       @published.store(@message3, @context3)
       @published.instance_variable_get(:@cache).keys.should == [@key3]
       @published.instance_variable_get(:@lru).should == [@key3]
@@ -886,7 +890,7 @@ describe RightScale::HABrokerClient do
     context "publishing" do
 
       before(:each) do
-        @message = flexmock("message")
+        @message = "message"
         @packet = flexmock("packet", :class => RightScale::Request, :to_s => true, :version => [12, 12]).by_default
         @serializer.should_receive(:dump).with(@packet).and_return(@message).by_default
         @broker1.should_receive(:publish).and_return(true).by_default
@@ -979,7 +983,7 @@ describe RightScale::HABrokerClient do
     context "returning" do
 
       before(:each) do
-        @message = flexmock("message")
+        @message = "message"
         @packet = flexmock("packet", :class => RightScale::Request, :to_s => true, :version => [12, 12]).by_default
         @serializer.should_receive(:dump).with(@packet).and_return(@message).by_default
         @broker1.should_receive(:publish).and_return(true).by_default
