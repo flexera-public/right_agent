@@ -20,6 +20,8 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+require 'digest/md5'
+
 module RightScale
 
   # Client for multiple AMQP brokers to achieve a high availability service
@@ -1257,7 +1259,7 @@ module RightScale
     class Published
 
       # Number of seconds since a cache entry was last used before it is deleted
-      MAX_AGE = 30
+      MAX_AGE = 60
 
       # Initialize cache
       def initialize
@@ -1311,13 +1313,7 @@ module RightScale
       # === Returns
       # (String):: Unique id for message
       def identify(message)
-        # If possible use significant part of serialized signature without decoding the message,
-        # otherwise use entire serialized message
-        if s = (message =~ /signature/)
-          message[s, 1000]
-        else
-          message
-        end
+        Digest::MD5.hexdigest(message)
       end
 
     end # Published
