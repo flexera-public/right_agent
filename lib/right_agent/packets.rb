@@ -226,17 +226,7 @@ module RightScale
     def trace
       audit_id = self.respond_to?(:payload) && payload.is_a?(Hash) && (payload['audit_id'] || payload[:audit_id])
       tok = self.respond_to?(:token) && token
-      tr = ''
-      if audit_id || tok
-        tr = '<'        
-        if audit_id 
-          tr += audit_id.to_s
-          tr += ':' if tok
-        end
-        tr += tok if tok
-        tr += '>'
-      end
-      tr  
+      tr = "<#{audit_id}> <#{tok}>" 
     end
 
     # Retrieve protocol version of original creator of packet
