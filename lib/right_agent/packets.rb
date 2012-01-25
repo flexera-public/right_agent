@@ -353,7 +353,7 @@ module RightScale
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty? && (filter.nil? || filter.include?(:tags))
       log_msg += ", persistent" if @persistent && (filter.nil? || filter.include?(:persistent))
       log_msg += ", tries #{tries_to_s}" if @tries && !@tries.empty? && (filter.nil? || filter.include?(:tries))
-      log_msg += ", payload #{@payload.inspect}" if filter.include?(:payload)
+      log_msg += ", payload #{@payload.inspect}" if filter && filter.include?(:payload)
       log_msg
     end
 
@@ -485,7 +485,7 @@ module RightScale
       log_msg += ", fanout" if (filter.nil? || filter.include?(:fanout)) && fanout?
       log_msg += ", tags #{@tags.inspect}" if @tags && !@tags.empty? && (filter.nil? || filter.include?(:tags))
       log_msg += ", persistent" if @persistent && (filter.nil? || filter.include?(:persistent))
-      log_msg += ", payload #{@payload.inspect}" if filter.include?(:payload)
+      log_msg += ", payload #{@payload.inspect}" if filter && filter.include?(:payload)
       log_msg
     end
 
