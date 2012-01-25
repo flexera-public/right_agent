@@ -25,8 +25,6 @@ module RightScale
   # Dispatching of payload to specified actor
   class Dispatcher
 
-    include StatsHelper
-
     # Response queue name
     RESPONSE_QUEUE = "response"
 
@@ -112,7 +110,7 @@ module RightScale
     # (String) Identity of associated agent
     attr_reader :identity
 
-    # (HABrokerClient) High availability AMQP broker client
+    # (RightAMQP::HABrokerClient) High availability AMQP broker client
     attr_reader :broker
 
     # (EM) Event machine class (exposed for unit tests)
@@ -174,7 +172,7 @@ module RightScale
       # Reject this request if its TTL has expired
       if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
         @rejects.update("expired (#{method})")
-        Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{elapsed(received_at.to_i - expires_at)} ago")
+        Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(received_at.to_i - expires_at)} ago")
         if request.is_a?(Request)
           # For agents that do not know about non-delivery, use error result
           non_delivery = if request.recv_version < 13
@@ -228,7 +226,7 @@ module RightScale
             exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
             @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
           end
-        rescue HABrokerClient::NoConnectedBrokers => e
+        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
           Log.error("Failed to publish result of dispatched request #{request.trace}", e)
         rescue Exception => e
           Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
@@ -298,9 +296,9 @@ module RightScale
     # === Return
     # true:: Always return true
     def reset_stats
-      @rejects = ActivityStats.new
-      @requests = ActivityStats.new
-      @exceptions = ExceptionStats.new(@agent)
+      @rejects = RightSupport::Stats::Activity.new
+      @requests = RightSupport::Stats::Activity.new
+      @exceptions = RightSupport::Stats::Exceptions.new(@agent)
       true
     end
 
@@ -333,17 +331,6 @@ module RightScale
         @exceptions.track(request.type, e2) rescue nil
       end
       error
-    end
-
-    # Convert value to nil if equals 0
-    #
-    # === Parameters
-    # value(Integer|nil):: Value to be converted
-    #
-    # === Return
-    # (Integer|nil):: Converted value
-    def nil_if_zero(value)
-      if !value || value == 0 then nil else value end
     end
 
   end # Dispatcher

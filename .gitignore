@@ -6,4 +6,5 @@ tags
 .rvmrc*
 .bundle
 pkg/*
+doc/rdocs/*
 nbproject/*

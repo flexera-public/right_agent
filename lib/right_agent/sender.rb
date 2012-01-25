@@ -28,8 +28,6 @@ module RightScale
   # All requests go through the mapper for security purposes
   class Sender
 
-    include StatsHelper
-
     # Request that is waiting for a response
     class PendingRequest
 
@@ -172,7 +170,7 @@ module RightScale
       # === Parameters
       # restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
       #   by offline queue exceeding MAX_QUEUED_REQUESTS
-      # offline_stats(ActivityStats):: Offline queue tracking statistics
+      # offline_stats(RightSupport::Stats::Activity):: Offline queue tracking statistics
       def initialize(restart_callback, offline_stats)
         @restart_vote = restart_callback
         @restart_vote_timer = nil
@@ -523,7 +521,7 @@ module RightScale
     # (ConnectivityChecker) Broker connection checker
     attr_reader :connectivity_checker
 
-    # (HABrokerClient) High availability AMQP broker client
+    # (RightAMQP::HABrokerClient) High availability AMQP broker client
     attr_accessor :broker
 
     # (String) Identity of the associated agent
@@ -569,8 +567,8 @@ module RightScale
       @broker = @agent.broker
       @secure = @options[:secure]
       @single_threaded = @options[:single_threaded]
-      @retry_timeout = nil_if_zero(@options[:retry_timeout])
-      @retry_interval = nil_if_zero(@options[:retry_interval])
+      @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
+      @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
 
       # Only to be accessed from primary thread
       @pending_requests = PendingRequests.new
@@ -821,7 +819,7 @@ module RightScale
         exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
         ids = @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
                               :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
-      rescue HABrokerClient::NoConnectedBrokers => e
+      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
         Log.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
         ids = []
       rescue Exception => e
@@ -923,15 +921,15 @@ module RightScale
     # === Return
     # true:: Always return true
     def reset_stats
-      @ping_stats = ActivityStats.new
-      @retry_stats = ActivityStats.new
-      @request_stats = ActivityStats.new
-      @result_stats = ActivityStats.new
-      @result_error_stats = ActivityStats.new
-      @non_delivery_stats = ActivityStats.new
-      @offline_stats = ActivityStats.new(measure_rate = false)
-      @request_kinds = ActivityStats.new(measure_rate = false)
-      @exception_stats = ExceptionStats.new(@agent, @options[:exception_callback])
+      @ping_stats = RightSupport::Stats::Activity.new
+      @retry_stats = RightSupport::Stats::Activity.new
+      @request_stats = RightSupport::Stats::Activity.new
+      @result_stats = RightSupport::Stats::Activity.new
+      @result_error_stats = RightSupport::Stats::Activity.new
+      @non_delivery_stats = RightSupport::Stats::Activity.new
+      @offline_stats = RightSupport::Stats::Activity.new(measure_rate = false)
+      @request_kinds = RightSupport::Stats::Activity.new(measure_rate = false)
+      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @options[:exception_callback])
       true
     end
 
