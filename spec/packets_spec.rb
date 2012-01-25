@@ -254,9 +254,11 @@ describe "Packet: Request" do
 
   it "should handle either a single target or an array" do
     packet = RightScale::Request.new('/some/foo', 'payload', :target => "target1")
-    packet.to_s([:target]).should == '[request]  /some/foo, target target1'
+    packet.token = 123
+    packet.to_s([:target]).should == '[request] <> <123> /some/foo, target target1'
     packet = RightScale::Request.new('/some/foo', 'payload', :target => ["target1", "target2"])
-    packet.to_s([:target]).should == "[request]  /some/foo, target [target1, target2]"
+    packet.token = 123
+    packet.to_s([:target]).should == "[request] <> <123> /some/foo, target [target1, target2]"
   end
 end
 
@@ -341,9 +343,11 @@ describe "Packet: Push" do
 
   it "should handle either a single target or an array" do
     packet = RightScale::Push.new('/some/foo', 'payload', :target => "target1")
-    packet.to_s([:target]).should == '[push]  /some/foo, target target1'
+    packet.token = 123
+    packet.to_s([:target]).should == '[push] <> <123> /some/foo, target target1'
     packet = RightScale::Push.new('/some/foo', 'payload', :target => ["target1", "target2"])
-    packet.to_s([:target]).should == "[push]  /some/foo, target [target1, target2]"
+    packet.token = 123
+    packet.to_s([:target]).should == "[push] <> <123> /some/foo, target [target1, target2]"
   end
 end
 
