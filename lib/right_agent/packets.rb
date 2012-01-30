@@ -410,8 +410,6 @@ module RightScale
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
     #      is to be ignored by the receiver; value 0 means never expire; defaults to 0
     #   :tags(Array(Symbol)):: List of tags to be used for selecting target for this request
-    #   :tries(Array):: List of tokens for previous attempts to send this request (only here
-    #     for consistency with Request)
     # version(Array):: Protocol version of the original creator of the packet followed by the
     #   protocol version of the packet contents to be used when sending
     # size(Integer):: Size of request in bytes used only for marshalling

@@ -488,18 +488,6 @@ describe RightScale::Sender do
     end
 
     describe "with retry" do
-      it "should convert value to nil if 0" do
-        @instance.__send__(:nil_if_zero, 0).should == nil
-      end
-
-      it "should not convert value to nil if not 0" do
-        @instance.__send__(:nil_if_zero, 1).should == 1
-      end
-
-      it "should leave value as nil if nil" do
-        @instance.__send__(:nil_if_zero, nil).should == nil
-      end
-
       it "should not setup for retry if retry_timeout nil" do
         flexmock(EM).should_receive(:add_timer).never
         @agent.should_receive(:options).and_return({:retry_timeout => nil})

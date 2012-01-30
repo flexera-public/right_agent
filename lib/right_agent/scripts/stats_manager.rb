@@ -38,8 +38,6 @@ module RightScale
 
   class StatsManager
 
-    include StatsHelper
-
     # Default time to wait for a response from an agent
     DEFAULT_TIMEOUT = 5
 
@@ -185,6 +183,7 @@ module RightScale
       Log.program_name = "stats_manager"
       Log.log_to_file_only(true)
       Log.init("stats_manager", Platform.filesystem.temp_dir, :print => true)
+      RightSupport::Log::Mixin.default_logger = Log
       true
     end
 
@@ -216,7 +215,7 @@ module RightScale
         $stdout.puts result.content.to_json
       else
         if result.respond_to?(:success?) && result.success?
-          $stdout.puts "\n#{stats_str(result.content)}\n"
+          $stdout.puts "\n#{RightSupport::Stats.stats_str(result.content)}\n"
         else
           $stderr.puts "\nCould not retrieve #{agent_name} agent stats: #{result.inspect}"
         end

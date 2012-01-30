@@ -49,7 +49,7 @@ describe RightScale::Agent do
                          :all => ["b1"], :connected => ["b1"], :failed => [], :close_one => true,
                          :non_delivery => true).by_default
       @broker.should_receive(:connection_status).and_yield(:connected)
-      flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
+      flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @identity = "rs-instance-123-1"
@@ -138,7 +138,7 @@ describe RightScale::Agent do
                          :connected => ["b1"], :failed => [], :all => ["b0", "b1"],
                          :non_delivery => true).by_default
       @broker.should_receive(:connection_status).and_yield(:connected)
-      flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
+      flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @identity = "rs-instance-123-1"
@@ -268,7 +268,7 @@ describe RightScale::Agent do
       @broker.should_receive(:connection_status).and_yield(:connected).by_default
       @broker.should_receive(:identity_parts).with(@broker_id).and_return(["123", 1, 0, 0, nil])
       @broker.should_receive(:identity_parts).with(@broker_id2).and_return(["123", 2, 1, 1, nil])
-      flexmock(RightScale::HABrokerClient).should_receive(:new).and_return(@broker)
+      flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @sender = flexmock("sender", :pending_requests => [], :request_age => nil,

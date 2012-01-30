@@ -31,7 +31,6 @@ module RightScale
 
     include ConsoleHelper
     include DaemonizeHelper
-    include StatsHelper
 
     # (String) Identity of this agent
     attr_reader :identity
@@ -45,7 +44,7 @@ module RightScale
     # (ActorRegistry) Registry for this agents actors
     attr_reader :registry
 
-    # (HABrokerClient) High availability AMQP broker client
+    # (RightAMQP::HABrokerClient) High availability AMQP broker client
     attr_reader :broker
 
     # (Array) Tag strings published by agent
@@ -174,6 +173,7 @@ module RightScale
     def run
       Log.init(@identity, @options[:log_path], :print => true)
       Log.level = @options[:log_level] if @options[:log_level]
+      RightSupport::Log::Mixin.default_logger = Log
       Log.debug("Start options:")
       log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v}" }
       log_opts.each { |l| Log.debug(l) }
@@ -188,7 +188,7 @@ module RightScale
 
         # Initiate AMQP broker connection, wait for connection before proceeding
         # otherwise messages published on failed connection will be lost
-        @broker = HABrokerClient.new(Serializer.new(:secure), @options)
+        @broker = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options)
         @all_setup.each { |s| @remaining_setup[s] = @broker.all }
         @broker.connection_status(:one_off => @options[:connect_timeout]) do |status|
           if status == :connected
@@ -342,7 +342,7 @@ module RightScale
           end
         end
       rescue Exception => e
-        res = Log.format("Failed to connect to broker #{HABrokerClient.identity(host, port)}", e)
+        res = Log.format("Failed to connect to broker #{RightAMQP::HABrokerClient.identity(host, port)}", e)
         @exceptions.track("connect", e)
       end
       Log.error(res) if res
@@ -364,7 +364,7 @@ module RightScale
       and_remove = " and removing" if remove
       Log.info("Disconnecting#{and_remove} broker at host #{host.inspect} port #{port.inspect}")
       Log.info("Current broker configuration: #{@broker.status.inspect}")
-      id = HABrokerClient.identity(host, port)
+      id = RightAMQP::HABrokerClient.identity(host, port)
       @connect_requests.update("disconnect #{@broker.alias_(id)}")
       connected = @broker.connected
       res = nil
@@ -434,7 +434,7 @@ module RightScale
         when Result        then @sender.handle_response(packet)
         end
         @sender.message_received
-      rescue HABrokerClient::NoConnectedBrokers => e
+      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
         Log.error("Identity queue processing error", e)
       rescue Exception => e
         Log.error("Identity queue processing error", e, :trace)
@@ -578,9 +578,9 @@ module RightScale
     # === Return
     # true:: Always return true
     def reset_agent_stats
-      @connect_requests = ActivityStats.new(measure_rate = false)
-      @non_deliveries = ActivityStats.new
-      @exceptions = ExceptionStats.new(self, @options[:exception_callback])
+      @connect_requests = RightSupport::Stats::Activity.new(measure_rate = false)
+      @non_deliveries = RightSupport::Stats::Activity.new
+      @exceptions = RightSupport::Stats::Exceptions.new(self, @options[:exception_callback])
       true
     end
 

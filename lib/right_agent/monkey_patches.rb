@@ -25,5 +25,4 @@ require 'rbconfig'
 
 MONKEY_PATCHES_BASE_DIR = File.join(File.dirname(__FILE__), 'monkey_patches')
 
-require File.normalize_path(File.join(MONKEY_PATCHES_BASE_DIR, 'amqp_patch'))
 require File.normalize_path(File.join(MONKEY_PATCHES_BASE_DIR, 'ruby_patch'))
