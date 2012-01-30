@@ -32,10 +32,10 @@ if RightScale::Platform.linux?
       context :parse_volumes do
         it 'can parse volumes from blkid output' do
           blkid_resp = <<EOF
-  /dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
-  /dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
-  /dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
-  /dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
+/dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
+/dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
+/dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
+/dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
 EOF
           volume_hash_ary = [
             {:device => "/dev/xvdh1", :sec_type => "msdos", :label => "METADATA", :uuid => "681B-8C5D", :type => "vfat", :filesystem => "vfat"},
@@ -61,10 +61,10 @@ EOF
 
         it 'can filter results with only one condition' do
           blkid_resp = <<EOF
-  /dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
-  /dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
-  /dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
-  /dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
+/dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
+/dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
+/dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
+/dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
 EOF
           volume_hash_ary = [
             {:device => "/dev/xvdh1", :sec_type => "msdos", :label => "METADATA", :uuid => "681B-8C5D", :type => "vfat", :filesystem => "vfat"}
@@ -77,10 +77,10 @@ EOF
 
         it 'can filter results with many conditions' do
           blkid_resp = <<EOF
-  /dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
-  /dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
-  /dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
-  /dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
+/dev/xvdh1: SEC_TYPE="msdos" LABEL="METADATA" UUID="681B-8C5D" TYPE="vfat"
+/dev/xvdb1: LABEL="SWAP-xvdb1" UUID="d51fcca0-6b10-4934-a572-f3898dfd8840" TYPE="swap"
+/dev/xvda1: UUID="f4746f9c-0557-4406-9267-5e918e87ca2e" TYPE="ext3"
+/dev/xvda2: UUID="14d88b9e-9fe6-4974-a8d6-180acdae4016" TYPE="ext3"
 EOF
           volume_hash_ary = [
             {:device => "/dev/xvda1", :uuid => "f4746f9c-0557-4406-9267-5e918e87ca2e", :type => "ext3", :filesystem => "ext3"},
@@ -96,8 +96,8 @@ EOF
       context :mount_volume do
         it 'mounts the specified volume if it is not already mounted' do
           mount_resp = <<EOF
-  /dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
-  proc on /proc type proc (rw,noexec,nosuid,nodev)
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
 EOF
 
           mount_popen_mock = flexmock(:read => mount_resp)
@@ -109,9 +109,9 @@ EOF
 
         it 'does not attempt to re-mount the volume' do
           mount_resp = <<EOF
-  /dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
-  proc on /proc type proc (rw,noexec,nosuid,nodev)
-  /dev/xvdh1 on /var/spool/softlayer type vfat (rw) [METADATA]
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+/dev/xvdh1 on /var/spool/softlayer type vfat (rw) [METADATA]
 EOF
 
           mount_popen_mock = flexmock(:read => mount_resp)
@@ -131,19 +131,19 @@ EOF
 
         it 'raises volume error when the device is already mounted to a different mountpoint' do
           mount_resp = <<EOF
-  /dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
-  proc on /proc type proc (rw,noexec,nosuid,nodev)
-  none on /sys type sysfs (rw,noexec,nosuid,nodev)
-  none on /sys/kernel/debug type debugfs (rw)
-  none on /sys/kernel/security type securityfs (rw)
-  none on /dev type devtmpfs (rw,mode=0755)
-  none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
-  none on /dev/shm type tmpfs (rw,nosuid,nodev)
-  none on /var/run type tmpfs (rw,nosuid,mode=0755)
-  none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
-  none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
-  /dev/xvda1 on /boot type ext3 (rw,noatime)
-  /dev/xvdh1 on /mnt type vfat (rw) [METADATA]
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+none on /sys type sysfs (rw,noexec,nosuid,nodev)
+none on /sys/kernel/debug type debugfs (rw)
+none on /sys/kernel/security type securityfs (rw)
+none on /dev type devtmpfs (rw,mode=0755)
+none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
+none on /dev/shm type tmpfs (rw,nosuid,nodev)
+none on /var/run type tmpfs (rw,nosuid,mode=0755)
+none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
+none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
+/dev/xvda1 on /boot type ext3 (rw,noatime)
+/dev/xvdh1 on /mnt type vfat (rw) [METADATA]
 EOF
 
           mount_popen_mock = flexmock(:read => mount_resp)
@@ -154,19 +154,19 @@ EOF
 
         it 'raises volume error when a different device is already mounted to the specified mountpoint' do
           mount_resp = <<EOF
-  /dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
-  proc on /proc type proc (rw,noexec,nosuid,nodev)
-  none on /sys type sysfs (rw,noexec,nosuid,nodev)
-  none on /sys/kernel/debug type debugfs (rw)
-  none on /sys/kernel/security type securityfs (rw)
-  none on /dev type devtmpfs (rw,mode=0755)
-  none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
-  none on /dev/shm type tmpfs (rw,nosuid,nodev)
-  none on /var/run type tmpfs (rw,nosuid,mode=0755)
-  none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
-  none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
-  /dev/xvda1 on /boot type ext3 (rw,noatime)
-  /dev/xvdh2 on /var/spool/softlayer type vfat (rw) [METADATA]
+/dev/xvda2 on / type ext3 (rw,noatime,errors=remount-ro)
+proc on /proc type proc (rw,noexec,nosuid,nodev)
+none on /sys type sysfs (rw,noexec,nosuid,nodev)
+none on /sys/kernel/debug type debugfs (rw)
+none on /sys/kernel/security type securityfs (rw)
+none on /dev type devtmpfs (rw,mode=0755)
+none on /dev/pts type devpts (rw,noexec,nosuid,gid=5,mode=0620)
+none on /dev/shm type tmpfs (rw,nosuid,nodev)
+none on /var/run type tmpfs (rw,nosuid,mode=0755)
+none on /var/lock type tmpfs (rw,noexec,nosuid,nodev)
+none on /lib/init/rw type tmpfs (rw,nosuid,mode=0755)
+/dev/xvda1 on /boot type ext3 (rw,noatime)
+/dev/xvdh2 on /var/spool/softlayer type vfat (rw) [METADATA]
 EOF
 
           mount_popen_mock = flexmock(:read => mount_resp)
