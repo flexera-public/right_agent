@@ -1,9 +1,9 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: d44a768805c304c4ac5eabcd51b5fe45b0433419
+  revision: 35906a42b08d7ee74c980a0531be2e7f830c51c4
   branch: master
   specs:
-    right_amqp (0.1.0)
+    right_amqp (0.1.1)
       eventmachine (~> 0.12.10)
       right_support (~> 1.2)
 
@@ -17,7 +17,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (0.7.0)
+    right_agent (0.7.1)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)

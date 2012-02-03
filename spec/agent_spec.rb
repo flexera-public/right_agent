@@ -312,7 +312,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
           @agent.run
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, false, Proc).once
           @agent.connect("123", 2, 1, 1)
         end
       end
@@ -322,7 +322,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
           @agent.run
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => @broker_ids.last(1)), Proc).
                                              and_return(@broker_ids.last(1)).once
           flexmock(@agent).should_receive(:update_configuration).with(:host => ["123"], :port => [1, 2]).and_return(true).once
@@ -335,7 +335,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
           @agent.run
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, false, Proc).and_yield(@broker_ids.last).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, false, Proc).and_yield(@broker_ids.last).once
           @broker.should_receive(:connection_status).and_yield(:failed)
           @log.should_receive(:error).with(/Failed to connect to broker/).once
           flexmock(@agent).should_receive(:update_configuration).never
@@ -441,14 +441,15 @@ describe RightScale::Agent do
 
       it "should tune heartbeat for all broker connections" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
           @agent.tune_heartbeat(45).should be_nil
@@ -457,14 +458,15 @@ describe RightScale::Agent do
 
       it "should tune heartbeat for all broker connections as deferred task" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
           flexmock(@agent).should_receive(:finish_setup)
@@ -476,14 +478,15 @@ describe RightScale::Agent do
 
       it "should disable heartbeat for all broker connections" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 0/).once
           @log.should_receive(:info).with(/Disabled heartbeat for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 0).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(0).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
           @agent.tune_heartbeat(0).should be_nil
@@ -492,6 +495,7 @@ describe RightScale::Agent do
 
       it "should log error if any broker connect attempts fail" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with("Failed to reconnect to broker #{@broker_id} to tune heartbeat", Exception, :trace).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -499,8 +503,8 @@ describe RightScale::Agent do
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_raise(Exception).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_raise(Exception).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
           @agent.tune_heartbeat(45).should == "Failed to tune heartbeat for brokers [\"#{@broker_id}\"]"
@@ -509,6 +513,7 @@ describe RightScale::Agent do
 
       it "should log error if any brokers do not connect" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with(/Failed to reconnect to broker #{@broker_id} to tune heartbeat, status/).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -516,8 +521,8 @@ describe RightScale::Agent do
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id]}, Proc).and_yield(:failed)
           @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id2]}, Proc).and_yield(:connected)
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
@@ -528,6 +533,7 @@ describe RightScale::Agent do
 
       it "should log error if any broker queue setup fails" do
         run_in_em do
+          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with(/Failed to setup queues for broker #{@broker_id} when tuning heartbeat/, Exception, :trace).once
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -535,8 +541,8 @@ describe RightScale::Agent do
           flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
           @agent.run
           @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, nil, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, nil, true, Proc).and_yield(@broker_id2).once
+          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
+          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).and_raise(Exception)
           flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
           @agent.tune_heartbeat(45).should be_nil

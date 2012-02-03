@@ -259,14 +259,15 @@ module RightScale
     def tune_heartbeat(heartbeat)
       res = nil
       begin
+        Log.info("[setup] Reconnecting each broker to tune heartbeat to #{heartbeat}")
         @broker.heartbeat = heartbeat
         update_configuration(:heartbeat => heartbeat)
         ids = []
         all = @broker.all
         all.each do |id|
           begin
-            host, port, index, priority, island_id = @broker.identity_parts(id)
-            @broker.connect(host, port, index, priority, island = nil, force = true) do |id|
+            host, port, index, priority = @broker.identity_parts(id)
+            @broker.connect(host, port, index, priority, force = true) do |id|
               @broker.connection_status(:one_off => @options[:connect_timeout], :brokers => [id]) do |status|
                 begin
                   if status == :connected
@@ -321,7 +322,7 @@ module RightScale
       Log.info("Current broker configuration: #{@broker.status.inspect}")
       res = nil
       begin
-        @broker.connect(host, port, index, priority, nil, force) do |id|
+        @broker.connect(host, port, index, priority, force) do |id|
           @broker.connection_status(:one_off => @options[:connect_timeout], :brokers => [id]) do |status|
             begin
               if status == :connected
@@ -625,7 +626,7 @@ module RightScale
     # (Boolean):: true if successful, otherwise false
     def update_configuration(opts)
       if cfg = AgentConfig.load_cfg(@agent_name)
-        opts.each { |k, v| cfg[k] = v if cfg.has_key?(k) }
+        opts.each { |k, v| cfg[k] = v }
         AgentConfig.store_cfg(@agent_name, cfg)
         true
       else
@@ -746,21 +747,11 @@ module RightScale
     end
 
     # Check status of agent by gathering current operation statistics and publishing them,
-    # executing any deferred tasks, and finishing any queue setup
+    # finishing any queue setup, and executing any deferred tasks
     #
     # === Return
     # true:: Always return true
     def check_status
-      @deferred_tasks.reject! do |t|
-        begin
-          t.call
-        rescue Exception => e
-          Log.error("Failed to perform deferred task", e)
-          @exceptions.track("check status", e)
-        end
-        true
-      end
-
       begin
         finish_setup
       rescue Exception => e
@@ -777,6 +768,16 @@ module RightScale
       rescue Exception => e
         Log.error("Failed publishing stats", e)
         @exceptions.track("check status", e)
+      end
+
+      @deferred_tasks.reject! do |t|
+        begin
+          t.call
+        rescue Exception => e
+          Log.error("Failed to perform deferred task", e)
+          @exceptions.track("check status", e)
+        end
+        true
       end
 
       @check_status_count += 1
