@@ -740,7 +740,7 @@ module RightScale
     def finish_setup
       @broker.failed.each do |id|
         p = {:agent_identity => @identity}
-        p[:host], p[:port], p[:id], p[:priority], _ = @broker.identity_parts(id)
+        p[:host], p[:port], p[:id], p[:priority] = @broker.identity_parts(id)
         @sender.send_push("/registrar/connect", p)
       end
       true

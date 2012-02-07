@@ -266,8 +266,8 @@ describe RightScale::Agent do
                          :stats => "", :status => "status", :hosts => ["123"], :ports => [1, 2], :get => true,
                          :alias_ => "b1", :aliases => ["b1"]).by_default
       @broker.should_receive(:connection_status).and_yield(:connected).by_default
-      @broker.should_receive(:identity_parts).with(@broker_id).and_return(["123", 1, 0, 0, nil])
-      @broker.should_receive(:identity_parts).with(@broker_id2).and_return(["123", 2, 1, 1, nil])
+      @broker.should_receive(:identity_parts).with(@broker_id).and_return(["123", 1, 0, 0])
+      @broker.should_receive(:identity_parts).with(@broker_id2).and_return(["123", 2, 1, 1])
       flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
