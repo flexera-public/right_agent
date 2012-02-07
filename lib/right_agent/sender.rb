@@ -442,7 +442,7 @@ module RightScale
               @ping_stats.update("timeout")
               @ping_timer = nil
               Log.warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
-              host, port, index, priority, _ = @sender.broker.identity_parts(id)
+              host, port, index, priority = @sender.broker.identity_parts(id)
               @sender.agent.connect(host, port, index, priority, force = true)
             rescue Exception => e
               Log.error("Failed to reconnect to broker #{id}", e, :trace)
