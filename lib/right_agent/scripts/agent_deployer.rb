@@ -289,8 +289,8 @@ module RightScale
       cfg[:prefetch]           = options[:prefetch] || 1
       cfg[:heartbeat]          = options[:heartbeat] if options[:heartbeat]
       cfg[:time_to_live]       = options[:time_to_live] || 60
-      cfg[:retry_timeout]      = options[:retry_timeout] || 2 * 60
-      cfg[:retry_interval]     = options[:retry_interval] || 15
+      cfg[:retry_timeout]      = options[:retry_timeout] || 60
+      cfg[:retry_interval]     = options[:retry_interval] || 5
       cfg[:ping_interval]      = options[:ping_interval] ||= 4 * 60 * 60
       cfg[:check_interval]     = options[:check_interval] if options[:check_interval]
       cfg[:reconnect_interval] = options[:reconnect_interval] if options[:reconnect_interval]

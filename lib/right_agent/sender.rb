@@ -385,12 +385,16 @@ module RightScale
       # Number of seconds to wait for ping response from a mapper when checking connectivity
       PING_TIMEOUT = 30
 
+      # Default maximum number of consecutive ping timeouts before attempt to reconnect
+      MAX_PING_TIMEOUTS = 3
+
       # (EM::Timer) Timer while waiting for mapper ping response
       attr_accessor :ping_timer
 
       def initialize(sender, check_interval, ping_stats, exception_stats)
         @sender = sender
         @check_interval = check_interval
+        @ping_timeouts = {}
         @ping_timer = nil
         @ping_stats = ping_stats
         @exception_stats = exception_stats
@@ -425,25 +429,35 @@ module RightScale
       end
 
       # Check whether broker connection is usable by pinging a mapper via that broker
-      # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds
+      # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds and
+      # if have reached timeout limit
       # Ignore request if already checking a connection
       # Only to be called from primary thread
       #
       # === Parameters
       # id(String):: Identity of specific broker to use to send ping, defaults to any
       #   currently connected broker
+      # max_ping_timeouts(Integer):: Maximum number of ping timeouts before attempt
+      #   to reconnect, defaults to MAX_PING_TIMEOUTS
       #
       # === Return
       # true:: Always return true
-      def check(id = nil)
+      def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
         unless @terminating || @ping_timer || (id && !@sender.broker.connected?(id))
           @ping_timer = EM::Timer.new(PING_TIMEOUT) do
             begin
               @ping_stats.update("timeout")
               @ping_timer = nil
-              Log.warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds, attempting to reconnect")
-              host, port, index, priority = @sender.broker.identity_parts(id)
-              @sender.agent.connect(host, port, index, priority, force = true)
+              @ping_timeouts[id] = (@ping_timeouts[id] || 0) + 1
+              if @ping_timeouts[id] >= max_ping_timeouts
+                Log.error("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds and now " +
+                          "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
+                          "attempting to reconnect")
+                host, port, index, priority = @sender.broker.identity_parts(id)
+                @sender.agent.connect(host, port, index, priority, force = true)
+              else
+                Log.warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds")
+              end
             rescue Exception => e
               Log.error("Failed to reconnect to broker #{id}", e, :trace)
               @exception_stats.track("ping timeout", e)
@@ -456,6 +470,7 @@ module RightScale
                 @ping_stats.update("success")
                 @ping_timer.cancel
                 @ping_timer = nil
+                @ping_timeouts[id] = 0
               end
             rescue Exception => e
               Log.error("Failed to cancel mapper ping", e, :trace)
@@ -498,7 +513,7 @@ module RightScale
         @inactivity_timer.cancel if @inactivity_timer
         @inactivity_timer = EM::Timer.new(@check_interval) do
           begin
-            check
+            check(id = nil, max_ping_timeouts = 1)
           rescue Exception => e
             Log.error("Failed connectivity check", e, :trace)
             @exception_stats.track("check connectivity", e)
@@ -510,7 +525,7 @@ module RightScale
     end # ConnectivityChecker
 
     # Factor used on each retry iteration to achieve exponential backoff
-    RETRY_BACKOFF_FACTOR = 4
+    RETRY_BACKOFF_FACTOR = 3
 
     # (PendingRequests) Requests waiting for a response
     attr_accessor :pending_requests
@@ -1102,6 +1117,7 @@ module RightScale
     # Use exponential backoff with RETRY_BACKOFF_FACTOR for retry spacing
     # Adjust retry interval by average response time to avoid adding to system load
     # when system gets slow
+    # Rotate through brokers on retries
     #
     # === Parameters
     # request(Request):: Request to be sent
@@ -1109,13 +1125,14 @@ module RightScale
     # count(Integer):: Number of retries so far
     # multiplier(Integer):: Multiplier for retry interval for exponential backoff
     # elapsed(Integer):: Elapsed time in seconds since this request was first attempted
+    # broker_ids(Array):: Identity of brokers to be used in priority order
     #
     # === Return
     # true:: Always return true
-    def publish_with_timeout_retry(request, parent, count = 0, multiplier = 1, elapsed = 0)
-      ids = publish(request)
+    def publish_with_timeout_retry(request, parent, count = 0, multiplier = 1, elapsed = 0, broker_ids = nil)
+      published_broker_ids = publish(request, broker_ids)
 
-      if @retry_interval && @retry_timeout && parent && !ids.empty?
+      if @retry_interval && @retry_timeout && parent && !published_broker_ids.empty?
         interval = [(@retry_interval * multiplier) + (@request_stats.avg_duration || 0), @retry_timeout - elapsed].min
         EM.add_timer(interval) do
           begin
@@ -1127,7 +1144,9 @@ module RightScale
                 request.token = AgentIdentity.generate
                 @pending_requests[parent].retry_parent = parent if count == 1
                 @pending_requests[request.token] = @pending_requests[parent]
-                publish_with_timeout_retry(request, parent, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed)
+                broker_ids ||= @broker.all
+                publish_with_timeout_retry(request, parent, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed,
+                                           broker_ids.push(broker_ids.shift))
                 @retry_stats.update(request.type.split('/').last)
               else
                 Log.warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.to_s([:tags, :target, :tries])}")
@@ -1135,7 +1154,7 @@ module RightScale
                 @non_delivery_stats.update(result.content)
                 handle_response(Result.new(request.token, request.reply_to, result, @identity))
               end
-              @connectivity_checker.check(ids.first) if count == 1
+              @connectivity_checker.check(published_broker_ids.first) if count == 1
             end
           rescue Exception => e
             Log.error("Failed retry for #{request.token}", e, :trace)
