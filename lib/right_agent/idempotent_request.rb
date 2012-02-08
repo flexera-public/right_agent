@@ -27,8 +27,20 @@ module RightScale
     include OperationResultHelper
     include EM::Deferrable
 
-    # Wait 5 seconds before retrying in case of failure
+    # Default delay before initial retry in case of failure with -1 meaning no delay
     DEFAULT_RETRY_DELAY = 5
+
+    # Default minimum number of retries before beginning backoff
+    DEFAULT_RETRY_DELAY_COUNT = 60
+
+    # Maximum default delay before retry when backing off
+    DEFAULT_MAX_RETRY_DELAY = 60
+
+    # Factor used for exponential backoff of retry delay
+    RETRY_BACKOFF_FACTOR = 2
+
+    # Default timeout with -1 meaning never timeout
+    DEFAULT_TIMEOUT = -1
 
     attr_reader :raw_response
 
@@ -37,18 +49,31 @@ module RightScale
     # Calls deferrable callback on completion, error callback on timeout
     #
     # === Parameters
-    # operation(String):: Request operation (i.e. '/booter/get_boot_bundle')
+    # operation(String):: Request operation (e.g., '/booter/get_boot_bundle')
     # payload(Hash):: Request payload
-    # options[:retry_on_error](FalseClass|TrueClass):: Whether request should be retried
-    #   if recipient returned an error
-    # options[:timeout](Fixnum):: Number of seconds before error callback gets called
-    # options[:retry_delay](Fixnum):: Number of seconds before retry, defaults to 5
-    def initialize(operation, payload, options={})
-      raise ArgumentError.new("options[:operation] is required") unless @operation = operation
-      raise ArgumentError.new("options[:payload] is required") unless @payload = payload
+    # options(Hash):: Request options
+    #   :targets(Array):: Targets from which to randomly choose one
+    #   :retry_on_error(Boolean):: Whether request should be retried if recipient returned an error
+    #   :retry_delay(Fixnum):: Number of seconds delay before initial retry with -1 meaning no delay,
+    #     defaults to DEFAULT_RETRY_DELAY
+    #   :retry_delay_count(Fixnum):: Minimum number of retries at initial :retry_delay value before
+    #     increasing delay exponentially and decreasing this count exponentially, defaults to
+    #     DEFAULT_RETRY_DELAY_COUNT
+    #   :max_retry_delay(Fixnum):: Maximum number of seconds of retry delay, defaults to DEFAULT_MAX_RETRY_DELAY
+    #   :timeout(Fixnum):: Number of seconds with no response before error callback gets called with
+    #     -1 meaning never, defaults to DEFAULT_TIMEOUT
+    #
+    # === Raises
+    # ArgumentError:: If operation or payload not specified
+    def initialize(operation, payload, options = {})
+      raise ArgumentError.new("operation is required") unless @operation = operation
+      raise ArgumentError.new("payload is required") unless @payload = payload
       @retry_on_error = options[:retry_on_error] || false
-      @timeout = options[:timeout] || -1
+      @timeout = options[:timeout] || DEFAULT_TIMEOUT
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
+      @retry_delay_count = options[:retry_delay_count] || DEFAULT_RETRY_DELAY_COUNT
+      @max_retry_delay = options[:max_retry_delay] || DEFAULT_MAX_RETRY_DELAY
+      @retries = 0
       @targets = options[:targets]
       @raw_response = nil
       @done = false
@@ -64,7 +89,7 @@ module RightScale
       if @cancel_timer.nil? && @timeout > 0
         @cancel_timer = EM::Timer.new(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
-          log_info(msg)
+          Log.info(msg)
           cancel(msg)
         end
       end
@@ -113,14 +138,21 @@ module RightScale
         if res.non_delivery?
           Log.info("Request non-delivery (#{res.content}) for #{@operation}")
         elsif res.retry?
-          Log.info("RightScale not ready when trying to request #{@operation}")
+          reason = (res.content && !res.content.empty?) ? res.content : "RightScale not ready"
+          Log.info("Request #{@operation} failed (#{reason})")
         else
           Log.info("Request #{@operation} failed (#{res.content})")
         end
         if res.non_delivery? || res.retry? || @retry_on_error
           Log.info("Retrying in #{@retry_delay} seconds...")
           if @retry_delay > 0
-            EM.add_timer(@retry_delay) { run }
+            this_delay = @retry_delay
+            if (@retries += 1) >= @retry_delay_count
+              @retry_delay = [@retry_delay * RETRY_BACKOFF_FACTOR, @max_retry_delay].min
+              @retry_delay_count = [@retry_delay_count / RETRY_BACKOFF_FACTOR, 1].max
+              @retries = 0
+            end
+            EM.add_timer(this_delay) { run }
           else
             EM.next_tick { run }
           end
