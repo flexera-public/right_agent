@@ -112,6 +112,15 @@ describe RightScale::IdempotentRequest do
         flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, nil, Proc).never
         request.run
       end
+
+      it 'should never retry after cancel response' do
+        request = RightScale::IdempotentRequest.new('type', 'payload', :retry_on_error => true)
+        flexmock(RightScale::Log).should_receive(:info).with("Request type canceled (enough already)").once
+        flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
+            and_yield(RightScale::OperationResult.cancel('enough already')).once
+        flexmock(EM).should_receive(:add_timer).never
+        request.run
+      end
     end
 
   end
@@ -132,7 +141,7 @@ describe RightScale::IdempotentRequest do
       it 'should retry retry responses' do
         request = RightScale::IdempotentRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with(/Retrying in 5 seconds/).once
-        flexmock(RightScale::Log).should_receive(:info).with("Request type failed (test)").once
+        flexmock(RightScale::Log).should_receive(:info).with("Request type failed (test) and should be retried").once
         flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
             and_yield(RightScale::OperationResult.retry('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -142,7 +151,7 @@ describe RightScale::IdempotentRequest do
       it 'should log default retry reason if none given' do
         request = RightScale::IdempotentRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with(/Retrying in 5 seconds/).once
-        flexmock(RightScale::Log).should_receive(:info).with("Request type failed (RightScale not ready)").once
+        flexmock(RightScale::Log).should_receive(:info).with("Request type failed (RightScale not ready) and should be retried").once
         flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
             and_yield(RightScale::OperationResult.retry).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -157,6 +166,15 @@ describe RightScale::IdempotentRequest do
         flexmock(request).should_receive(:succeed).never
         flexmock(EM).should_receive(:add_timer).with(RightScale::IdempotentRequest::DEFAULT_RETRY_DELAY, Proc).never
         request.cancel('test')
+        request.run
+      end
+
+      it 'should never retry after cancel response' do
+        request = RightScale::IdempotentRequest.new('type', 'payload')
+        flexmock(RightScale::Log).should_receive(:info).with("Request type canceled (enough already)").once
+        flexmock(RightScale::Sender.instance).should_receive(:send_retryable_request).with('type', 'payload', nil, Proc).
+            and_yield(RightScale::OperationResult.cancel('enough already')).once
+        flexmock(EM).should_receive(:add_timer).never
         request.run
       end
     end

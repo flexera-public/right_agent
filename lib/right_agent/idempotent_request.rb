@@ -135,15 +135,19 @@ module RightScale
         @done = true
         succeed(res.content)
       else
+        reason = res.content
         if res.non_delivery?
-          Log.info("Request non-delivery (#{res.content}) for #{@operation}")
+          Log.info("Request non-delivery (#{reason}) for #{@operation}")
         elsif res.retry?
-          reason = (res.content && !res.content.empty?) ? res.content : "RightScale not ready"
-          Log.info("Request #{@operation} failed (#{reason})")
+          reason = (reason && !reason.empty?) ? reason : "RightScale not ready"
+          Log.info("Request #{@operation} failed (#{reason}) and should be retried")
+        elsif res.cancel?
+          reason = (reason && !reason.empty?) ? reason : "RightScale cannot execute request"
+          Log.info("Request #{@operation} canceled (#{reason})")
         else
-          Log.info("Request #{@operation} failed (#{res.content})")
+          Log.info("Request #{@operation} failed (#{reason})")
         end
-        if res.non_delivery? || res.retry? || @retry_on_error
+        if (res.non_delivery? || res.retry? || @retry_on_error) && !res.cancel?
           Log.info("Retrying in #{@retry_delay} seconds...")
           if @retry_delay > 0
             this_delay = @retry_delay
