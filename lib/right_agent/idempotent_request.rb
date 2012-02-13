@@ -126,7 +126,6 @@ module RightScale
       return true if @done
       @raw_response = r
       res = result_from(r)
-      res = OperationResult.non_delivery unless res
       if res.success?
         if @cancel_timer
           @cancel_timer.cancel
