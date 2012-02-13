@@ -40,7 +40,7 @@ module RightScale
     RETRY_BACKOFF_FACTOR = 2
 
     # Default timeout with -1 meaning never timeout
-    DEFAULT_TIMEOUT = -1
+    DEFAULT_TIMEOUT = 4 * 24 * 60 * 60
 
     attr_reader :raw_response
 
