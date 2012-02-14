@@ -35,6 +35,7 @@ module RightScale
     RETRY        = 3
     NON_DELIVERY = 4
     MULTICAST    = 5 # Deprecated for agents at version 13 or above
+    CANCEL       = 6
 
     # Non-delivery reasons
     NON_DELIVERY_REASONS = [
@@ -81,9 +82,10 @@ module RightScale
       when SUCCESS      then 'success'
       when ERROR        then 'error' + (reason ? " (#{truncated_error})" : "")
       when CONTINUE     then 'continue'
-      when RETRY        then 'retry'
+      when RETRY        then 'retry' + (reason ? " (#{@content})" : "")
       when NON_DELIVERY then 'non-delivery' + (reason ? " (#{@content})" : "")
       when MULTICAST    then 'multicast'
+      when CANCEL       then 'cancel' + (reason ? " (#{@content})" : "")
       end
     end
 
@@ -126,7 +128,7 @@ module RightScale
     # Create new success status
     #
     # === Parameters
-    # content(Object):: Any data associated with successful results - defaults to nil
+    # content(Object):: Any data associated with successful results, defaults to nil
     #
     # === Return
     # (OperationResult):: Corresponding result
@@ -151,7 +153,7 @@ module RightScale
     # Create new continue status
     #
     # === Parameters
-    # content(Object):: Any data associated with continue - defaults to nil
+    # content(Object):: Any data associated with continue, defaults to nil
     #
     # === Return
     # (OperationResult):: Corresponding result
@@ -162,7 +164,7 @@ module RightScale
     # Create new retry status
     #
     # === Parameters
-    # content(Object):: Any data associated with retry - defaults to nil
+    # content(Object):: Any data associated with retry, defaults to nil
     #
     # === Return
     # (OperationResult):: Corresponding result
@@ -191,6 +193,17 @@ module RightScale
     # (OperationResult):: Corresponding result
     def self.multicast(targets)
       OperationResult.new(MULTICAST, targets)
+    end
+
+    # Cancel request and never retry
+    #
+    # === Parameters
+    # content(Object):: Any data associated with cancel, defaults to nil
+    #
+    # === Return
+    # (OperationResult):: Corresponding result
+    def self.cancel(content = nil)
+      OperationResult.new(CANCEL, content)
     end
 
     # Was last operation successful?
@@ -248,6 +261,15 @@ module RightScale
       status_code == MULTICAST
     end
 
+    # Was last operation status CANCEL?
+    #
+    # === Return
+    # true:: If status is CANCEL
+    # false:: Otherwise
+    def cancel?
+      status_code == CANCEL
+    end
+
     # Array of serialized fields given to constructor
     def serialized_members
       [@status_code, @content]
@@ -263,6 +285,7 @@ module RightScale
     def continue_result(*args) OperationResult.continue(*args) end
     def retry_result(*args) OperationResult.retry(*args) end
     def non_delivery_result(*args) OperationResult.non_delivery(*args) end
+    def cancel_result(*args) OperationResult.cancel(*args) end
     def result_from(*args) OperationResult.from_results(*args) end
 
   end # OperationResultHelper

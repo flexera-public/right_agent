@@ -47,3 +47,4 @@
 #     Reversed push selector default from :all to :any when the target is a hash
 # 18: Added respond field to Push to indicate routing feedback is desired by sender
 # 19: Allow array of targets for Push or Request
+# 20: Add CANCEL status to OperationResult
