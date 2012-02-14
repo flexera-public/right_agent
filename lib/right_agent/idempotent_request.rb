@@ -22,6 +22,26 @@
 
 module RightScale
 
+  # This is a retryable request for use when the execution of the request by the
+  # receiver is known to be idempotent and when there is a need to indefinitely
+  # pursue getting a usable response, e.g., when an instance is launching.
+  # It is implemented as an EM::Deferrable and as such invokes the Proc defined
+  # with its #callback method with the result content from a OperationResult::SUCCESS
+  # response, or it will invoke the Proc defined with its #errback method with error
+  # content if the response is an OperationResult::ERROR or CANCEL, or if the request
+  # has timed out. The request can be canceled with the #cancel method, or the receiver
+  # of the request may respond with a CANCEL result to cause the request to be canceled.
+  # This is useful in situations where the request is never expected to succeed
+  # regardless of the number of retries. By default if the response to the request
+  # is an OperationResult::RETRY or NON_DELIVERY indication, the request is automatically
+  # retried, as is also the case for an ERROR indication if the :retry_on_error option
+  # is specified. The retry algorithm is controlled by the :retry_delay, :retry_delay_count,
+  # and :max_retry_delay settings. The initial retry interval is the default or specified
+  # :retry_delay and this interval is used :retry_delay_count times, at which point the
+  # :retry_delay is doubled and the :retry_delay_count is halved. This backoff is again
+  # applied after the new :retry_delay_count is reached, and so on until :retry_delay
+  # reaches :max_retry_delay which then is used as the interval until the default or
+  # specified :timeout is reached. The default :timeout is 4 days.
   class IdempotentRequest
 
     include OperationResultHelper
