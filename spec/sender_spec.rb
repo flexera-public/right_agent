@@ -153,14 +153,16 @@ describe RightScale::Sender do
     end
 
     it "should attempt to reconnect if mapper ping times out" do
-      @log.should_receive(:warning).with(/Mapper ping via broker/).once
+      @log.should_receive(:error).with(/Mapper ping via broker/).once
       @agent.should_receive(:options).and_return(:ping_interval => 1000)
       broker_id = "rs-broker-localhost-5672"
       @broker.should_receive(:identity_parts).with(broker_id).and_return(["localhost", 5672, 0, 0]).once
       @agent.should_receive(:connect).with("localhost", 5672, 0, 0, true).once
       old_ping_timeout = RightScale::Sender::ConnectivityChecker::PING_TIMEOUT
+      old_max_ping_timeouts = RightScale::Sender::ConnectivityChecker::MAX_PING_TIMEOUTS
       begin
         RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, 0.5)
+        RightScale::Sender::ConnectivityChecker.const_set(:MAX_PING_TIMEOUTS, 1)
         EM.run do
           EM.add_timer(1) { EM.stop }
           RightScale::Sender.new(@agent)
@@ -170,6 +172,7 @@ describe RightScale::Sender do
         end
       ensure
         RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, old_ping_timeout)
+        RightScale::Sender::ConnectivityChecker.const_set(:MAX_PING_TIMEOUTS, old_max_ping_timeouts)
       end
     end
   end
@@ -365,7 +368,7 @@ describe RightScale::Sender do
       @broker_id = "broker"
       @broker_ids = [@broker_id]
       @broker = flexmock("Broker", :subscribe => true, :publish => @broker_ids, :connected? => true,
-                         :identity_parts => ["host", 123, 0, 0]).by_default
+                         :all => @broker_ids, :identity_parts => ["host", 123, 0, 0]).by_default
       @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
       @agent.should_receive(:options).and_return({:ping_interval => 0, :time_to_live => 100}).by_default
       RightScale::Sender.new(@agent)
@@ -626,19 +629,24 @@ describe RightScale::Sender do
           @instance.connectivity_checker.ping_timer.should == nil
         end
 
-        it "should try to reconnect if ping times out" do
-          @log.should_receive(:warning).once
-          flexmock(EM::Timer).should_receive(:new).and_yield.once
+        it "should try to reconnect if ping times out repeatedly" do
+          @log.should_receive(:warning).with(/timed out after 30 seconds/).twice
+          @log.should_receive(:error).with(/reached maximum of 3 timeouts/).once
+          flexmock(EM::Timer).should_receive(:new).and_yield.times(3)
           flexmock(@agent).should_receive(:connect).once
+          @instance.connectivity_checker.check(@broker_id)
+          @instance.connectivity_checker.check(@broker_id)
           @instance.connectivity_checker.check(@broker_id)
           @instance.connectivity_checker.ping_timer.should == nil
         end
 
         it "should log error if attempt to reconnect fails" do
-          @log.should_receive(:warning).once
+          @log.should_receive(:warning).with(/timed out after 30 seconds/).twice
           @log.should_receive(:error).with(/Failed to reconnect/, Exception, :trace).once
           flexmock(@agent).should_receive(:connect).and_raise(Exception)
-          flexmock(EM::Timer).should_receive(:new).and_yield.once
+          flexmock(EM::Timer).should_receive(:new).and_yield.times(3)
+          @instance.connectivity_checker.check(@broker_id)
+          @instance.connectivity_checker.check(@broker_id)
           @instance.connectivity_checker.check(@broker_id)
         end
       end
