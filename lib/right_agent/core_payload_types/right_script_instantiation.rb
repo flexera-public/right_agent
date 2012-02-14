@@ -53,6 +53,9 @@ module RightScale
     # (Array of SecureDocumentLocation) attributes that must be resolved by the instance
     attr_accessor :external_inputs
 
+    # (Array) unready input names associated with this executable or nil
+    attr_accessor :unready_inputs
+
     def initialize(*args)
       @nickname        = args[0] if args.size > 0
       @source          = args[1] if args.size > 1
@@ -62,11 +65,12 @@ module RightScale
       @id              = args[5] if args.size > 5
       @ready           = args[6] if args.size > 6
       @external_inputs = args[7] if args.size > 7
+      @unready_inputs  = args[8] if args.size > 8
     end
     
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs ]
+      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @unready_inputs ]
     end
     
   end
