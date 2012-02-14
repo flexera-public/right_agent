@@ -140,6 +140,13 @@ describe RightScale::OperationResult do
       result.non_delivery?.should be_true
       result.content.should == "Non-delivery"
     end
+
+    it "should store cancel content value and respond to cancel query" do
+      result = RightScale::OperationResult.cancel("Cancel")
+      result.kind_of?(RightScale::OperationResult).should be_true
+      result.cancel?.should be_true
+      result.content.should == "Cancel"
+    end
   end
 
   describe "when converting result to string" do
@@ -160,10 +167,22 @@ describe RightScale::OperationResult do
       result.status.should == "error"
     end
 
+    it "should display retry reason" do
+      result = RightScale::OperationResult.retry("because")
+      result.to_s.should == "retry (because)"
+      result.status.should == "retry"
+    end
+
     it "should display non-delivery reason" do
       result = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TTL_EXPIRATION)
       result.to_s.should == "non-delivery (TTL expiration)"
       result.status.should == "non-delivery"
+    end
+
+    it "should display cancel reason" do
+      result = RightScale::OperationResult.cancel("enough already")
+      result.to_s.should == "cancel (enough already)"
+      result.status.should == "cancel"
     end
 
   end
