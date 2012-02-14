@@ -334,7 +334,8 @@ module RightScale
       EM.error_handler do |e|
         Log.error("EM block execution failed with exception", e, :trace)
         Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
-        EM.stop
+        # Cannot rely on EM.stop at this point, so exit to give chance for monit restart
+        exit(1)
       end
 
       EM.run do
