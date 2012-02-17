@@ -49,6 +49,13 @@ module RightScale
     # Shard scope value meaning restrict sending request only to agents with no shard id
     GLOBAL = 0
 
+    # Instance variables that are not serialized because they are only used locally
+    NOT_SERIALIZED = ["received_at"]
+
+    # (Float) Time in seconds in Unix-epoch when message was received
+    attr_accessor :received_at
+
+    # (Integer) Size of packet in bytes
     attr_accessor :size
 
     def initialize
@@ -87,7 +94,11 @@ module RightScale
     def to_msgpack(*a)
       msg = {
         'msgpack_class' => self.class.name,
-        'data'          => instance_variables.inject({}) { |m, ivar| m[ivar.to_s.sub(/@/,'')] = instance_variable_get(ivar); m },
+        'data'          => instance_variables.inject({}) do |m, ivar|
+                             name = ivar.to_s.sub(/@/, '')
+                             m[name] = instance_variable_get(ivar) unless NOT_SERIALIZED.include?(name)
+                             m
+                           end,
         'size'          => nil
       }.to_msgpack(*a)
       @size = msg.size
@@ -111,7 +122,11 @@ module RightScale
 
       js = {
         'json_class' => class_name,
-        'data'       => instance_variables.inject({}) { |m, ivar| m[ivar.to_s.sub(/@/,'')] = instance_variable_get(ivar); m }
+        'data'       => instance_variables.inject({}) do |m, ivar|
+                          name = ivar.to_s.sub(/@/, '')
+                          m[name] = instance_variable_get(ivar) unless NOT_SERIALIZED.include?(name)
+                          m
+                        end
       }.to_json(*a)
       @size = js.size
       js = js.chop + ",\"size\":#{@size}}"
@@ -137,7 +152,11 @@ module RightScale
       v = __send__(version) if version
       v = (v && v != DEFAULT_VERSION) ? " v#{v}" : ""
       log_msg = "[#{name}#{v}]"
-      duration = ", #{enough_precision(@duration)} sec" if @duration && (filter.nil? || filter.include?(:duration))
+      duration = if @duration && (filter.nil? || filter.include?(:duration))
+        ", #{enough_precision(@duration)} sec"
+      elsif @received_at && (filter.nil? || filter.include?(:local_duration))
+        ", #{enough_precision(Time.now.to_f - @received_at)} sec"
+      end
       log_msg += " (#{@size.to_s.gsub(/(\d)(?=(\d\d\d)+(?!\d))/, "\\1,")} bytes#{duration})" if @size && !@size.to_s.empty?
       log_msg
     end
