@@ -57,4 +57,10 @@ describe RightScale::Platform do
       end
     end
   end
+  
+  context :linux do
+    it 'should have a PackageManager class' do
+      @platform.linux.PackageManager.should_not be_nil if @platform.linux?
+    end
+  end
 end

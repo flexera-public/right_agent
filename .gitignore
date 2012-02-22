@@ -8,3 +8,5 @@ tags
 pkg/*
 doc/rdocs/*
 nbproject/*
+.loadpath
+.project

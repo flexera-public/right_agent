@@ -83,6 +83,48 @@ module RightScale
     def rhel?
       @flavor =~ /redhatenterpriseserver/
     end
+    
+    class PackageManager
+      # Does this machine have aptitude
+      #
+      # === Return
+      # true:: If aptitutde is available in the expected directory
+      # false:: Otherwise
+      def aptitude?
+        File.executable? '/usr/bin/apt-get'
+      end
+      
+      # Does this machine have yum
+      #
+      # === Return
+      # true:: If yum is available in the expected directory
+      # false:: Otherwise
+      def yum?
+        File.executable? '/usr/bin/yum'
+      end
+      
+      # Does this machine have yum
+      #
+      # === Return
+      # true:: If yum is available in the expected directory
+      # false:: Otherwise
+      def zipper?
+        File.executable? '/usr/bin/zypper'
+      end
+      
+      # Install packages based on installed package manager
+      #
+      # === Parameters
+      # command_name(Array):: Array of packages names to be installed
+      #
+      # === Return
+      # true:: If installations of all packages was successfull
+      # false:: Otherwise
+      def install(packages)
+        `yum install -y #{packages} 2>&1` if yum?
+      end
+    end
+    
 
     class Filesystem
 
