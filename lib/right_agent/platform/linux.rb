@@ -424,10 +424,13 @@ module RightScale
       
       @output = ""
       
+      class PackageNotFound < Exception; end
+      class PackageManagerNotFound < Exception; end
+      
       # Does this machine have aptitude
       #
       # === Return
-      # true:: If aptitutde is available in the expected directory
+      # true:: If aptitude is available in the expected directory
       # false:: Otherwise
       def aptitude?
         File.executable? '/usr/bin/apt-get'
@@ -462,19 +465,26 @@ module RightScale
       def install(packages)
         return true if packages.empty?
         
+        packages = packages.uniq.join(' ')
         failed_packages = []
         
         if yum?
-          @output = `yum install -y #{packages} 2>&1`
-          @output.scan(/No package (.*) available./) { |package| failed_packages << package.first }
-          raise StandardError, "The following packages were not available: #{failed_packages.join(', ')}" unless failed_packages.empty?
+          command = "yum install -y #{packages} 2>&1"
+          regex   = /No package (.*) available\./
         elsif aptitude?
-          @output = `apt-get install -y #{packages} 2>&1`
+          command = "apt-get install -y #{packages} 2>&1"
+          regex = /E: Couldn't find package (.*)/
         elsif zypper?
-          @output = `zypper --no-gpg-checks -n #{packages} 2>&1`
+          command = "zypper --no-gpg-checks -n #{packages} 2>&1"
+          regex = /Package '(.*)' not found\./
         else
-          raise StandardError, "No package manager binary (apt, yum, zypper) found in /usr/bin"
+          raise PackageManagerNotFound, "No package manager binary (apt, yum, zypper) found in /usr/bin"
         end
+        
+        @output = `#{command}`
+        @output.scan(regex) { |package| failed_packages << package.first }
+        raise PackageNotFound, "The following packages were not available: #{failed_packages.join(', ')}" unless failed_packages.empty?
+        return true
       end
     end
 
