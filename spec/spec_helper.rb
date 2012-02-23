@@ -35,6 +35,10 @@ RSpec.configure do |c|
   c.mock_with(:flexmock)
 end
 
+require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'darwin_spec')) if RightScale::Platform.darwin?
+require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'windows_spec')) if RightScale::Platform.windows?
+require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'linux_spec')) if RightScale::Platform.linux?
+
 RightScale::Log.init
 
 $TESTING = true
