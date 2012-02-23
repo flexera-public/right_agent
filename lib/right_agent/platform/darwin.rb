@@ -235,6 +235,12 @@ module RightScale
         return `ps -o rss= -p #{pid}`.to_i
       end
     end
+    
+    class Installer
+      def install(packages)
+        raise "not yet implemented"
+      end
+    end
 
   end # Platform
 

@@ -24,20 +24,18 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
 
 describe RightScale::Platform do
-  before(:all) do
-    @platform = RightScale::Platform
-  end
+  subject { RightScale::Platform }
 
   context :shell do
     context :uptime do
       it 'should be positive' do
-        @platform.shell.uptime.should > 0
+        subject.shell.uptime.should > 0
       end
 
       it 'should be strictly increasing' do
-        u0 = @platform.shell.uptime
+        u0 = subject.shell.uptime
         sleep(1)
-        u1 = @platform.shell.uptime
+        u1 = subject.shell.uptime
         
         (u1 - u0).should >= 0
       end
@@ -45,22 +43,36 @@ describe RightScale::Platform do
 
     context :booted_at do
       it 'should be some time in the past' do
-        Time.at(@platform.shell.booted_at).to_i.should < Time.now.to_i
+        Time.at(subject.shell.booted_at).to_i.should < Time.now.to_i
       end
 
       it 'should be constant' do
-        b0 = @platform.shell.booted_at
+        b0 = subject.shell.booted_at
         sleep(1)
-        b1 = @platform.shell.booted_at
+        b1 = subject.shell.booted_at
 
         b0.should == b1
       end
     end
   end
   
-  context :linux do
-    it 'should have a PackageManager class' do
-      @platform.linux.PackageManager.should_not be_nil if @platform.linux?
+  context :installer do    
+    specify { subject.installer.should_not be_nil }
+    
+    context :darwin do
+      specify { lambda { subject.installer.install([]) }.should raise_exception if subject.darwin? }
     end
+    
+    context :windows do
+      specify { lambda { subject.installer.install([]) }.should raise_exception if subject.windows? }
+    end
+    
+    context :linux do
+      specify do
+        packages = []
+        RightScale::Platform.installer.install(packages).should == true if subject.linux?
+      end
+    end
+    
   end
 end
