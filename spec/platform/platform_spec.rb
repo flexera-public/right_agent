@@ -21,7 +21,9 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
-
+require File.expand_path(File.join(File.dirname(__FILE__), 'darwin')) if RightScale::Platform.darwin?
+require File.expand_path(File.join(File.dirname(__FILE__), 'windows')) if RightScale::Platform.windows?
+require File.expand_path(File.join(File.dirname(__FILE__), 'linux')) if RightScale::Platform.linux?
 
 module RightScale
   describe Platform do
