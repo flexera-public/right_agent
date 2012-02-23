@@ -35,14 +35,6 @@ module RightScale
 
     include Serializable
 
-    # Default thread name when no thread is specified for an executable bundle.
-    DEFAULT_THREAD_NAME = 'default'
-
-    # Regular expression to define what a valid thread name looks like: an alpha character
-    # followed by 0 or more alphanumerics or underscores. Only lower-case characters are
-    # allowed.
-    VALID_THREAD_NAME   = /^[a-z][a-z0-9_]*$/
-
     # (Array) Collection of RightScripts and chef recipes instantiations
     attr_accessor :executables
 
@@ -125,19 +117,6 @@ module RightScale
     def to_s
       desc = @executables.collect { |e| e.nickname }.join(', ') if @executables
       desc ||= 'empty bundle'
-    end
-
-    # Gets the thread name from a bundle, if any. Uses the default thread name for
-    # when a thread name is not specified (for backward compatibility, etc.).
-    #
-    # === Parameters
-    # bundle(ExecutableBundle):: bundle to inspect
-    #
-    # === Return
-    # thread_name(String):: thread name for bundle execution
-    def thread_name(value = nil)
-      @thread_name = value if value
-      return @thread_name || DEFAULT_THREAD_NAME
     end
   end
 end
