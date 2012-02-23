@@ -1082,7 +1082,11 @@ EOF
       # the UTC timestamp at which the system was booted
       def booted_at
         begin
-          wmic_output = `echo | wmic OS Get LastBootUpTime`
+          Dir.mktmpdir do |temp_dir_path|
+            Dir.chdir(temp_dir_path) do
+              wmic_output = `echo | wmic OS Get LastBootUpTime`
+            end
+          end
 
           match = /(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.\d{6}([+-]\d{3})/.match(wmic_output)
 
