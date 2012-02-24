@@ -1213,6 +1213,12 @@ EOF
         return process_memory_counters[12..16].unpack("L")[0] / 1024  # bytes to KB
       end
     end
+    
+    class Installer
+      def install(packages)
+        raise ::RightScale::Win32Error.new("Not implemented yet")
+      end
+    end
 
     protected
 
