@@ -472,6 +472,7 @@ module RightScale
           command = "yum install -y #{packages} 2>&1"
           regex   = /No package (.*) available\./
         elsif aptitude?
+          ENV['DEBIAN_FRONTEND'] = "noninteractive"
           command = "apt-get install -y #{packages} 2>&1"
           regex = /E: Couldn't find package (.*)/
         elsif zypper?
