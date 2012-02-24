@@ -54,6 +54,9 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
+    # (String) The name of the RIghtLink thread to run this bundle on
+    attr_accessor :thread_name
+
     # (Hash):: collection of repos to be checked out on the instance
     #   :key (String):: the hash id (SHA) of the repository
     #  :value (Hash):: repo and cookbook detail
