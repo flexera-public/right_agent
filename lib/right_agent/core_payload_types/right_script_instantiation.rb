@@ -53,8 +53,10 @@ module RightScale
     # (Array of SecureDocumentLocation) attributes that must be resolved by the instance
     attr_accessor :external_inputs
 
-    # (Array) unready input names associated with this executable or nil
-    attr_accessor :unready_inputs
+    # (Hash) nil or Hash of input name to flags (array of string tokens) indicating additional
+    # boolean properties of the input which are useful to the instance. the presence of the
+    # flag means true, absense means false.
+    attr_accessor :input_flags
 
     def initialize(*args)
       @nickname        = args[0] if args.size > 0
@@ -65,12 +67,12 @@ module RightScale
       @id              = args[5] if args.size > 5
       @ready           = args[6] if args.size > 6
       @external_inputs = args[7] if args.size > 7
-      @unready_inputs  = args[8] if args.size > 8
+      @input_flags     = args[8] if args.size > 8
     end
     
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @unready_inputs ]
+      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @input_flags ]
     end
     
   end
