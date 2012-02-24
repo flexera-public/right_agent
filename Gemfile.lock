@@ -9,21 +9,21 @@ GIT
 
 GIT
   remote: git@github.com:rightscale/right_support.git
-  revision: 9afceed135cc9310f637f206cc020cd548fa978d
-  branch: master
+  revision: da815891321dc3fef32759f6041012e887ef9078
+  branch: azure_11947_sort_stats
   specs:
-    right_support (1.2.0)
+    right_support (1.3.0)
 
 PATH
   remote: .
   specs:
-    right_agent (0.8.0)
+    right_agent (0.8.2)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)
       right_amqp (~> 0.1)
       right_popen (~> 1.0.11)
-      right_support (~> 1.2)
+      right_support (~> 1.3)
 
 GEM
   remote: http://rubygems.org/

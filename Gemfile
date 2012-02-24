@@ -4,7 +4,7 @@ source 'http://gems.github.com'
 gemspec
 
 gem 'right_support', :git => 'git@github.com:rightscale/right_support.git',
-                     :branch => 'master'
+                     :branch => 'azure_11947_sort_stats'
 gem 'right_amqp',    :git => 'git@github.com:rightscale/right_amqp.git',
                      :branch => 'master'
 
