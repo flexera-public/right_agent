@@ -65,13 +65,24 @@ describe "Packet: Base class" do
     packet.to_s(filter = nil, version = :send_version).should == "[test_packet v5]"
   end
 
-  it "should convert to string including duration if filtered and size is also known" do
+  it "should convert to string including duration if filtered and size known" do
     packet = TestPacket.new(1, 0.042122, 323)
     packet.to_s(filter = nil).should == "[test_packet] (323 bytes, 0.042 sec)"
     packet.to_s(filter = []).should == "[test_packet] (323 bytes)"
     packet.to_s(filter = [:duration]).should == "[test_packet] (323 bytes, 0.042 sec)"
     packet = TestPacket.new(1, 0.042122)
     packet.to_s(filter = [:duration]).should == "[test_packet]"
+  end
+
+  it "should convert to string including local duration if filtered and size known" do
+    flexmock(Time).should_receive(:now).and_return(Time.at(1000000), Time.at(1000000.012))
+    packet = TestPacket.new(1, nil, 323)
+    packet.received_at = Time.now.to_f
+    packet.to_s(filter = nil).should == "[test_packet] (323 bytes, 0.012 sec)"
+    packet.to_s(filter = []).should == "[test_packet] (323 bytes)"
+    packet.to_s(filter = [:local_duration]).should == "[test_packet] (323 bytes, 0.012 sec)"
+    packet = TestPacket.new(1)
+    packet.to_s(filter = [:local_duration]).should == "[test_packet]"
   end
 
   it "should convert floating point values to decimal digit string with at least two digit precision" do
@@ -125,6 +136,12 @@ describe "Packet: Base class" do
       packet.to_msgpack.should_not =~ /cls_attr/
     end
 
+    it "should not dump excluded instance variables" do
+      packet = TestPacket.new(382)
+      packet.received_at = Time.now.to_f
+      packet.to_msgpack.should_not =~ /received_at/
+    end
+
     it "should remove '@' from instance variables" do
       packet = TestPacket.new(2)
       packet.to_msgpack.should_not =~ /@attr1/
@@ -155,6 +172,12 @@ describe "Packet: Base class" do
     it "should not dump class variables" do
       packet = TestPacket.new(382)
       packet.to_json.should_not =~ /cls_attr/
+    end
+
+    it "should not dump excluded instance variables" do
+      packet = TestPacket.new(382)
+      packet.received_at = Time.now.to_f
+      packet.to_json.should_not =~ /received_at/
     end
 
     it "should remove '@' from instance variables" do
