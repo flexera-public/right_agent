@@ -54,7 +54,7 @@ module RightScale
   #  - .flavor
   #  - .release
   #  - .linux?
-  #  - .mac?
+  #  - .darwin?
   #  - .windows?
   #  - .ec2?
   #  - .rackspace?
@@ -241,6 +241,14 @@ module RightScale
     def process
       platform_service(:process)
     end
+    
+    # Installer information object
+    #
+    # === Return
+    # (Object):: Platform-specific installer information object
+    def installer
+      platform_service(:installer)
+    end
 
     private
 
@@ -251,6 +259,7 @@ module RightScale
       @shell      = nil
       @ssh        = nil
       @controller = nil
+      @installer  = nil
 
       @ec2        = nil
       @rackspace  = nil
@@ -293,7 +302,7 @@ module RightScale
     # Retrieve platform specific service implementation
     #
     # === Parameters
-    # name(Symbol):: Service name, one of :filesystem, :shell, :ssh, :controller
+    # name(Symbol):: Service name, one of :filesystem, :shell, :ssh, :controller, :installer
     #
     # === Return
     # res(Object):: Service instance

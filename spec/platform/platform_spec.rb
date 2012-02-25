@@ -21,40 +21,43 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
+require File.expand_path(File.join(File.dirname(__FILE__), 'darwin')) if RightScale::Platform.darwin?
+require File.expand_path(File.join(File.dirname(__FILE__), 'windows')) if RightScale::Platform.windows?
+require File.expand_path(File.join(File.dirname(__FILE__), 'linux')) if RightScale::Platform.linux?
 
-
-describe RightScale::Platform do
-  before(:all) do
-    @platform = RightScale::Platform
-  end
-
-  context :shell do
-    context :uptime do
-      it 'should be positive' do
-        @platform.shell.uptime.should > 0
+module RightScale
+  describe Platform do
+    subject { RightScale::Platform }
+    
+    context :shell do
+      context :uptime do
+        it 'should be positive' do
+          subject.shell.uptime.should > 0
+        end
+  
+        it 'should be strictly increasing' do
+          u0 = subject.shell.uptime
+          sleep(1)
+          u1 = subject.shell.uptime
+          
+          (u1 - u0).should >= 0
+        end
       end
-
-      it 'should be strictly increasing' do
-        u0 = @platform.shell.uptime
-        sleep(1)
-        u1 = @platform.shell.uptime
-        
-        (u1 - u0).should >= 0
+  
+      context :booted_at do
+        it 'should be some time in the past' do
+          Time.at(subject.shell.booted_at).to_i.should < Time.now.to_i
+        end
+  
+        it 'should be constant' do
+          b0 = subject.shell.booted_at
+          sleep(1)
+          b1 = subject.shell.booted_at
+  
+          b0.should == b1
+        end
       end
     end
-
-    context :booted_at do
-      it 'should be some time in the past' do
-        Time.at(@platform.shell.booted_at).to_i.should < Time.now.to_i
-      end
-
-      it 'should be constant' do
-        b0 = @platform.shell.booted_at
-        sleep(1)
-        b1 = @platform.shell.booted_at
-
-        b0.should == b1
-      end
-    end
+    
   end
 end
