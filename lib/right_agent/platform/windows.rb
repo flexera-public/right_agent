@@ -136,13 +136,37 @@ module RightScale
       end
 
       # Directory containing generated agent configuration files
+      # @deprecated
       def cfg_dir
-        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))
+        warn "cfg_dir is deprecated; please use right_agent_cfg_dir"
+        right_agent_cfg_dir
       end
 
       # RightScale state directory for the current platform
+      # @deprecated
       def right_scale_state_dir
+        warn "right_scale_state_dir is deprecated; please use either right_scale_static_state_dir or right_agent_dynamic_state_dir"
+        right_scale_static_state_dir
+      end
+
+      # Directory containing generated agent configuration files
+      def right_agent_cfg_dir
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))
+      end
+
+      # Static (time-invariant) state that is common to all RightScale apps/agents
+      def right_scale_static_state_dir
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d'))
+      end
+
+      # Static (time-invariant) state that is specific to RightLink
+      def right_link_static_state_dir
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d', 'right_link'))
+      end
+
+      # Dynamic, persistent runtime state that is specific to RightLink
+      def right_link_dynamic_state_dir
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_link'))
       end
 
       # Spool directory for the current platform

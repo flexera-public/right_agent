@@ -108,7 +108,7 @@ describe RightScale::AgentConfig do
   end
 
   it 'should default configuration directory to platform specific directory' do
-    @agent_config.cfg_dir.should == RightScale::Platform.filesystem.cfg_dir
+    @agent_config.cfg_dir.should == RightScale::Platform.filesystem.right_agent_cfg_dir
   end
 
   it 'should set configuration directory' do
