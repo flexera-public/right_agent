@@ -73,6 +73,32 @@ module RightScale
       PROTOCOL_VERSION
     end
 
+    # Default thread name when no thread is specified for an executable bundle.
+    DEFAULT_THREAD_NAME = 'default'
+
+    # Default thread name when no thread is specified for an executable bundle.
+    #
+    # === Return
+    # (String):: default thread name...
+    def self.default_thread_name
+      DEFAULT_THREAD_NAME
+    end
+
+    # Regular expression to define what a valid thread name looks like: an alpha character
+    # followed by 0 or more alphanumerics or underscores. Only lower-case characters are
+    # allowed.
+    VALID_THREAD_NAME   = /^[a-z][a-z0-9_]*$/
+
+    # Regular expression to define what a valid thread name looks like: an alpha character
+    # followed by 0 or more alphanumerics or underscores. Only lower-case characters are
+    # allowed.
+    #
+    # === Return
+    # (String):: default thread name...
+    def self.valid_thread_name
+      VALID_THREAD_NAME
+    end
+
     # Initialize path to root directory of agent
     #
     # === Parameters
