@@ -42,6 +42,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('eventmachine', '~> 0.12.10')
   spec.add_dependency('right_popen', '~> 1.0.11')
   spec.add_dependency('msgpack', '0.4.4')
+  spec.add_dependency('net-ssh', '~> 2.0')
 
   spec.description = <<-EOF
 RightAgent provides a foundation for running an agent on a server to interface
