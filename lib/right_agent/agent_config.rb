@@ -243,7 +243,7 @@ module RightScale
     # === Return
     # (String):: Directory path name
     def self.cfg_dir
-      @cfg_dir ||= Platform.filesystem.cfg_dir
+      @cfg_dir ||= Platform.filesystem.right_agent_cfg_dir
     end
 
     # Path to generated agent configuration file
