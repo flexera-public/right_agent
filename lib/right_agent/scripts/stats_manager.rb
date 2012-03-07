@@ -206,6 +206,10 @@ module RightScale
     # result(String):: Result packet in JSON format containing stats or error
     # options(Hash):: Command line options:
     #   :json(Boolean):: Whether to display in JSON format
+    #   :name_width(Integer):: Maximum characters in displayed stat name
+    #   :sub_name_width(Integer):: Maximum characters in displayed sub-stat name
+    #   :sub_stat_value_width(Integer):: Maximum characters in displayed sub-stat value line
+    #   :exception_message_width(Integer):: Maximum characters displayed for exception message
     #
     # === Return
     # true:: Always return true
@@ -215,7 +219,8 @@ module RightScale
         $stdout.puts result.content.to_json
       else
         if result.respond_to?(:success?) && result.success?
-          $stdout.puts "\n#{RightSupport::Stats.stats_str(result.content)}\n"
+          stats = RightSupport::Stats.stats_str(result.content, options)
+          $stdout.puts "\n#{stats}\n"
         else
           $stderr.puts "\nCould not retrieve #{agent_name} agent stats: #{result.inspect}"
         end
