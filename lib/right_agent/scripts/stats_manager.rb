@@ -219,8 +219,7 @@ module RightScale
         $stdout.puts result.content.to_json
       else
         if result.respond_to?(:success?) && result.success?
-          stats = RightSupport::Stats.stats_str(result.content, options[:name_width], options[:sub_name_width],
-                                                options[:sub_stat_value_width], options[:exception_message_width])
+          stats = RightSupport::Stats.stats_str(result.content, options)
           $stdout.puts "\n#{stats}\n"
         else
           $stderr.puts "\nCould not retrieve #{agent_name} agent stats: #{result.inspect}"

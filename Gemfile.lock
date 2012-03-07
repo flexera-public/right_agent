@@ -9,7 +9,7 @@ GIT
 
 GIT
   remote: git@github.com:rightscale/right_support.git
-  revision: da815891321dc3fef32759f6041012e887ef9078
+  revision: 12f91f29fe68dc53913a86f3d204e2f9c8cea58f
   branch: azure_11947_sort_stats
   specs:
     right_support (1.3.0)
