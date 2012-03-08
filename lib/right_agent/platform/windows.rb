@@ -60,7 +60,6 @@ module RightScale
 
     attr_reader :flavor, :release
 
-    # TODO Initialize flavor and release (need to run on windows to finalize)
     def init
       getversionex = Win32API.new("kernel32", "GetVersionEx", 'P', 'L')
       osversioninfo = [
@@ -74,6 +73,8 @@ module RightScale
 
       raise 'Failed to detect Windows version' if 0 == getversionex.call(osversioninfo)  # zero is failure
       version = osversioninfo.unpack('LLLLLZ128') # 'Z' means ASCIIZ string
+      @flavor = 'windows'  # there can be only one
+      @release = "#{version[1]}.#{version[2]}.#{version[3]}"
     end
 
     class Filesystem
@@ -974,7 +975,9 @@ EOF
         escaped = []
         [shell_script_file_path, arguments].flatten.each do |arg|
           value = arg.to_s
-          escaped << (value.index(' ') ? "'#{value.gsub("'", "''")}'" : value)
+          # note that literal ampersand must be quoted on the powershell command
+          # line because it otherwise means 'execute what follows'.
+          escaped << ((value.index(' ') || value.index('&')) ? "'#{value.gsub("'", "''")}'" : value)
         end
 
         # resolve lines before & after script.
@@ -1247,8 +1250,6 @@ EOF
         raise ::RightScale::Win32Error.new("Not implemented yet")
       end
     end
-
-    protected
 
     # internal class for querying OS version, etc.
     class OSInformation
