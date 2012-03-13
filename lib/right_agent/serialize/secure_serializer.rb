@@ -29,6 +29,27 @@ module RightScale
     class MissingCertificate < Exception; end
     class InvalidSignature < Exception; end
 
+    # create the one and only SecureSerializer
+    def self.init(serializer, identity, cert, key, store, encrypt = true)
+      @serializer = SecureSerializer.new(serializer, identity, cert, key, store, encrypt)
+      true
+    end
+
+    # Was serializer initialized?
+    def self.initialized?
+      !@serializer.nil?
+    end
+
+    # see SecureSerializer::dump
+    def self.dump(obj, encrypt = nil)
+      @serializer.dump(obj, encrypt)
+    end
+
+    # see SecureSerializer::load
+    def self.load(msg)
+      @serializer.load(msg)
+    end
+
     # Initialize serializer, must be called prior to using it
     #
     # === Parameters
@@ -40,18 +61,13 @@ module RightScale
     #   encryption (get_recipients) and signature validation (get_signer)
     # encrypt(Boolean):: true if data should be signed and encrypted, otherwise
     #   just signed, true by default
-    def self.init(serializer, identity, cert, key, store, encrypt = true)
+    def initialize(serializer, identity, cert, key, store, encrypt = true)
       @identity = identity
       @cert = cert
       @key = key
       @store = store
       @encrypt = encrypt
       @serializer = serializer
-    end
-    
-    # Was serializer initialized?
-    def self.initialized?
-      @identity && @cert && @key && @store
     end
 
     # Serialize, sign, and encrypt message
@@ -67,7 +83,7 @@ module RightScale
     #
     # === Raise
     # Exception:: If certificate identity, certificate store, certificate, or private key missing
-    def self.dump(obj, encrypt = nil)
+    def dump(obj, encrypt = nil)
       raise "Missing certificate identity" unless @identity
       raise "Missing certificate" unless @cert
       raise "Missing certificate key" unless @key
@@ -106,7 +122,7 @@ module RightScale
     # Exception:: If certificate store, certificate, or private key missing
     # MissingCertificate:: If could not find certificate for message signer
     # InvalidSignature:: If message signature check failed for message
-    def self.load(msg)
+    def load(msg)
       raise "Missing certificate store" unless @store
       raise "Missing certificate" unless @cert || !@encrypt
       raise "Missing certificate key" unless @key || !@encrypt
