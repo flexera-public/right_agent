@@ -82,16 +82,20 @@ describe RightScale::LoginUser do
     test_serialization_downgrade(user, public_key)
   end
 
-  it 'should serialize current version with multiple public_keys' do
+  it 'should serialize current version with multiple public_keys and fingerprints' do
     num = rand(2**32).to_s(32)
     public_keys = []
-    3.times do
+    fingerprints = []
+    3.times do |i|
       pub = rand(2**32).to_s(32)
       public_keys << "ssh-rsa #{pub} #{num}@rightscale.com"
+      fingerprints << "sha#{i}"
     end
-    new_user = RightScale::LoginUser.new("v0-#{num}", "rs-#{num}", nil, "#{num}@rightscale.old", true, nil, public_keys)
+    new_user = RightScale::LoginUser.new("v0-#{num}", "rs-#{num}", nil, "#{num}@rightscale.old", true, nil, public_keys,
+                                         nil, fingerprints)
     new_user.public_key.should == public_keys.first
     new_user.public_keys.should == public_keys
+    new_user.public_key_fingerprints.should == fingerprints
     test_serialization_downgrade(new_user, public_keys.first)
   end
 
