@@ -79,7 +79,7 @@ module RightScale
 
       # Directory containing generated agent configuration files
       def right_agent_cfg_dir
-        '/etc/right_agent'
+        '/var/lib/rightscale/right_agent'
       end
 
       # Static (time-invariant) state that is common to all RightScale apps/agents
