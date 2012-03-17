@@ -444,23 +444,26 @@ module RightScale
       # true:: Always return true
       def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
         unless @terminating || @ping_timer || (id && !@sender.broker.connected?(id))
+          @ping_id = id
           @ping_timer = EM::Timer.new(PING_TIMEOUT) do
-            begin
-              @ping_stats.update("timeout")
-              @ping_timer = nil
-              @ping_timeouts[id] = (@ping_timeouts[id] || 0) + 1
-              if @ping_timeouts[id] >= max_ping_timeouts
-                Log.error("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds and now " +
-                          "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
-                          "attempting to reconnect")
-                host, port, index, priority = @sender.broker.identity_parts(id)
-                @sender.agent.connect(host, port, index, priority, force = true)
-              else
-                Log.warning("Mapper ping via broker #{id} timed out after #{PING_TIMEOUT} seconds")
+            if @ping_id
+              begin
+                @ping_stats.update("timeout")
+                @ping_timer = nil
+                @ping_timeouts[@ping_id] = (@ping_timeouts[@ping_id] || 0) + 1
+                if @ping_timeouts[@ping_id] >= max_ping_timeouts
+                  Log.error("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds and now " +
+                            "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
+                            "attempting to reconnect")
+                  host, port, index, priority = @sender.broker.identity_parts(@ping_id)
+                  @sender.agent.connect(host, port, index, priority, force = true)
+                else
+                  Log.warning("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds")
+                end
+              rescue Exception => e
+                Log.error("Failed to reconnect to broker #{@ping_id}", e, :trace)
+                @exception_stats.track("ping timeout", e)
               end
-            rescue Exception => e
-              Log.error("Failed to reconnect to broker #{id}", e, :trace)
-              @exception_stats.track("ping timeout", e)
             end
           end
 
@@ -470,7 +473,8 @@ module RightScale
                 @ping_stats.update("success")
                 @ping_timer.cancel
                 @ping_timer = nil
-                @ping_timeouts[id] = 0
+                @ping_timeouts[@ping_id] = 0
+                @ping_id = nil
               end
             rescue Exception => e
               Log.error("Failed to cancel mapper ping", e, :trace)
@@ -479,8 +483,8 @@ module RightScale
           end
           request = Request.new("/mapper/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
           @sender.pending_requests[request.token] = PendingRequest.new(:send_persistent_request, Time.now, handler)
-          ids = [id] if id
-          id = @sender.publish(request, ids).first
+          ids = [@ping_id] if @ping_id
+          @ping_id = @sender.publish(request, ids).first
         end
         true
       end

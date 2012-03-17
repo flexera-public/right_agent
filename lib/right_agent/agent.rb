@@ -343,7 +343,7 @@ module RightScale
           end
         end
       rescue Exception => e
-        res = Log.format("Failed to connect to broker #{RightAMQP::HABrokerClient.identity(host, port)}", e)
+        res = Log.format("Failed to connect to broker at host #{host.inspect} and port #{port.inspect}", e)
         @exceptions.track("connect", e)
       end
       Log.error(res) if res
