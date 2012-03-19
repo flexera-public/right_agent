@@ -330,6 +330,7 @@ module RightScale
     # true:: Always return true
     def start_agent(agent_name, agent_class = Agent)
       puts "#{human_readable_name} being started"
+      Log.info "#{human_readable_name} being started"
 
       EM.error_handler do |e|
         Log.error("EM block execution failed with exception", e, :trace)
