@@ -174,7 +174,7 @@ module RightScale
       Log.init(@identity, @options[:log_path], :print => true)
       Log.level = @options[:log_level] if @options[:log_level]
       RightSupport::Log::Mixin.default_logger = Log
-      Log.info("#{@agent_name} being started with tags: #{@tags.join(',')}")
+      Log.info("[start] Agent #{@identity} starting up with tags: #{@tags.join(',')}")
       Log.debug("Start options:")
       log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v}" }
       log_opts.each { |l| Log.debug(l) }
