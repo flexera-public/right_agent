@@ -441,6 +441,7 @@ describe RightScale::Agent do
 
       it "should tune heartbeat for all broker connections" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -458,6 +459,7 @@ describe RightScale::Agent do
 
       it "should tune heartbeat for all broker connections as deferred task" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -478,6 +480,7 @@ describe RightScale::Agent do
 
       it "should disable heartbeat for all broker connections" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 0/).once
           @log.should_receive(:info).with(/Disabled heartbeat for broker/).twice
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -495,6 +498,7 @@ describe RightScale::Agent do
 
       it "should log error if any broker connect attempts fail" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with("Failed to reconnect to broker #{@broker_id} to tune heartbeat", Exception, :trace).once
@@ -513,6 +517,7 @@ describe RightScale::Agent do
 
       it "should log error if any brokers do not connect" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with(/Failed to reconnect to broker #{@broker_id} to tune heartbeat, status/).once
@@ -533,6 +538,7 @@ describe RightScale::Agent do
 
       it "should log error if any broker queue setup fails" do
         run_in_em do
+          @log.should_receive(:info).with("[start] Agent #{@identity} starting up").once
           @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
           @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
           @log.should_receive(:error).with(/Failed to setup queues for broker #{@broker_id} when tuning heartbeat/, Exception, :trace).once
