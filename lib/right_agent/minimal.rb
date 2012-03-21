@@ -23,6 +23,7 @@
 require 'rubygems'
 require 'eventmachine'
 require 'fileutils'
+require 'yaml'
 
 # load definition for File.normalize_path, etc.
 require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
