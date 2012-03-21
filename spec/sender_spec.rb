@@ -133,6 +133,23 @@ describe RightScale::Sender do
       instance.connectivity_checker.check(broker_id)
     end
 
+    it "should ignore ping timeout if never successfully publish ping" do
+      @agent.should_receive(:options).and_return(:ping_interval => 1000)
+      old_ping_timeout = RightScale::Sender::ConnectivityChecker::PING_TIMEOUT
+      begin
+        RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, 0.5)
+        EM.run do
+          EM.add_timer(1) { EM.stop }
+          RightScale::Sender.new(@agent)
+          instance = RightScale::Sender.instance
+          flexmock(instance).should_receive(:publish).and_return([]).once
+          instance.connectivity_checker.check(id = nil)
+        end
+      ensure
+        RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, old_ping_timeout)
+      end
+    end
+
     it "should ignore messages received if ping disabled" do
       @agent.should_receive(:options).and_return(:ping_interval => 0)
       flexmock(EM::Timer).should_receive(:new).never
