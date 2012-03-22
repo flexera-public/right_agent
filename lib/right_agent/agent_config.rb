@@ -98,6 +98,17 @@ module RightScale
     def self.valid_thread_name
       VALID_THREAD_NAME
     end
+    
+    # Default policy name when no policy is specified for an executable bundle.
+    DEFAULT_POLICY_NAME = nil
+    
+    # Default policy name when no policy is specified for an executable bundle.
+    #
+    # === Return
+    # (String):: default policy name...
+    def self.default_policy_name
+      DEFAULT_POLICY_NAME
+    end
 
     # Initialize path to root directory of agent
     #
