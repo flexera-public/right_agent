@@ -54,9 +54,6 @@ module RightScale
     # (String) Repose server to use
     attr_accessor :repose_servers
 
-    # (String) The name of the RIghtLink thread to run this bundle on
-    attr_accessor :thread_name
-
     # (Hash):: collection of repos to be checked out on the instance
     #   :key (String):: the hash id (SHA) of the repository
     #  :value (Hash):: repo and cookbook detail
@@ -89,6 +86,12 @@ module RightScale
     #     }
     #    :positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
     attr_accessor :dev_cookbooks
+    
+    # (String) The name of the RightLink thread to run this bundle on
+    attr_accessor :thread_name
+    
+    # (String) The name of the RightLink policy name this bundle belongs to
+    attr_accessor :policy_name
 
     def initialize(*args)
       @executables           = args[0]
@@ -99,6 +102,7 @@ module RightScale
       @repose_servers        = args[5] if args.size > 5
       @dev_cookbooks         = args[6] if args.size > 6
       @thread_name           = args[7] if args.size > 7
+      @policy_name           = args[8] if args.size > 8
     end
 
     # Array of serialized fields given to constructor
@@ -110,7 +114,8 @@ module RightScale
         @cookbooks,
         @repose_servers,
         @dev_cookbooks,
-        @thread_name ]
+        @thread_name,
+        @policy_name ]
     end
 
     # Human readable representation

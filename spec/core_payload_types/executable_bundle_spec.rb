@@ -27,8 +27,8 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'r
 module RightScale
   describe ExecutableBundle do
     context 'serialized_members' do
-      it 'contains 8 elements' do
-        ExecutableBundle.new.serialized_members.count.should == 8
+      it 'contains 9 elements' do
+        ExecutableBundle.new.serialized_members.count.should == 9
       end
     end
     context 'dev_cookbooks' do
