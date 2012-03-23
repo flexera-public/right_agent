@@ -28,7 +28,7 @@ module RightScale
   describe ExecutableBundle do
     context 'serialized_members' do
       it 'contains 9 elements' do
-        ExecutableBundle.new.serialized_members.count.should == 9
+        ExecutableBundle.new.serialized_members.count.should == 8
       end
     end
     context 'dev_cookbooks' do
@@ -52,6 +52,14 @@ module RightScale
 
         it "should serialize to nil" do
           bundle.serialized_members[6].should be_nil
+        end
+      end
+      
+      context 'runlist policy' do
+        let(:bundle) { ExecutableBundle.new(nil, nil, nil, nil, nil, nil, nil, RunlistPolicy.new) }
+        
+        it 'should serialize into a runlist policy object' do
+          bundle.serialized_members[7].should be_an_instance_of(RunlistPolicy)
         end
       end
     end

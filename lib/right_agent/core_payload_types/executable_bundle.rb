@@ -87,11 +87,8 @@ module RightScale
     #    :positions (Array):: List of CookbookPositions to be developed.  Represents the subset of cookbooks identified as the "dev cookbooks"
     attr_accessor :dev_cookbooks
     
-    # (String) The name of the RightLink thread to run this bundle on
-    attr_accessor :thread_name
-    
-    # (String) The name of the RightLink policy name this bundle belongs to
-    attr_accessor :policy_name
+    # (RunlistPolicy) The RightLink policy this bundle belongs to
+    attr_accessor :runlist_policy
 
     def initialize(*args)
       @executables           = args[0]
@@ -101,8 +98,7 @@ module RightScale
       @cookbooks             = args[4] if args.size > 4
       @repose_servers        = args[5] if args.size > 5
       @dev_cookbooks         = args[6] if args.size > 6
-      @thread_name           = args[7] if args.size > 7
-      @policy_name           = args[8] if args.size > 8
+      @runlist_policy        = args[7] if args.size > 7
     end
 
     # Array of serialized fields given to constructor
@@ -114,8 +110,7 @@ module RightScale
         @cookbooks,
         @repose_servers,
         @dev_cookbooks,
-        @thread_name,
-        @policy_name ]
+        @runlist_policy ]
     end
 
     # Human readable representation

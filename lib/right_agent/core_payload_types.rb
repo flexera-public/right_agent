@@ -38,6 +38,7 @@ require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'right_script
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'right_script_instantiation'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'login_policy'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'login_user'))
+require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'runlist_policy'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'secure_document'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'secure_document_location'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'planned_volume'))
