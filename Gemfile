@@ -3,8 +3,6 @@ source 'http://gems.github.com'
 
 gemspec
 
-gem 'right_support', :git => 'git@github.com:rightscale/right_support.git',
-                     :branch => 'master'
 gem 'right_amqp',    :git => 'git@github.com:rightscale/right_amqp.git',
                      :branch => 'master'
 
