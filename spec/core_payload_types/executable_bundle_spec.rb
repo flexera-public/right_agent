@@ -55,7 +55,7 @@ module RightScale
         end
       end
       
-      context 'audit policy' do
+      context 'runlist policy' do
         let(:bundle) { ExecutableBundle.new(nil, nil, nil, nil, nil, nil, nil, RunlistPolicy.new) }
         
         it 'should serialize into a runlist policy object' do
