@@ -296,6 +296,22 @@ module RightScale
       @program_name = prog_name
     end
 
+    # Sets the syslog facility that will be used when emitting syslog messages.
+    # Can only be successfully called before logging is initialized
+    #
+    # === Parameters
+    # facility(String):: A syslog facility name, e.g. 'user' or 'local0'
+    #
+    # === Return
+    # program_name(String):: The input string
+    #
+    # === Raise
+    # RuntimeError:: If logger is already initialized
+    def facility=(facility)
+      raise 'Logger already initialized' if @initialized
+      @facility = facility
+    end
+
     # Sets the level for the Logger by symbol or by Logger constant
     #
     # === Parameters
@@ -403,7 +419,9 @@ module RightScale
           logger.formatter.datetime_format = "%b %d %H:%M:%S"
         else
           $stderr.puts "Logging to syslog" if opts[:print]
-          logger = RightSupport::Log::SystemLogger.new(@program_name || identity || 'RightAgent')
+          program_name = @program_name || identity || 'RightAgent'
+          facility = @facility || 'local0'
+          logger = RightSupport::Log::SystemLogger.new(program_name, :facility=>facility)
         end
 
         @logger = Multiplexer.new(logger)
