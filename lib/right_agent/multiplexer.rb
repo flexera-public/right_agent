@@ -87,5 +87,16 @@ module RightScale
       res[0]
     end
 
+    # Determine whether this object, or ALL of its targets, responds to
+    # the named method.
+    #
+    # === Parameters
+    # m(Symbol):: Forwarded method name
+    #
+    # === Return
+    # (true|false):: True if this object, or ALL targets, respond to the names method; false otherwise
+    def respond_to?(m)
+      super(m) || @targets.all? { |t| t.respond_to?(m) }
+    end
   end
 end

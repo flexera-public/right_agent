@@ -131,6 +131,21 @@ module RightScale
       @logger.__send__(m, *args)
     end
 
+    # Determine whether this object, or its method_missing proxy, responds
+    # to the given method name. This follows the best practice of always
+    # overriding #respond_to? whenever one implements dynamic dispatch
+    # via #method_missing.
+    #
+    # === Parameters
+    # m(Symbol):: Forwarded method name
+    #
+    # === Return
+    # (true|false):: True if this object or its proxy responds to the names method, false otherwise
+    def respond_to?(m)
+      init unless @initialized
+      super(m) || @logger.respond_to?(m)
+    end
+
     # Log warning and optionally append exception information
     #
     # === Parameters
