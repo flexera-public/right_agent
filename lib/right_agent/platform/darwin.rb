@@ -118,10 +118,6 @@ module RightScale
         '/var/run'
       end
 
-      def right_link_dir
-        '/opt/rightscale/right_link'
-      end
-
       # Path to right link configuration and internal usage scripts
       def private_bin_dir
         '/opt/rightscale/bin'

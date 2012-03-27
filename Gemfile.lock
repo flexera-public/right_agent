@@ -1,23 +1,16 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: 35906a42b08d7ee74c980a0531be2e7f830c51c4
+  revision: 42ead718dbd3a377690e90cbd05b6204d37e847f
   branch: master
   specs:
-    right_amqp (0.1.1)
+    right_amqp (0.2.1)
       eventmachine (~> 0.12.10)
       right_support (~> 1.2)
-
-GIT
-  remote: git@github.com:rightscale/right_support.git
-  revision: 0acc252ee09eec4bf6c1da08c3ffcc5f928ea867
-  branch: master
-  specs:
-    right_support (1.3.0)
 
 PATH
   remote: .
   specs:
-    right_agent (0.9.5)
+    right_agent (0.9.6)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)
@@ -49,6 +42,7 @@ GEM
       mime-types (>= 1.16)
     right_popen (1.0.11)
       eventmachine (>= 0.12.10)
+    right_support (1.3.2)
     rspec (2.6.0)
       rspec-core (~> 2.6.0)
       rspec-expectations (~> 2.6.0)
@@ -75,6 +69,5 @@ DEPENDENCIES
   rake (>= 0.8.7)
   right_agent!
   right_amqp!
-  right_support!
   rspec (~> 2.5)
   ruby-debug (>= 0.10)
