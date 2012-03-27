@@ -24,18 +24,20 @@
 module RightScale
 
   class RunlistPolicy
-    attr_accessor :policy_name, :thread_name, :period
+    include Serializable
+    
+    attr_accessor :policy_name, :thread_name, :audit_period
 
     # Initialize fields from given arguments
     def initialize(*args)
       @policy_name     = args[0]
       @thread_name     = args[1]
-      @period          = args[2]
+      @audit_period    = args[2]
     end
 
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @policy_name, @thread_name, @period ]
+      [ @policy_name, @thread_name, @audit_period ]
     end
 
   end
