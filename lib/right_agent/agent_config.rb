@@ -109,6 +109,17 @@ module RightScale
     def self.default_policy_name
       DEFAULT_POLICY_NAME
     end
+    
+    # Default period for policies
+    DEFAULT_POLICY_PERIOD = 60 * 60 * 24
+    
+    # Default policy name when no policy is specified for an executable bundle.
+    #
+    # === Return
+    # (String):: default policy name...
+    def self.default_period
+      DEFAULT_POLICY_PERIOD
+    end
 
     # Initialize path to root directory of agent
     #
