@@ -113,11 +113,11 @@ module RightScale
     # Default period for policies
     DEFAULT_POLICY_PERIOD = 60 * 60 * 24
     
-    # Default policy name when no policy is specified for an executable bundle.
+    # Default audit period when a runlist policy does not specify a period.
     #
     # === Return
     # (String):: default policy name...
-    def self.default_period
+    def self.default_audit_period
       DEFAULT_POLICY_PERIOD
     end
 
