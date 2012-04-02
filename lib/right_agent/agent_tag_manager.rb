@@ -25,7 +25,7 @@ require 'singleton'
 module RightScale
 
   # Agent tags management
-  class AgentTagsManager
+  class AgentTagManager
     include Singleton
 
     # (Agent) Agent being managed
@@ -33,14 +33,19 @@ module RightScale
 
     # Retrieve current agent tags and give result to block
     #
+    # === Parameters
+    # options(Hash):: Request options
+    #   :raw(Boolean):: true to yield raw tag response instead of deserialized tags
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
+    #
     # === Block
     # Given block should take one argument which will be set with an array
     # initialized with the tags of this instance
     #
     # === Return
     # true:: Always return true
-    def tags
-      do_query(nil, @agent.identity) do |result|
+    def tags(options={})
+      do_query(nil, @agent.identity, options) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
         else
@@ -54,6 +59,9 @@ module RightScale
     #
     # === Parameters
     # tags(Array):: tags to query or empty
+    # options(Hash):: Request options
+    #   :raw(Boolean):: true to yield raw tag response instead of deserialized tags
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # Given block should take one argument which will be set with an array
@@ -62,7 +70,14 @@ module RightScale
     # === Return
     # true:: Always return true
     def query_tags(*tags)
-      do_query(tags) { |result| yield result }
+      if tags.last.respond_to?(:keys)
+        tags = tags[0..-2]
+        options = tags.last
+      else
+        options = {}
+      end
+
+      do_query(tags, nil, options) { |result| yield result }
     end
 
     # Queries a list of servers in the current deployment which have one or more
@@ -71,14 +86,17 @@ module RightScale
     # === Parameters
     # tags(Array):: tags to query or empty
     # agent_ids(Array):: agent IDs to query or empty or nil
+    # options(Hash):: Request options
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # Given block should take one argument which will be set with the raw response
     #
     # === Return
     # true:: Always return true
-    def query_tags_raw(tags, agent_ids = nil)
-      do_query(tags, agent_ids, true) { |raw_response| yield raw_response }
+    def query_tags_raw(tags, agent_ids = nil, options={})
+      options = options.merge(:raw=>true)
+      do_query(tags, agent_ids, options) { |raw_response| yield raw_response }
     end
 
     # Add given tags to agent
@@ -168,7 +186,9 @@ module RightScale
     # === Parameters
     # tags(Array):: tags to query or empty or nil
     # agent_ids(Array):: agent IDs to query or empty or nil
-    # raw(Boolean):: true to yield raw tag response instead of deserialized tags
+    # options(Hash):: Request options
+    #   :raw(Boolean):: true to yield raw tag response instead of deserialized tags
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # Given block should take one argument which will be set with an array
@@ -176,12 +196,20 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def do_query(tags = nil, agent_ids = nil, raw = false)
+    def do_query(tags = nil, agent_ids = nil, options={})
+      raw = options[:raw] || false
+      timeout = options[:timeout]
+
+      request_options = {}
+      request_options[:timeout] = timeout if timeout
+
       agent_check
       payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       payload[:agent_ids] = ensure_flat_array_value(agent_ids) unless agent_ids.nil? || agent_ids.empty?
-      request = RightScale::IdempotentRequest.new("/mapper/query_tags", payload)
+      request = RightScale::IdempotentRequest.new("/mapper/query_tags",
+                                                  payload,
+                                                  request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|
         Log.error("Failed to query tags: #{message}")
@@ -208,6 +236,10 @@ module RightScale
       value
     end
 
-  end # AgentTagsManager
+  end # AgentTagManager
 
+  # This class has been renamed as of RightAgent 0.9.6; provide an alias
+  # to the old typename
+  # TODO remove this alias for RightAgent 1.0
+  AgentTagsManager = AgentTagManager
 end # RightScale

@@ -80,7 +80,7 @@ module RightScale
     #     increasing delay exponentially and decreasing this count exponentially, defaults to
     #     DEFAULT_RETRY_DELAY_COUNT
     #   :max_retry_delay(Fixnum):: Maximum number of seconds of retry delay, defaults to DEFAULT_MAX_RETRY_DELAY
-    #   :timeout(Fixnum):: Number of seconds with no response before error callback gets called with
+    #   :timeout(Fixnum):: Number of seconds with no response before error callback gets called, with
     #     -1 meaning never, defaults to DEFAULT_TIMEOUT
     #
     # === Raises
