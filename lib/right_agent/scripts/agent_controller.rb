@@ -140,6 +140,7 @@ module RightScale
         AgentConfig.root_dir = options[:root_dir]
         AgentConfig.pid_dir = options[:pid_dir]
         Log.program_name = syslog_program_name(options)
+        Log.facility     = syslog_facility(options)
         Log.log_to_file_only(options[:log_to_file_only])
         configure_proxy(options[:http_proxy], options[:http_no_proxy]) if options[:http_proxy]
       elsif options[:identity]
@@ -443,6 +444,17 @@ module RightScale
     # (String):: Program name
     def syslog_program_name(options)
       'RightAgent'
+    end
+
+    # Determine syslog facility based on options
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # (String):: 'local0'
+    def syslog_facility(options)
+      'local0'
     end
 
     # Determine configuration settings for this agent and persist them if needed
