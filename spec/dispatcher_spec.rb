@@ -35,6 +35,10 @@ class Foo
     ['hello', payload]
   end
 
+  def bar2(payload, request)
+    ['hello', payload, request]
+  end
+
   def i_kill_you(payload)
     raise RuntimeError.new('I kill you!')
   end
@@ -190,6 +194,14 @@ describe "RightScale::Dispatcher" do
     res.should(be_kind_of(RightScale::Result))
     res.token.should == 'token'
     res.results.should == ['hello', 'you']
+  end
+
+  it "should dispatch a request with required arity" do
+    req = RightScale::Request.new('/foo/bar2', 'you', :token => 'token')
+    res = @dispatcher.dispatch(req)
+    res.should(be_kind_of(RightScale::Result))
+    res.token.should == 'token'
+    res.results.should == ['hello', 'you', req]
   end
 
   it "should dispatch a request to the default action" do
