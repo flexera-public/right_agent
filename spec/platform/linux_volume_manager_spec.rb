@@ -47,6 +47,19 @@ EOF
           @platform.volume_manager.parse_volumes(blkid_resp).should == volume_hash_ary
         end
 
+        it 'can parse volumes with hyphens or underscores (lvm use case)' do
+          blkid_resp = <<EOF
+/dev/vg-rightscale-data_storage1/lvol0: UUID="ee34706d-866f-476e-9da4-6a18745456a4" TYPE="xfs"
+EOF
+
+          volume_hash_ary = [
+            {:device => '/dev/vg-rightscale-data_storage1/lvol0', :uuid => 'ee34706d-866f-476e-9da4-6a18745456a4', :type => 'xfs'}
+          ]
+
+          @platform.volume_manager.parse_volumes(blkid_resp).should == volume_hash_ary
+
+        end
+
         it 'raises a parser error when blkid output is malformed' do
           blkid_resp = 'foobarbz'
 
