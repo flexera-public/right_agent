@@ -53,7 +53,7 @@ EOF
 EOF
 
           volume_hash_ary = [
-            {:device => '/dev/vg-rightscale-data_storage1/lvol0', :uuid => 'ee34706d-866f-476e-9da4-6a18745456a4', :type => 'xfs'}
+            {:device => '/dev/vg-rightscale-data_storage1/lvol0', :uuid => 'ee34706d-866f-476e-9da4-6a18745456a4', :type => 'xfs', :filesystem => "xfs"}
           ]
 
           @platform.volume_manager.parse_volumes(blkid_resp).should == volume_hash_ary
