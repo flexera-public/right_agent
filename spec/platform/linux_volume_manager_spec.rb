@@ -57,7 +57,18 @@ EOF
           ]
 
           @platform.volume_manager.parse_volumes(blkid_resp).should == volume_hash_ary
+        end
 
+        it 'can parse volumes with periods' do
+          blkid_resp = <<EOF
+/dev/please.dont.do.this: UUID="ee34706d-866f-476e-9da4-6a18745456a4" TYPE="xfs"
+EOF
+
+          volume_hash_ary = [
+            {:device => '/dev/please.dont.do.this', :uuid => 'ee34706d-866f-476e-9da4-6a18745456a4', :type => 'xfs', :filesystem => "xfs"}
+          ]
+
+          @platform.volume_manager.parse_volumes(blkid_resp).should == volume_hash_ary
         end
 
         it 'raises a parser error when blkid output is malformed' do
@@ -113,9 +124,8 @@ EOF
 proc on /proc type proc (rw,noexec,nosuid,nodev)
 EOF
 
-          mount_popen_mock = flexmock(:read => mount_resp)
-          flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
-          flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).once.and_yield(flexmock(:read => ""))
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount').once.and_return([0, mount_resp])
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer').once.and_return([0, '']);
 
           @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
         end
@@ -126,10 +136,8 @@ EOF
 proc on /proc type proc (rw,noexec,nosuid,nodev)
 /dev/xvdh1 on /var/spool/softlayer type vfat (rw) [METADATA]
 EOF
-
-          mount_popen_mock = flexmock(:read => mount_resp)
-          flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
-          flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).never.and_yield(flexmock(:read => ""))
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount').once.and_return([0, mount_resp])
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer').never.and_return([0, '']);
 
           @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
         end
