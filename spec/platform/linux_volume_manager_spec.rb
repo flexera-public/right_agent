@@ -124,9 +124,8 @@ EOF
 proc on /proc type proc (rw,noexec,nosuid,nodev)
 EOF
 
-          mount_popen_mock = flexmock(:read => mount_resp)
-          flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
-          flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).once.and_yield(flexmock(:read => ""))
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount').once.and_return([0, mount_resp])
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer').once.and_return([0, '']);
 
           @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
         end
@@ -137,10 +136,8 @@ EOF
 proc on /proc type proc (rw,noexec,nosuid,nodev)
 /dev/xvdh1 on /var/spool/softlayer type vfat (rw) [METADATA]
 EOF
-
-          mount_popen_mock = flexmock(:read => mount_resp)
-          flexmock(IO).should_receive(:popen).with('mount',Proc).once.and_yield(mount_popen_mock)
-          flexmock(IO).should_receive(:popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer',Proc).never.and_yield(flexmock(:read => ""))
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount').once.and_return([0, mount_resp])
+          flexmock(@platform.volume_manager).should_receive(:blocking_popen).with('mount -t vfat /dev/xvdh1 /var/spool/softlayer').never.and_return([0, '']);
 
           @platform.volume_manager.mount_volume({:device => "/dev/xvdh1", :filesystem => "vfat"}, "/var/spool/softlayer")
         end
