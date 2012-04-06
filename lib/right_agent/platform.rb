@@ -322,6 +322,7 @@ module RightScale
         elsif windows?
           res = Platform.const_get(const_name).new
         end
+        self.instance_variable_set(instance_var, res)
       end
       return res
     end
