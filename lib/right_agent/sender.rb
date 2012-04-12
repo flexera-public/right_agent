@@ -664,7 +664,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
@@ -699,7 +698,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
@@ -737,7 +735,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #
@@ -769,7 +766,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #
@@ -963,7 +959,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
@@ -1020,7 +1015,6 @@ module RightScale
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
-    #     :deployment(Integer):: Restrict to agents with this deployment id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #
@@ -1093,12 +1087,12 @@ module RightScale
         if s = target[:scope]
           if s.is_a?(Hash)
             s = SerializationHelper.symbolize_keys(s)
-            if ([:account, :deployment, :shard] & s.keys).empty? && !s.empty?
-              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account, :deployment, and :shard allowed"
+            if ([:account, :shard] & s.keys).empty? && !s.empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account and :shard allowed"
             end
             t[:scope] = s
           else
-            raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account, :deployment, and/or :shard"
+            raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account and/or :shard"
           end
         elsif (s = t[:selector]) && allow_selector
           s = s.to_sym

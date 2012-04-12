@@ -216,7 +216,6 @@ describe RightScale::Sender do
       lambda { @instance.send_push('/foo/bar', nil, "tags" => "tags") }.should be_true
       lambda { @instance.send_push('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
       lambda { @instance.send_push('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :scope => {:deployment => 1}) }.should be_true
       lambda { @instance.send_push('/foo/bar', nil, :scope => {}) }.should be_true
       lambda { @instance.send_push('/foo/bar', nil, :selector => :all) }.should be_true
       lambda { @instance.send_push('/foo/bar', nil, "selector" => "any") }.should be_true
@@ -402,7 +401,6 @@ describe RightScale::Sender do
       lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") }.should be_true
       lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
       lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:deployment => 1}) }.should be_true
       lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) }.should be_true
       lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) }.should raise_error(ArgumentError)
       lambda { @instance.send_retryable_request('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
