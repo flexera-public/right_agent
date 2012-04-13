@@ -35,7 +35,12 @@ module MessagePack
   # === Return
   # obj(Object):: Unserialized object
   def self.load(data)
-    create(unpack(data))
+    if data.respond_to?(:force_encoding)
+      # For Ruby 1.9 need to ensure that MessagePack receives ASCII-8BIT data
+      create(unpack(data.force_encoding("ASCII-8BIT")))
+    else
+      create(unpack(data))
+    end
   end
 
   # Create any msgpack_class objects nested within the unserialized data by calling
