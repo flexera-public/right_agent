@@ -109,6 +109,11 @@ module RightScale
 
     # Undefine warn to prevent Kernel#warn from being called
     undef warn
+    
+    # And on the eigenclass
+    class <<self
+      undef warn
+    end
 
     def initialize
       # Was log ever used?
