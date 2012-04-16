@@ -32,13 +32,6 @@ module RightScale
       def method_missing(meth, *args, &blk)
         self.instance.__send__(meth, *args, &blk)
       end
-
-      # Since missing class methods are redirected, this class responds to
-      # anything its singleton instance will respond to, in addition to all
-      # of its own methods.
-      def respond_to?(meth)
-        super(meth) || self.instance.respond_to?(meth)
-      end
     end
 
     # Upon inclusion, also include standard Singleton mixin
