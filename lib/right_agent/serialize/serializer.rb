@@ -141,7 +141,7 @@ module RightScale
     # === Return
     # (Array):: Ordered serializers
     def order_serializers(packet)
-      packet[0] > 127 ? MSGPACK_FIRST_SERIALIZERS : JSON_FIRST_SERIALIZERS
+      packet.getbyte(0) > 127 ? MSGPACK_FIRST_SERIALIZERS : JSON_FIRST_SERIALIZERS
     end
 
   end # Serializer

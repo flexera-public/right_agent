@@ -35,7 +35,7 @@ describe RightScale::Log do
   def log_count(text)
     # no such animal as egrep in windows, so hacked up an equivalent here.
     pattern = Regexp.compile(text)
-    File.read(@log_file).each.select { |x| x =~ pattern }.count
+    File.read(@log_file).each_line.select { |x| x =~ pattern }.count
   end
 
   before(:all) do

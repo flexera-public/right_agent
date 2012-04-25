@@ -337,6 +337,7 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @agent.should_receive(:options).and_return(:dup_check => true)
       @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       @dispatcher.instance_variable_get(:@dispatched).store(req.token)
       @dispatcher.dispatch(req).should be_nil
@@ -349,6 +350,7 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @agent.should_receive(:options).and_return(:dup_check => true)
       @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched).store("try2")
@@ -361,6 +363,7 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @agent.should_receive(:options).and_return(:dup_check => true)
       @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched).store("try3")
@@ -372,6 +375,7 @@ describe "RightScale::Dispatcher" do
   it "should not check for duplicates if dup_check disabled" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched).should be_nil

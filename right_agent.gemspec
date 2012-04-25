@@ -24,8 +24,8 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '0.9.11'
-  spec.date      = '2012-04-16'
+  spec.version   = '0.10.0'
+  spec.date      = '2012-04-25'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -38,7 +38,7 @@ Gem::Specification.new do |spec|
   spec.require_path = 'lib'
 
   spec.add_dependency('right_support', '~> 1.3')
-  spec.add_dependency('right_amqp', '~> 0.1')
+  spec.add_dependency('right_amqp', '~> 0.3')
   spec.add_dependency('json', ['~> 1.4'])
   spec.add_dependency('eventmachine', '~> 0.12.10')
   spec.add_dependency('right_popen', '~> 1.0.11')

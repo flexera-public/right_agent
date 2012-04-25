@@ -13,11 +13,10 @@ gem 'json', '~> 1.6'
 # proprietary builds that happen to be installed locally
 gem 'eventmachine', '0.12.10'
 
-group :development do
-  gem "rspec",       "~> 2.5"
+group :development, :test do
+  gem "rspec",       "~> 2.8"
   gem "flexmock",    "~> 0.9"
-  gem "rake",        ">= 0.8.7"
-  gem "ruby-debug",  ">= 0.10"
-  gem "rspec",       "~> 2.5"
-  gem "memprof",     "~> 0.3"
+  gem "rake",        ">= 0.9.2.2"
+  gem "ruby-debug19", :platforms => "mri_19"
+  # gem "memprof",     "~> 0.3" # memprof does not support 1.9 yet
 end

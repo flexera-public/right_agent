@@ -65,7 +65,7 @@ class AgentManager
   #
   # === Return
   # (RightScale::OperationResult):: Always returns success
-  def stats(options)
+  def stats(options = {})
     @agent.stats(RightScale::SerializationHelper.symbolize_keys(options))
   end
 
@@ -80,7 +80,7 @@ class AgentManager
   #
   # === Return
   # (OperationResult):: Empty success result or error result with message
-  def profile(options)
+  def profile(options = {})
     require 'memprof'
 
     options = RightScale::SerializationHelper.symbolize_keys(options)
