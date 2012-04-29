@@ -327,6 +327,9 @@ module RightScale
 
       def initialize
         @os_info = OSInformation.new
+
+        @assignable_disk_regex = /^[D-Zd-z]:[\/\\]?$/
+        @assignable_path_regex = /^[A-Za-z]:[\/\\][\/\\\w\s\d]+$/
       end
 
       # Determines if the given path is valid for a Windows volume attachemnt
@@ -335,7 +338,7 @@ module RightScale
       # === Return
       # result(Boolean):: true if path is a valid volume root
       def is_attachable_volume_path?(path)
-         return nil != (path =~ /^[D-Zd-z]:[\/\\]?$/)
+         return (nil != (path =~ @assignable_disk_regex) || nil != (path =~ @assignable_path_regex))
       end
 
       # Gets a list of physical or virtual disks in the form:
@@ -541,18 +544,32 @@ EOF
       # VolumeError:: on failure to assign device name
       # ParserError:: on failure to parse volume list
       def assign_device(volume_device_or_index, device)
+        # Volume selector for drive letter assignments
         volume_selector_match = volume_device_or_index.to_s.match(/^([D-Zd-z]|\d+):?$/)
+        # Volume selector for mount path assignments
+        volume_selector_match = volume_device_or_index.to_s.match(@assignable_path_regex) unless volume_selector_match
         raise ArgumentError.new("Invalid volume_device_or_index = #{volume_device_or_index}") unless volume_selector_match
         volume_selector = volume_selector_match[1]
         raise ArgumentError.new("Invalid device = #{device}") unless is_attachable_volume_path?(device)
-        new_letter = device[0,1]
         script = <<EOF
 rescan
 list volume
 select volume #{volume_selector}
 attribute volume clear readonly noerr
-assign letter=#{new_letter}
 EOF
+
+        if device.match(@assignable_disk_regex)
+        script += <<EOF
+assign letter=#{device[0,1]}
+EOF
+        end
+
+        if device.match(@assignable_path_regex)
+        script += <<EOF
+assign mount=#{device}
+EOF
+        end
+
         exit_code, output_text = run_script(script)
         raise VolumeError.new("Failed to assign device \"#{device}\" for volume \"#{volume_device_or_index}\": exit code = #{exit_code}\n#{script}\n#{output_text}") if exit_code != 0
         true
