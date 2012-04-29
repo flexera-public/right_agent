@@ -641,7 +641,8 @@ EOF
       # conditions{Hash):: hash of conditions to match or nil (default)
       #
       # === Return
-      # result(Array):: volumes or empty
+      # result(Array):: volumes or empty.  Drive letters are appended with ':' even though they aren't
+      # returned that way from diskpart
       #
       # === Raise
       # ParserError:: on failure to parse volume list
@@ -689,8 +690,8 @@ EOF
             info_width = header_match[5].length
             line_regex_text = "^[\\* ] Volume (\\d[\\d ]\{2\})   ([A-Za-z ])   "\
                               "(.\{#{label_width}\})  (.\{#{filesystem_width}\})  "\
-                              "(.\{#{type_width}\})  [ ]?([\\d ]\{3\}\\d) (.?B)  "\
-                              "(.\{#{status_width}\})  (.\{#{info_width}\})"
+                              "(.\{#{type_width}\})  [ ]?([\\d ]\{3\}\\d) (.?B)\\s{0,2}"\
+                              "(.\{#{status_width}\})\\s{0,2}(.\{0,#{info_width}\})"
             line_regex = Regexp.compile(line_regex_text)
           else
             # one or more lines of ignored headers
