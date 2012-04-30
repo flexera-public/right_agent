@@ -532,19 +532,23 @@ module RightScale
     def stats(options = {})
       now = Time.now
       reset = options[:reset]
-      result = OperationResult.success("name"            => @agent_name,
-                                       "identity"        => @identity,
-                                       "hostname"        => Socket.gethostname,
-                                       "memory"          => Platform.process.resident_set_size,
-                                       "version"         => AgentConfig.protocol_version,
-                                       "brokers"         => @broker.stats(reset),
-                                       "agent stats"     => agent_stats(reset),
-                                       "receive stats"   => @dispatcher.stats(reset),
-                                       "send stats"      => @sender.stats(reset),
-                                       "last reset time" => @last_stat_reset_time.to_i,
-                                       "stat time"       => now.to_i,
-                                       "service uptime"  => (now - @service_start_time).to_i,
-                                       "machine uptime"  => Platform.shell.uptime)
+      stats = {
+        "name"            => @agent_name,
+        "identity"        => @identity,
+        "hostname"        => Socket.gethostname,
+        "memory"          => Platform.process.resident_set_size,
+        "version"         => AgentConfig.protocol_version,
+        "brokers"         => @broker.stats(reset),
+        "agent stats"     => agent_stats(reset),
+        "receive stats"   => @dispatcher.stats(reset),
+        "send stats"      => @sender.stats(reset),
+        "last reset time" => @last_stat_reset_time.to_i,
+        "stat time"       => now.to_i,
+        "service uptime"  => (now - @service_start_time).to_i,
+        "machine uptime"  => Platform.shell.uptime
+      }
+      stats["revision"] = @revision if @revision
+      result = OperationResult.success(stats)
       @last_stat_reset_time = now if reset
       result
     end
@@ -612,6 +616,7 @@ module RightScale
       @agent_type = parsed_identity.agent_type
       @agent_name = @options[:agent_name]
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
+      @revision = revision
 
       @remaining_setup = {}
       @all_setup = [:setup_identity_queue]
@@ -812,6 +817,13 @@ module RightScale
     def stop_gracefully(timeout)
       @broker.unusable.each { |id| @broker.close_one(id, propagate = false) }
       yield
+    end
+
+    # Determine current revision of software
+    #
+    # === Return
+    # (String):: Revision of software in displayable format
+    def revision
     end
 
   end # Agent
