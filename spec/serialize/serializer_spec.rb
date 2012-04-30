@@ -104,14 +104,14 @@ describe RightScale::Serializer do
         serializer = RightScale::Serializer.new(:msgpack)
         date = Date.today
         data = serializer.dump(date)
-        Date.parse(serializer.load(data)).should == date
+        Date.strptime(serializer.load(data), "%Y-%m-%d").should == date
       end
 
       it "should serialize Time object" do
         serializer = RightScale::Serializer.new(:msgpack)
         time = Time.now
         data = serializer.dump(time)
-        Time.parse(serializer.load(data)).to_i.should == time.to_i
+        DateTime.parse(serializer.load(data)).to_time.to_i.should == time.to_i
       end
 
       it "should serialize DateTime object" do
