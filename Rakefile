@@ -46,8 +46,9 @@ directory gemtask.package_dir
 CLEAN.include(gemtask.package_dir)
 
 # == Unit tests == #
-
-RSPEC_OPTS = ['--options', "\"#{File.dirname(__FILE__)}/spec/spec.opts\""]
+spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.opts\""
+spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.win32.opts\"" if RUBY_PLATFORM =~ /mingw|mswin32/
+RSPEC_OPTS = ['--options', spec_opts_file]
 
 desc 'Run unit tests'
 RSpec::Core::RakeTask.new do |t|
