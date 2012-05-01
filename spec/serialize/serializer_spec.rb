@@ -111,7 +111,11 @@ describe RightScale::Serializer do
         serializer = RightScale::Serializer.new(:msgpack)
         time = Time.now
         data = serializer.dump(time)
-        DateTime.parse(serializer.load(data)).to_time.to_i.should == time.to_i
+        if RUBY_VERSION < "1.9.0"
+          Time.parse(serializer.load(data)).to_i.should == time.to_i
+        else
+          DateTime.parse(serializer.load(data)).to_time.to_i.should == time.to_i
+        end
       end
 
       it "should serialize DateTime object" do
