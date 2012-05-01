@@ -45,6 +45,11 @@ Gem::Specification.new do |spec|
   spec.add_dependency('msgpack', '0.4.4')
   spec.add_dependency('net-ssh', '~> 2.0')
 
+  if spec.platform.to_s =~ /mswin|mingw/
+    spec.add_dependency('win32-dir', '~> 0.3.5')
+    spec.add_dependency('win32-process', '~> 0.6.1')
+  end
+
   spec.description = <<-EOF
 RightAgent provides a foundation for running an agent on a server to interface
 in a secure fashion with other agents in the RightScale system. A RightAgent
