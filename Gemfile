@@ -13,6 +13,9 @@ gem 'json', '~> 1.6'
 # proprietary builds that happen to be installed locally
 gem 'eventmachine', '0.12.10'
 
+# Windows stuff
+gem "win32-dir", ">= 0.3.5", :platforms => [:mswin, :mingw]
+
 group :development, :test do
   gem "rspec",       "~> 2.8"
   gem "flexmock",    "~> 0.9"

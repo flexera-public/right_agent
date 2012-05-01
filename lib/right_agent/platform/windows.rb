@@ -327,6 +327,9 @@ module RightScale
 
       def initialize
         @os_info = OSInformation.new
+
+        @assignable_disk_regex = /^[D-Zd-z]:[\/\\]?$/
+        @assignable_path_regex = /^[A-Za-z]:[\/\\][\/\\\w\s\d\-_\.~]+$/
       end
 
       # Determines if the given path is valid for a Windows volume attachemnt
@@ -335,7 +338,7 @@ module RightScale
       # === Return
       # result(Boolean):: true if path is a valid volume root
       def is_attachable_volume_path?(path)
-         return nil != (path =~ /^[D-Zd-z]:[\/\\]?$/)
+         return (nil != (path =~ @assignable_disk_regex) || nil != (path =~ @assignable_path_regex))
       end
 
       # Gets a list of physical or virtual disks in the form:
@@ -448,7 +451,7 @@ EOF
       #
       # === Parameters
       # disk_index(int): zero-based disk index (from disks list, etc.)
-      # device(String):: device specified for the volume to create
+      # device(String):: disk letter or mount path specified for the volume to create
       #
       # === Return
       # always true
@@ -457,12 +460,14 @@ EOF
       # ArgumentError:: on invalid parameters
       # VolumeError:: on failure to format
       def format_disk(disk_index, device)
+        if device.match(@assignable_path_regex) && @os_info.major < 6
+          raise ArgumentError.new("Mount path assignment is not supported in this version of windows")
+        end
         # note that creating the primary partition automatically creates and
         # selects a new volume, which can be assigned a letter before the
         # partition has actually been formatted.
         raise ArgumentError.new("Invalid index = #{disk_index}") unless disk_index >= 0
         raise ArgumentError.new("Invalid device = #{device}") unless is_attachable_volume_path?(device)
-        letter = device[0,1]
         online_command = if @os_info.major < 6; "online noerr"; else; "online disk noerr"; end
         clear_readonly_command = if @os_info.major < 6; ""; else; "attribute disk clear readonly noerr"; end
 
@@ -477,7 +482,7 @@ select disk #{disk_index}
 #{online_command}
 clean
 create partition primary
-assign letter=#{letter}
+#{get_assign_command_for_device(device)}
 #{format_command}
 EOF
         exit_code, output_text = run_script(script)
@@ -485,7 +490,7 @@ EOF
 
         # must format using command shell's FORMAT command before 2008 server.
         if @os_info.major < 6
-          command = "echo Y | format #{letter}: /Q /V: /FS:NTFS"
+          command = "echo Y | format #{device[0,1]}: /Q /V: /FS:NTFS"
           output_text = `#{command}`
           exit_code = $?.exitstatus
           raise VolumeError.new("Failed to format disk #{disk_index} for device #{device}: exit code = #{exit_code}\n#{output_text}") if exit_code != 0
@@ -531,7 +536,7 @@ EOF
       #
       # === Parameters
       # volume_device_or_index(int):: old device or zero-based volume index (from volumes list, etc.) to select for assignment.
-      # device(String):: device specified for the volume to create
+      # device(String):: disk letter or mount path specified for the volume to create
       #
       # === Return
       # always true
@@ -541,18 +546,24 @@ EOF
       # VolumeError:: on failure to assign device name
       # ParserError:: on failure to parse volume list
       def assign_device(volume_device_or_index, device)
+        if device.match(@assignable_path_regex) && @os_info.major < 6
+          raise ArgumentError.new("Mount path assignment is not supported in this version of windows")
+        end
+        # Volume selector for drive letter assignments
         volume_selector_match = volume_device_or_index.to_s.match(/^([D-Zd-z]|\d+):?$/)
+        # Volume selector for mount path assignments
+        volume_selector_match = volume_device_or_index.to_s.match(@assignable_path_regex) unless volume_selector_match
         raise ArgumentError.new("Invalid volume_device_or_index = #{volume_device_or_index}") unless volume_selector_match
         volume_selector = volume_selector_match[1]
         raise ArgumentError.new("Invalid device = #{device}") unless is_attachable_volume_path?(device)
-        new_letter = device[0,1]
         script = <<EOF
 rescan
 list volume
-select volume #{volume_selector}
+select volume "#{volume_selector}"
 attribute volume clear readonly noerr
-assign letter=#{new_letter}
+#{get_assign_command_for_device(device)}
 EOF
+
         exit_code, output_text = run_script(script)
         raise VolumeError.new("Failed to assign device \"#{device}\" for volume \"#{volume_device_or_index}\": exit code = #{exit_code}\n#{script}\n#{output_text}") if exit_code != 0
         true
@@ -641,7 +652,8 @@ EOF
       # conditions{Hash):: hash of conditions to match or nil (default)
       #
       # === Return
-      # result(Array):: volumes or empty
+      # result(Array):: volumes or empty.  Drive letters are appended with ':' even though they aren't
+      # returned that way from diskpart
       #
       # === Raise
       # ParserError:: on failure to parse volume list
@@ -657,6 +669,14 @@ EOF
               break
             end
             match_data = line.match(line_regex)
+            unless match_data
+              path_match_regex = /([A-Za-z]:[\/\\][\/\\\w\s\d]+)/
+              match_data = line.match(path_match_regex)
+              if match_data
+                result.last[:device] = match_data[1]
+                next
+              end
+            end
             raise ParserError.new("Failed to parse volume info from #{line.inspect} using #{line_regex.inspect}") unless match_data
             letter = nil_if_empty(match_data[2])
             device = "#{letter.upcase}:" if letter
@@ -689,8 +709,8 @@ EOF
             info_width = header_match[5].length
             line_regex_text = "^[\\* ] Volume (\\d[\\d ]\{2\})   ([A-Za-z ])   "\
                               "(.\{#{label_width}\})  (.\{#{filesystem_width}\})  "\
-                              "(.\{#{type_width}\})  [ ]?([\\d ]\{3\}\\d) (.?B)  "\
-                              "(.\{#{status_width}\})  (.\{#{info_width}\})"
+                              "(.\{#{type_width}\})  [ ]?([\\d ]\{3\}\\d) (.?B)\\s{0,2}"\
+                              "(.\{#{status_width}\})\\s{0,2}(.\{0,#{info_width}\})"
             line_regex = Regexp.compile(line_regex_text)
           else
             # one or more lines of ignored headers
@@ -820,6 +840,21 @@ EOF
         when 'GB' then return value * 1024 * 1024 * 1024
         when 'TB' then return value * 1024 * 1024 * 1024 * 1024
         else return value # assume bytes
+        end
+      end
+
+      # Returns the correct diskpart assignment command for the specified device (either drive letter, or path)
+      #
+      # === Parameters
+      # device(String):: Either a drive letter or mount path
+      #
+      # === Return
+      # result(String):: The correct diskpart assignment command
+      def get_assign_command_for_device(device)
+        if device.match(@assignable_disk_regex)
+          "assign letter=#{device[0,1]}"
+        elsif device.match(@assignable_path_regex)
+          "assign mount=\"#{device}\""
         end
       end
 
