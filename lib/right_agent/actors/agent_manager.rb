@@ -65,8 +65,8 @@ class AgentManager
   #
   # === Return
   # (RightScale::OperationResult):: Always returns success
-  def stats(options = {})
-    @agent.stats(RightScale::SerializationHelper.symbolize_keys(options))
+  def stats(options)
+    @agent.stats(RightScale::SerializationHelper.symbolize_keys(options || {}))
   end
 
   # Profile memory use
@@ -80,10 +80,10 @@ class AgentManager
   #
   # === Return
   # (OperationResult):: Empty success result or error result with message
-  def profile(options = {})
+  def profile(options)
     require 'memprof'
 
-    options = RightScale::SerializationHelper.symbolize_keys(options)
+    options = RightScale::SerializationHelper.symbolize_keys(options || {})
     if options[:start]
       RightScale::Log.info("[profile] Start")
       $stderr.puts "[profile] Start at #{Time.now}"
