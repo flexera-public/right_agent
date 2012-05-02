@@ -10,7 +10,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (0.10.2)
+    right_agent (0.10.3)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)
@@ -46,9 +46,9 @@ GEM
     rbx-require-relative (0.0.9)
     rest-client (1.6.7)
       mime-types (>= 1.16)
-    right_popen (1.0.11)
+    right_popen (1.0.16)
       eventmachine (>= 0.12.10)
-    right_popen (1.0.11-x86-mswin32)
+    right_popen (1.0.16-x86-mswin32)
       eventmachine (>= 0.12.10)
       win32-process (>= 0.6.1)
     right_support (1.4.1)

@@ -209,7 +209,7 @@ module RightScale
           @pending_dispatches += 1
           @last_request_dispatch_time = received_at.to_i
           @dispatched.store(token) if @dup_check && !shared && request.kind_of?(Request) && token
-          if actor.method(method).arity == 1
+          if actor.method(method).arity.abs == 1
             actor.__send__(method, request.payload)
           else
             actor.__send__(method, request.payload, request)
