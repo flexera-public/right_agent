@@ -20,6 +20,14 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+# RubyGems ~= 1.3.7 used to require these files when activating the RubyGems environment,
+# which caused many gem and script authors to use threading and socket classes without
+# requiring them. Future-proof RightAgent and its clients against RubyGems upgrades by
+# requiring them ourselves. Given that most clients require this file very early on, we
+# are helping to smooth over their implementation bugs.
+require 'thread'
+require 'socket'
+
 # This file may get required twice on Windows: Once using long path and once
 # using short path. Since this is where we define the File.normalize_path
 # method to alleviate this issue, we have a chicken & egg problem. So detect if
