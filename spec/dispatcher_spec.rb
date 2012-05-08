@@ -97,96 +97,13 @@ describe "RightScale::Dispatcher" do
     @actor = Foo.new
     @registry = RightScale::ActorRegistry.new
     @registry.register(@actor, nil)
-    @agent = flexmock("Agent", :identity => "agent", :broker => @broker, :registry => @registry, :options => {}).by_default
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @agent_id = "rs-agent-1-1"
+    @agent = flexmock("Agent", :identity => @agent_id, :broker => @broker, :registry => @registry, :options => {}).by_default
+    @cache = RightScale::DispatchedCache.new(@agent_id)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     @response_queue = RightScale::Dispatcher::RESPONSE_QUEUE
   end
-
-  describe "Dispatched cache" do
-
-    before(:each) do
-      @dispatched = RightScale::Dispatcher::Dispatched.new
-      @token1 = "token1"
-      @token2 = "token2"
-      @token3 = "token3"
-    end
-
-    context "when storing" do
-
-      it "should store request token" do
-        @dispatched.store(@token1)
-        @dispatched.instance_variable_get(:@cache)[@token1].should == @now.to_i
-        @dispatched.instance_variable_get(:@lru).should == [@token1]
-      end
-
-      it "should update lru list when store to existing entry" do
-        @dispatched.store(@token1)
-        @dispatched.instance_variable_get(:@cache)[@token1].should == @now.to_i
-        @dispatched.instance_variable_get(:@lru).should == [@token1]
-        @dispatched.store(@token2)
-        @dispatched.instance_variable_get(:@cache)[@token2].should == @now.to_i
-        @dispatched.instance_variable_get(:@lru).should == [@token1, @token2]
-        flexmock(Time).should_receive(:now).and_return(@now += 10)
-        @dispatched.store(@token1)
-        @dispatched.instance_variable_get(:@cache)[@token1].should == @now.to_i
-        @dispatched.instance_variable_get(:@lru).should == [@token2, @token1]
-      end
-
-      it "should remove old cache entries when store new one" do
-        @dispatched.store(@token1)
-        @dispatched.store(@token2)
-        @dispatched.instance_variable_get(:@cache).keys.should == [@token1, @token2]
-        @dispatched.instance_variable_get(:@lru).should == [@token1, @token2]
-        flexmock(Time).should_receive(:now).and_return(@now += RightScale::Dispatcher::Dispatched::MAX_AGE + 1)
-        @dispatched.store(@token3)
-        @dispatched.instance_variable_get(:@cache).keys.should == [@token3]
-        @dispatched.instance_variable_get(:@lru).should == [@token3]
-      end
-
-    end
-
-    context "when fetching" do
-
-      it "should fetch request and make it the most recently used" do
-        @dispatched.store(@token1)
-        @dispatched.store(@token2)
-        @dispatched.instance_variable_get(:@lru).should == [@token1, @token2]
-        @dispatched.fetch(@token1).should be_true
-        @dispatched.instance_variable_get(:@lru).should == [@token2, @token1]
-      end
-
-      it "should return false if fetch non-existent request" do
-        @dispatched.fetch(@token1).should be_false
-        @dispatched.store(@token1)
-        @dispatched.fetch(@token1).should be_true
-        @dispatched.fetch(@token2).should be_false
-      end
-
-    end
-
-    context "when retrieving stats" do
-
-      it "should return nil if cache empty" do
-        @dispatched.stats.should be_nil
-      end
-
-      it "should return total, youngest age, and oldest age" do
-        @dispatched.store(@token1)
-        flexmock(Time).should_receive(:now).and_return(@now += 10)
-        @dispatched.store(@token2)
-        stats = @dispatched.stats
-        stats["total"].should == 2
-        stats["youngest age"].should == 0
-        stats["oldest age"].should == 10
-        @dispatched.fetch(@token1)
-        stats = @dispatched.stats
-        stats["oldest age"].should == 0
-      end
-
-    end
-
-  end # Dispatched
 
   it "should dispatch a request" do
     req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
@@ -271,7 +188,7 @@ describe "RightScale::Dispatcher" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
     flexmock(RightScale::Log).should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED.*TTL 2 sec ago/})
     @broker.should_receive(:publish).never
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Push.new('/foo/bar', 'you', :expires_at => @now.to_i + 8)
     flexmock(Time).should_receive(:now).and_return(@now += 10)
@@ -287,7 +204,7 @@ describe "RightScale::Dispatcher" do
                                                     arg.results.non_delivery? &&
                                                     arg.results.content == RightScale::OperationResult::TTL_EXPIRATION},
                                           hsh(:persistent => true, :mandatory => true)).once
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => @response_queue, :expires_at => @now.to_i + 8})
     flexmock(Time).should_receive(:now).and_return(@now += 10)
@@ -303,7 +220,7 @@ describe "RightScale::Dispatcher" do
                                                     arg.results.error? &&
                                                     arg.results.content =~ /Could not deliver/},
                                           hsh(:persistent => true, :mandatory => true)).once
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
     flexmock(Time).should_receive(:now).and_return(@now += 10)
@@ -312,7 +229,7 @@ describe "RightScale::Dispatcher" do
 
   it "should not reject requests whose time-to-live has not expired" do
     flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', :expires_at => @now.to_i + 11)
     flexmock(Time).should_receive(:now).and_return(@now += 10)
@@ -323,7 +240,7 @@ describe "RightScale::Dispatcher" do
   end
 
   it "should not check age of requests with time-to-live check disabled" do
-    @dispatcher = RightScale::Dispatcher.new(@agent)
+    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', :expires_at => 0)
     res = @dispatcher.dispatch(req)
@@ -335,11 +252,10 @@ describe "RightScale::Dispatcher" do
   it "should reject duplicate requests" do
     flexmock(RightScale::Log).should_receive(:info).once.with(on {|arg| arg =~ /REJECT DUP/})
     EM.run do
-      @agent.should_receive(:options).and_return(:dup_check => true)
-      @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
-      @dispatcher.instance_variable_get(:@dispatched).store(req.token)
+      @cache.store(req.token, nil)
       @dispatcher.dispatch(req).should be_nil
       EM.stop
     end
@@ -348,12 +264,11 @@ describe "RightScale::Dispatcher" do
   it "should reject duplicate retry requests" do
     flexmock(RightScale::Log).should_receive(:info).once.with(on {|arg| arg =~ /REJECT RETRY DUP/})
     EM.run do
-      @agent.should_receive(:options).and_return(:dup_check => true)
-      @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
-      @dispatcher.instance_variable_get(:@dispatched).store("try2")
+      @cache.store("try2", nil)
       @dispatcher.dispatch(req).should be_nil
       EM.stop
     end
@@ -361,24 +276,23 @@ describe "RightScale::Dispatcher" do
 
   it "should not reject non-duplicate requests" do
     EM.run do
-      @agent.should_receive(:options).and_return(:dup_check => true)
-      @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
-      @dispatcher.instance_variable_get(:@dispatched).store("try3")
+      @cache.store("try3", nil)
       @dispatcher.dispatch(req).should_not be_nil
       EM.stop
     end
   end
 
-  it "should not check for duplicates if dup_check disabled" do
+  it "should not check for duplicates if duplicate checking is disabled" do
     EM.run do
-      @dispatcher = RightScale::Dispatcher.new(@agent)
+      @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       req.tries.concat(["try1", "try2"])
-      @dispatcher.instance_variable_get(:@dispatched).should be_nil
+      @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
       @dispatcher.dispatch(req).should_not be_nil
       EM.stop
     end

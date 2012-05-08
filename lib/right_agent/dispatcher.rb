@@ -28,82 +28,6 @@ module RightScale
     # Response queue name
     RESPONSE_QUEUE = "response"
 
-    # Cache for requests that have been dispatched recently
-    # This cache is intended for use in checking for duplicate requests
-    class Dispatched
-
-      # Maximum number of seconds to retain a dispatched request in cache
-      # This must be greater than the maximum possible retry timeout to avoid
-      # duplicate execution of a request
-      MAX_AGE = 12 * 60 * 60
-
-      # Initialize cache
-      def initialize
-        @cache = {}
-        @lru = []
-      end
-
-      # Store dispatched request token in cache
-      #
-      # === Parameters
-      # token(String):: Generated message identifier
-      #
-      # === Return
-      # true:: Always return true
-      def store(token)
-        now = Time.now.to_i
-        if @cache.has_key?(token)
-          @cache[token] = now
-          @lru.push(@lru.delete(token))
-        else
-          @cache[token] = now
-          @lru.push(token)
-          @cache.delete(@lru.shift) while (now - @cache[@lru.first]) > MAX_AGE
-        end
-        true
-      end
-
-      # Fetch request
-      #
-      # === Parameters
-      # token(String):: Generated message identifier
-      #
-      # === Return
-      # (Boolean):: true if request has been dispatched, otherwise false
-      def fetch(token)
-        if @cache[token]
-          @cache[token] = Time.now.to_i
-          @lru.push(@lru.delete(token))
-        end
-      end
-
-      # Get cache size
-      #
-      # === Return
-      # (Integer):: Number of cache entries
-      def size
-        @cache.size
-      end
-
-      # Get cache statistics
-      #
-      # === Return
-      # stats(Hash|nil):: Current statistics, or nil if cache empty
-      #   "total"(Integer):: Total number in cache, or nil if none
-      #   "oldest"(Integer):: Number of seconds since oldest cache entry created or updated
-      #   "youngest"(Integer):: Number of seconds since youngest cache entry created or updated
-      def stats
-        if size > 0
-          {
-            "total" => size,
-            "oldest age" => size > 0 ? Time.now.to_i - @cache[@lru.first] : 0,
-            "youngest age" => size > 0 ? Time.now.to_i - @cache[@lru.last] : 0
-          }
-        end
-      end
-
-    end # Dispatched
-
     # (ActorRegistry) Registry for actors
     attr_reader :registry
 
@@ -120,13 +44,13 @@ module RightScale
     #
     # === Parameters
     # agent(Agent):: Agent using this dispatcher; uses its identity, broker, registry, and following options:
-    #   :dup_check(Boolean):: Whether to check for and reject duplicate requests, e.g., due to retries,
-    #     but only for requests that are dispatched from non-shared queues
     #   :secure(Boolean):: true indicates to use Security features of RabbitMQ to restrict agents to themselves
     #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
     #     to do requested work on event machine defer thread and all else, such as pings on main thread
     #   :threadpool_size(Integer):: Number of threads in event machine thread pool
-    def initialize(agent)
+    # dispatched_cache(DispatchedCache|nil):: Cache for dispatched requests that is used for detecting
+    #   duplicate requests, or nil if duplicate checking is disabled
+    def initialize(agent, dispatched_cache = nil)
       @agent = agent
       @broker = @agent.broker
       @registry = @agent.registry
@@ -134,29 +58,27 @@ module RightScale
       options = @agent.options
       @secure = options[:secure]
       @single_threaded = options[:single_threaded]
-      @dup_check = options[:dup_check]
       @pending_dispatches = 0
       @em = EM
       @em.threadpool_size = (options[:threadpool_size] || 20).to_i
       reset_stats
 
-      # Only access following from primary thread
-      @dispatched = Dispatched.new if @dup_check
+      # Only access this cache from primary thread
+      @dispatched_cache = dispatched_cache
     end
 
     # Dispatch request to appropriate actor for servicing
     # Handle returning of result to requester including logging any exceptions
     # Reject requests whose TTL has expired or that are duplicates of work already dispatched
-    # but do not do duplicate checking if being dispatched from a shared queue
     # Work is done in background defer thread if single threaded option is false
     #
     # === Parameters
     # request(Request|Push):: Packet containing request
-    # shared(Boolean):: Whether being dispatched from a shared queue
+    # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
     #
     # === Return
     # r(Result):: Result from dispatched request, nil if not dispatched because dup or stale
-    def dispatch(request, shared = false)
+    def dispatch(request, shared_queue = nil)
 
       # Determine which actor this request is for
       prefix, method = request.type.split('/')[1..-1]
@@ -188,16 +110,16 @@ module RightScale
       end
 
       # Reject this request if it is a duplicate
-      if @dup_check && !shared && request.kind_of?(Request)
-        if @dispatched.fetch(token)
+      if @dispatched_cache
+        if by = @dispatched_cache.serviced_by(token)
           @rejects.update("duplicate (#{method})")
-          Log.info("REJECT DUP <#{token}> of self")
+          Log.info("REJECT DUP <#{token}> serviced by #{by == @identity ? 'self' : by}")
           return nil
         end
         request.tries.each do |t|
-          if @dispatched.fetch(t)
+          if by = @dispatched_cache.serviced_by(t)
             @rejects.update("retry duplicate (#{method})")
-            Log.info("REJECT RETRY DUP <#{token}> of <#{t}>")
+            Log.info("REJECT RETRY DUP <#{token}> of <#{t}> serviced by #{by == @identity ? 'self' : by}")
             return nil
           end
         end
@@ -208,7 +130,7 @@ module RightScale
         begin
           @pending_dispatches += 1
           @last_request_dispatch_time = received_at.to_i
-          @dispatched.store(token) if @dup_check && !shared && request.kind_of?(Request) && token
+          @dispatched_cache.store(token, shared_queue) if @dispatched_cache
           if actor.method(method).arity.abs == 1
             actor.__send__(method, request.payload)
           else
@@ -262,7 +184,7 @@ module RightScale
     #
     # === Return
     # stats(Hash):: Current statistics:
-    #   "cached"(Hash|nil):: Number of dispatched requests cached and age of youngest and oldest,
+    #   "dispatched cache"(Hash|nil):: Number of dispatched requests cached and age of youngest and oldest,
     #     or nil if empty
     #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
     #     "total"(Integer):: Total for category
@@ -282,12 +204,12 @@ module RightScale
         }
       end
       stats = {
-        "cached"        => (@dispatched.stats if @dup_check),
-        "exceptions"    => @exceptions.stats,
-        "pending"       => pending,
-        "rejects"       => @rejects.all,
-        "requests"      => @requests.all,
-        "response time" => @requests.avg_duration
+        "dispatched cache" => (@dispatched_cache.stats if @dispatched_cache),
+        "exceptions"       => @exceptions.stats,
+        "pending"          => pending,
+        "rejects"          => @rejects.all,
+        "requests"         => @requests.all,
+        "response time"    => @requests.avg_duration
       }
       reset_stats if reset
       stats

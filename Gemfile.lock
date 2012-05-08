@@ -1,21 +1,21 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: 77305afa4905931d6806c419116893d8854a6546
-  branch: master
+  revision: 073e17d0d77a1a051a3cf3517f6d5f30396b0d23
+  branch: azure_12543_ack_after
   specs:
-    right_amqp (0.3.0)
+    right_amqp (0.4.0)
       eventmachine (~> 0.12.10)
       right_support (~> 1.2)
 
 PATH
   remote: .
   specs:
-    right_agent (0.10.4)
+    right_agent (0.11.0)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)
       net-ssh (~> 2.0)
-      right_amqp (~> 0.3)
+      right_amqp (~> 0.4)
       right_popen (~> 1.0.11)
       right_support (~> 1.3)
 

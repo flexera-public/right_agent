@@ -200,8 +200,8 @@ module RightScale
             EM.add_timer(1) do
               begin
                 @registry = ActorRegistry.new
-                @dispatcher = Dispatcher.new(self)
-                @sender = Sender.new(self)
+                @dispatcher = create_dispatcher
+                @sender = create_sender
                 load_actors
                 setup_traps
                 setup_queues
@@ -427,10 +427,11 @@ module RightScale
     #
     # === Parameters
     # packet(Request|Push|Result):: Packet received
+    # header(AMQP::Frame::Header):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def receive(packet)
+    def receive(packet, header)
       begin
         case packet
         when Push, Request then @dispatcher.dispatch(packet) unless @terminating
@@ -443,6 +444,7 @@ module RightScale
         Log.error("Identity queue processing error", e, :trace)
         @exceptions.track("identity queue", e, packet)
       end
+      header.ack
       true
     end
 
@@ -645,6 +647,23 @@ module RightScale
       false
     end
 
+    # Create dispatcher for handling incoming requests
+    #
+    # === Return
+    # (Dispatcher):: New dispatcher
+    def create_dispatcher
+      cache = DispatchedCache.new(@identity) if @options[:dup_check]
+      Dispatcher.new(self, cache)
+    end
+
+    # Create manager for outgoing requests
+    #
+    # === Return
+    # (Sender):: New sender
+    def create_sender
+      Sender.new(self)
+    end
+
     # Load the ruby code for the actors
     #
     # === Return
@@ -715,7 +734,7 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) { |_, packet| receive(packet) }
+      ids = @broker.subscribe(queue, nil, options) { |_, packet, header| receive(packet, header) }
     end
 
     # Setup signal traps
@@ -787,7 +806,25 @@ module RightScale
         true
       end
 
+      begin
+        check_other(@check_status_count)
+      rescue Exception => e
+        Log.error("Failed to perform other check status check", e)
+        @exceptions.track("check status", e)
+      end
+
       @check_status_count += 1
+      true
+    end
+
+    # Allow derived classes to perform any other useful periodic checks
+    #
+    # === Parameters
+    # check_status_count(Integer):: Counter that is incremented for each status check
+    #
+    # === Return
+    # true:: Always return true
+    def check_other(check_status_count)
       true
     end
 
