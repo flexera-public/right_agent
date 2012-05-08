@@ -471,7 +471,8 @@ module RightScale
           Log.info("[stop] Terminating immediately")
           @termination_timer.cancel if @termination_timer
           @termination_timer = nil
-          if blk then blk.call else EM.stop end
+          blk.call if blk
+          EM.stop
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
@@ -488,7 +489,7 @@ module RightScale
                 request_count, request_age = @sender.terminate
                 Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                          "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-                @broker.close(&blk)
+                @broker.close(lambda { blk.call; EM.stop })
                 EM.stop unless blk
               end
 
