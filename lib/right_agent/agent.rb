@@ -434,10 +434,11 @@ module RightScale
     #
     # === Parameters
     # packet(Request|Push|Result):: Packet received
+    # header(AMQP::Frame::Header):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def receive(packet)
+    def receive(packet, header)
       begin
         case packet
         when Push, Request then @dispatcher.dispatch(packet) unless @terminating
@@ -450,6 +451,7 @@ module RightScale
         Log.error("Identity queue processing error", e, :trace)
         @exceptions.track("identity queue", e, packet)
       end
+      header.ack
       true
     end
 
@@ -742,7 +744,7 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) { |_, packet| receive(packet) }
+      ids = @broker.subscribe(queue, nil, options) { |_, packet, header| receive(packet, header) }
     end
 
     # Setup signal traps
