@@ -159,7 +159,7 @@ module RightScale
     # Are we in an EC2 cloud?
     #
     # === Return
-    # true:: If machine is located in an Ec2 cloud
+    # true:: If machine is located in an EC2 cloud
     # false:: Otherwise
     def ec2?
       resolve_cloud_type if @ec2.nil?
@@ -288,15 +288,20 @@ module RightScale
     # Determines which cloud we're on by the cheap but simple expedient of
     # reading the RightScale cloud file
     def resolve_cloud_type
-      cloud_type = File.read(File.join(self.filesystem.right_scale_state_dir, 'cloud')) rescue nil
+      cloud_type = read_cloud_file
       @ec2 = false
       @rackspace = false
       @eucalyptus = false
       case cloud_type
-        when 'ec2' then ec2 = true
+        when 'ec2' then @ec2 = true
         when 'rackspace' then @rackspace = true
         when 'eucalyptus' then @eucalyptus = true
       end
+    end
+
+    # Reads the RightScale cloud file and returns its contents
+    def read_cloud_file
+      File.read(File.join(self.filesystem.right_scale_state_dir, 'cloud')) rescue nil
     end
 
     # Retrieve platform specific service implementation

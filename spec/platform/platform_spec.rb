@@ -58,6 +58,28 @@ module RightScale
         end
       end
     end
-    
+
+    context 'cloud-family queries' do
+      # PLEASE NOTE: we are unable to use the magic RSpec "subject" because
+      # we are dispatching calls to a Singleton and we must partially mock its
+      # calls, and both __send__ and flexmock partial-mocking gets confused by
+      # the fact that #subject returns a Proc, not the actual subject. Do not
+      # attempt to use the pretty RSpec feature within this context. You have
+      # been warned!
+      before(:each) do
+        @subject = subject.instance
+        @subject.instance_variable_set(:@ec2, nil)
+        @subject.instance_variable_set(:@rackspace, nil)
+        @subject.instance_variable_set(:@eucalyptus, nil)
+      end
+
+      ['ec2', 'rackspace', 'eucalyptus'].each do |cloud|
+        it "should detect #{cloud}" do
+          query = "#{cloud}?".to_sym
+          flexmock(@subject).should_receive(:read_cloud_file).once.and_return(cloud)
+          @subject.__send__(query).should be_true
+        end
+      end
+    end
   end
 end
