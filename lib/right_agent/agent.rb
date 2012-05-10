@@ -489,7 +489,7 @@ module RightScale
                 request_count, request_age = @sender.terminate
                 Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                          "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-                @broker.close(lambda { blk.call; EM.stop })
+                @broker.close { blk.call; EM.stop }
                 EM.stop unless blk
               end
 
