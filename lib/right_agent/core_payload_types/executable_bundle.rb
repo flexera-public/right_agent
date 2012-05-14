@@ -90,6 +90,9 @@ module RightScale
     # (RunlistPolicy) The RightLink policy this bundle belongs to
     attr_accessor :runlist_policy
 
+    # (String) The secret for any instance of the server that generated this bundle.
+    attr_accessor :server_secret
+
     def initialize(*args)
       @executables           = args[0]
       @cookbook_repositories = args[1] if args.size > 1
@@ -99,6 +102,7 @@ module RightScale
       @repose_servers        = args[5] if args.size > 5
       @dev_cookbooks         = args[6] if args.size > 6
       @runlist_policy        = args[7] if args.size > 7
+      @server_secret         = args[8] if args.size > 8
     end
 
     # Array of serialized fields given to constructor
@@ -110,7 +114,8 @@ module RightScale
         @cookbooks,
         @repose_servers,
         @dev_cookbooks,
-        @runlist_policy ]
+        @runlist_policy,
+        @server_secret ]
     end
 
     # Human readable representation
