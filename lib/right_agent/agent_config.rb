@@ -121,6 +121,17 @@ module RightScale
       DEFAULT_POLICY_PERIOD
     end
 
+    # Default server secret in case it is not provided by core.
+    DEFAULT_SERVER_SECRET = "1a7c8f89bb78fcf1b225324af0abc474d308a5e7f654080664231af3b268db1e"
+
+    # Default server secret in case it is not provided by core.
+    #
+    # === Return
+    # (String):: default server secret...
+    def self.default_server_secret
+      DEFAULT_SERVER_SECRET
+    end
+
     # Initialize path to root directory of agent
     #
     # === Parameters
