@@ -40,7 +40,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('right_support', '~> 1.3')
   spec.add_dependency('right_amqp', '~> 0.3')
   spec.add_dependency('json', ['~> 1.4'])
-  spec.add_dependency('eventmachine', '~> 0.12.10')
+  spec.add_dependency('eventmachine', '>= 0.12.10')
   spec.add_dependency('right_popen', '~> 1.0.11')
   spec.add_dependency('msgpack', '0.4.4')
   spec.add_dependency('net-ssh', '~> 2.0')
