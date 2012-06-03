@@ -114,7 +114,7 @@ module RightScale
       if exists?
         open(@pid_file,'r') { |f| content[:pid] = f.read.to_i }
         open(@cookie_file,'r') do |f|
-          command_options = YAML.load(f.read) rescue {}
+          command_options = (YAML.load(f.read) rescue {}) || {}
           content.merge!(command_options)
         end if File.exists?(@cookie_file)
       end
