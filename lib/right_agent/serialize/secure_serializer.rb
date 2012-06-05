@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -26,6 +26,8 @@ module RightScale
   # X.509 certificate signing
   class SecureSerializer
 
+    class InitializationError < Exception; end
+    class InvalidAsyncUsage < Exception; end
     class MissingCertificate < Exception; end
     class InvalidSignature < Exception; end
 
@@ -40,14 +42,31 @@ module RightScale
       !@serializer.nil?
     end
 
-    # see SecureSerializer::dump
-    def self.dump(obj, encrypt = nil)
-      @serializer.dump(obj, encrypt)
+    # See SecureSerializer#async_enabled?
+    def self.async_enabled?
+      @serializer && @serializer.async_enabled?
     end
 
-    # see SecureSerializer::load
+    # See SecureSerializer#dump
+    def self.dump(obj, encrypt = nil)
+      raise InitializationError.new("Not initialized") unless initialized?
+      if block_given?
+        @serializer.dump(obj, encrypt) { |result| yield(result) }
+        nil
+      else
+        @serializer.dump(obj, encrypt)
+      end
+    end
+
+    # See SecureSerializer#load
     def self.load(msg)
-      @serializer.load(msg)
+      raise InitializationError.new("Not initialized") unless initialized?
+      if block_given?
+        @serializer.load(msg) { |result| yield(result) }
+        nil
+      else
+        @serializer.load(msg)
+      end
     end
 
     # Initialize serializer, must be called prior to using it
@@ -55,8 +74,8 @@ module RightScale
     # === Parameters
     # serializer(Serializer):: Object serializer
     # identity(String):: Serialized identity associated with serialized messages
-    # cert(String):: Certificate used to sign and decrypt serialized messages
-    # key(RsaKeyPair):: Private key corresponding to specified cert
+    # cert(String):: X.509 certificate used to sign and decrypt serialized messages
+    # key(RsaKeyPair):: X.509 private key corresponding to specified cert
     # store(Object):: Certificate store exposing certificates used for
     #   encryption (get_recipients) and signature validation (get_signer)
     # encrypt(Boolean):: true if data should be signed and encrypted, otherwise
@@ -70,6 +89,14 @@ module RightScale
       @serializer = serializer
     end
 
+    # Whether asynchronous operation enabled
+    #
+    # === Return
+    # (Boolean):: true if async enabled, otherwise false
+    def async_enabled?
+      @store.respond_to?(:async_enabled?) && @store.async_enabled?
+    end
+
     # Serialize, sign, and encrypt message
     # Sign and encrypt using X.509 certificate
     #
@@ -78,34 +105,84 @@ module RightScale
     # encrypt(Boolean|nil):: true if object should be signed and encrypted,
     #   false if just signed, nil means use class setting
     #
-    # === Return
-    # (String):: MessagePack serialized and optionally encrypted object
+    # === Block
+    # Optional block that is asynchronously yielded the serialized message or an exception
     #
     # === Raise
-    # Exception:: If certificate identity, certificate store, certificate, or private key missing
-    def dump(obj, encrypt = nil)
-      raise "Missing certificate identity" unless @identity
-      raise "Missing certificate" unless @cert
-      raise "Missing certificate key" unless @key
-      raise "Missing certificate store" unless @store || !@encrypt
-      must_encrypt = encrypt.nil? ? @encrypt : encrypt
+    # InitializationError:: If certificate identity, certificate store, certificate, or private key missing
+    # InvalidAsyncUsage:: If block given but asynchronous operation not enabled
+    #
+    # === Return
+    # (String):: MessagePack serialized and optionally encrypted object unless block given
+    def dump(obj, encrypt = nil, &block)
+      raise InitializationError.new("Missing certificate identity") unless @identity
+      raise InitializationError.new("Missing certificate") unless @cert
+      raise InitializationError.new("Missing certificate key") unless @key
+      raise InitializationError.new("Missing certificate store") unless @store || !@encrypt
+      if block
+        async = async_enabled?
+        raise InvalidAsyncUsage.new("Asynchronous operation not enabled") unless async
+      end
+      encrypt ||= @encrypt
       serialize_format = if obj.respond_to?(:send_version) && obj.send_version >= 12
         @serializer.format
       else
         :json
       end
-      encode_format = serialize_format == :json ? :pem : :der
+      encrypt_format = (serialize_format == :json ? :pem : :der)
       msg = @serializer.dump(obj, serialize_format)
-      if must_encrypt
-        certs = @store.get_recipients(obj)
-        if certs
-          msg = EncryptedDocument.new(msg, certs).encrypted_data(encode_format)
+      if async
+        if encrypt
+          begin
+            @store.get_recipients(obj) do |result|
+              unless result.is_a?(Exception)
+                result = begin
+                  serialize(obj, msg, result, encrypt_format, serialize_format)
+                rescue Exception => e
+                  e
+                end
+              end
+              yield(result)
+            end
+          rescue Exception => e
+            yield(e)
+          end
         else
-          target = obj.target_for_encryption if obj.respond_to?(:target_for_encryption)
-          Log.warning("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
+          result = begin
+            serialize(obj, msg, nil, encrypt_format, serialize_format)
+          rescue Exception => e
+            e
+          end
+          yield(result)
         end
+        nil
+      else
+        certs = @store.get_recipients(obj) if encrypt
+        serialize(obj, msg, certs, encrypt_format, serialize_format)
       end
-      sig = Signature.new(msg, @cert, @key).data(encode_format)
+    rescue Exception => e
+      async ? yield(e) : raise
+    end
+
+    # Encrypt and serialize message
+    #
+    # === Parameters
+    # obj(Object):: Original object to be serialized and encrypted
+    # msg(Object):: Message object to be serialized
+    # certs(Array|Certificate):: X.509 public certificate(s) of recipient
+    # encrypt_format(Symbol):: Encrypt format: :pem or :der
+    # serialize_format(Symbol):: Serialization format: :json or :msgpack
+    #
+    # === Return
+    # (String):: Serialized message
+    def serialize(obj, msg, certs, encrypt_format, serialize_format)
+      if certs
+        msg = EncryptedDocument.new(msg, certs).encrypted_data(encrypt_format)
+      else
+        target = obj.target_for_encryption if obj.respond_to?(:target_for_encryption)
+        Log.warning("No certificate available for object #{obj.class} being sent to #{target.inspect}\n") if target
+      end
+      sig = Signature.new(msg, @cert, @key).data(encrypt_format)
       @serializer.dump({'id' => @identity, 'data' => msg, 'signature' => sig, 'encrypted' => !certs.nil?}, serialize_format)
     end
     
@@ -115,21 +192,64 @@ module RightScale
     # === Parameters
     # msg(String):: Serialized and optionally encrypted object using MessagePack or JSON
     #
-    # === Return
-    # (Object):: Unserialized object
+    # === Block
+    # Optional block that is asynchronously yielded the unserialized message or an exception
     #
     # === Raise
-    # Exception:: If certificate store, certificate, or private key missing
-    # MissingCertificate:: If could not find certificate for message signer
-    # InvalidSignature:: If message signature check failed for message
-    def load(msg)
-      raise "Missing certificate store" unless @store
-      raise "Missing certificate" unless @cert || !@encrypt
-      raise "Missing certificate key" unless @key || !@encrypt
+    # InitializationError:: If certificate store, certificate, private key missing, or
+    # InvalidAsyncUsage:: If block given but asynchronous operation not enabled
+    #
+    # === Return
+    # (Object):: Unserialized object unless block given
+    def load(msg, &block)
+      raise InitializationError.new("Missing certificate store") unless @store
+      raise InitializationError.new("Missing certificate") unless @cert || !@encrypt
+      raise InitializationError.new("Missing certificate key") unless @key || !@encrypt
+      if block
+        async = async_enabled?
+        raise InvalidAsyncUsage.new("Asynchronous operation not enabled") unless async
+      end
 
       msg = @serializer.load(msg)
       sig = Signature.from_data(msg['signature'])
-      certs = @store.get_signer(msg['id'])
+      if async
+        begin
+          @store.get_signer(msg['id']) do |result|
+            unless result.is_a?(Exception)
+              result = begin
+                unserialize(msg, result, sig)
+              rescue Exception => e
+                e
+              end
+            end
+            yield(result)
+          end
+        rescue Exception => e
+          yield(e)
+        end
+        nil
+      else
+        certs = @store.get_signer(msg['id'])
+        unserialize(msg, certs, sig)
+      end
+    rescue Exception => e
+      async ? yield(e) : raise
+    end
+
+    # Decrypt and unserialize message
+    #
+    # === Parameters
+    # msg(String):: Serialized and optionally encrypted object using MessagePack or JSON
+    # certs(Array|Certificate):: X.509 public certificate(s) of message signer
+    # sig(Signature):: Signature extracted from message
+    #
+    # === Raise
+    # MissingCertificate:: If could not find certificate for message signer
+    # InvalidSignature:: If message signature check failed for message
+    #
+    # === Return
+    # (Object):: Unserialized message
+    def unserialize(msg, certs, sig)
       raise MissingCertificate.new("Could not find a certificate for signer #{msg['id']}") unless certs
 
       certs = [ certs ] unless certs.respond_to?(:any?)

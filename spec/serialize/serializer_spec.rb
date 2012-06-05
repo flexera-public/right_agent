@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -24,21 +24,21 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 
 describe RightScale::Serializer do
 
-  describe "Format" do
+  describe "Initialization" do
 
-    it "supports MessagePack format" do
+    it "should support MessagePack format" do
       [ :msgpack, "msgpack" ].each do |format|
         lambda { RightScale::Serializer.new(format).format.should == :msgpack }.should_not raise_error
       end
     end
 
-    it "supports JSON format" do
+    it "should support JSON format" do
       [ :json, "json" ].each do |format|
         lambda { RightScale::Serializer.new(format).format.should == :json }.should_not raise_error
       end
     end
 
-    it "supports secure format" do
+    it "should support secure format" do
       [ :secure, "secure" ].each do |format|
         lambda { RightScale::Serializer.new(format).format.should == :secure }.should_not raise_error
       end
@@ -52,7 +52,13 @@ describe RightScale::Serializer do
       lambda { RightScale::Serializer.new(:yaml) }.should raise_error(ArgumentError)
     end
 
-  end # Format
+    it "should detect that when asynchronous is enabled" do
+      flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(true)
+      serializer = RightScale::Serializer.new(:secure)
+      serializer.async_enabled?.should be_true
+    end
+
+  end # Initialization
 
   describe "Serialization" do
 
@@ -98,7 +104,38 @@ describe RightScale::Serializer do
       serializer.dump("hello", :msgpack)
     end
 
-    describe "MessagePack for common classes" do
+    context "when asynchronous" do
+
+      it "should raise exception if block given when not enabled" do
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(false)
+        serializer = RightScale::Serializer.new(:secure)
+        lambda { serializer.dump("hello") { |_| } }.should raise_error(ArgumentError)
+      end
+
+      it "should yield serialized message" do
+        serialized_packet = flexmock("Packet")
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(true)
+        flexmock(RightScale::SecureSerializer).should_receive(:dump).with("hello", Proc).and_yield(serialized_packet).once
+        serializer = RightScale::Serializer.new(:secure)
+        called = 0
+        result = serializer.dump("hello") { |r| r.should == serialized_packet; called += 1 }
+        result.should be_nil
+        called.should == 1
+      end
+
+      it "should yield exception if serialization fails" do
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(true)
+        flexmock(RightScale::SecureSerializer).should_receive(:dump).with("hello", Proc).and_raise(Exception).once
+        serializer = RightScale::Serializer.new(:secure)
+        called = 0
+        result = serializer.dump("hello") { |r| r.should be_a(RightScale::Serializer::SerializationError); called += 1 }
+        result.should be_nil
+        called.should == 1
+      end
+
+    end
+
+    context "when using MessagePack" do
 
       it "should serialize Date object" do
         serializer = RightScale::Serializer.new(:msgpack)
@@ -171,6 +208,42 @@ describe RightScale::Serializer do
       flexmock(MessagePack).should_receive(:load).with("olleh").and_return(unserialized_packet).once
       serializer = RightScale::Serializer.new(:msgpack)
       serializer.load("olleh").should == unserialized_packet
+    end
+
+    context "when asynchronous" do
+
+      it "should raise exception if block given when not enabled" do
+        object = [1, 2, 3]
+        serialized = object.to_msgpack
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(false)
+        serializer = RightScale::Serializer.new(:secure)
+        lambda { serializer.load(serialized) { |_| } }.should raise_error(ArgumentError)
+      end
+
+      it "should yield unserialized object" do
+        object = [1, 2, 3]
+        serialized = object.to_msgpack
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(true)
+        flexmock(RightScale::SecureSerializer).should_receive(:load).with(serialized, Proc).and_yield(object).once
+        serializer = RightScale::Serializer.new(:secure)
+        called = 0
+        result = serializer.load(serialized) { |r| r.should == object; called += 1 }
+        result.should be_nil
+        called.should == 1
+      end
+
+      it "should yield exception if unserialization fails" do
+        object = [1, 2, 3]
+        serialized = object.to_msgpack
+        flexmock(RightScale::SecureSerializer).should_receive(:async_enabled?).and_return(true)
+        flexmock(RightScale::SecureSerializer).should_receive(:load).with(serialized, Proc).and_raise(Exception).once
+        serializer = RightScale::Serializer.new(:secure)
+        called = 0
+        result = serializer.load(serialized) { |r| r.should be_a(RightScale::Serializer::SerializationError); called += 1 }
+        result.should be_nil
+        called.should == 1
+      end
+
     end
 
   end # De-Serialization of Packet

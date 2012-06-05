@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -71,6 +71,15 @@ module RightScale
       @format = (preferred_format ||= DEFAULT_FORMAT).to_sym
       raise ArgumentError, "Serializer format #{@format.inspect} not one of #{FORMATS.inspect}" unless FORMATS.include?(@format)
       @secure = (@format == :secure)
+      @async_enabled = @secure && SecureSerializer.async_enabled?
+    end
+
+    # Whether asynchronous operation enabled
+    #
+    # === Return
+    # (Boolean):: true if async enabled, otherwise false
+    def async_enabled?
+      @async_enabled
     end
 
     # Serialize object using preferred serializer
@@ -80,10 +89,22 @@ module RightScale
     # packet(Object):: Object to be serialized
     # format(Symbol):: Override preferred format
     #
+    # === Block
+    # Optional block that is asynchronously yielded the serialized message or an exception
+    #
+    # === Raise
+    # ArgumentError:: If block given but asynchronous operation not supported
+    #
     # === Return
-    # (String):: Serialized object
-    def dump(packet, format = nil)
-      cascade_serializers(:dump, packet, [@secure ? SecureSerializer : SERIALIZERS[format || @format]])
+    # (String):: Serialized object, or nil if block given
+    def dump(packet, format = nil, &block)
+      if block
+        raise ArgumentError, "Asynchronous operation not enabled" unless @async_enabled
+        apply_serializer(SecureSerializer, :dump, packet, []) { |message| yield(message) }
+        nil
+      else
+        cascade_serializers(:dump, packet, [@secure ? SecureSerializer : SERIALIZERS[format || @format]])
+      end
     end
 
     # Unserialize object using cascaded serializers with order chosen by peaking at first byte
@@ -91,10 +112,23 @@ module RightScale
     # === Parameters
     # packet(String):: Data representing serialized object
     #
+    # === Block
+    # Optional block that is asynchronously yielded the unserialized message or an exception
+    #
+    # === Raise
+    # ArgumentError:: If block given but asynchronous operation not supported
+    #
     # === Return
-    # (Object):: Unserialized object
-    def load(packet)
-      cascade_serializers(:load, packet, @secure ? [SecureSerializer] : order_serializers(packet))
+    # (Object):: Unserialized object, or nil if block given
+    def load(packet, &block)
+      if block
+        raise ArgumentError, "Asynchronous operation not enabled" unless @async_enabled
+        # Inferring SecureSerializer since only it supports asynchronous operation
+        apply_serializer(SecureSerializer, :load, packet, []) { |message| yield(message) }
+        nil
+      else
+        cascade_serializers(:load, packet, @secure ? [SecureSerializer] : order_serializers(packet))
+      end
     end
 
     private
@@ -113,25 +147,49 @@ module RightScale
     # packet(Object|String):: Object or serialized data on which action is to be performed
     # serializers(Array):: Serializers to apply in order
     #
-    # === Return
-    # (String|Object):: Result of serialization action
-    #
-    # === Raises
+    # === Raise
     # SerializationError:: If none of the serializers can perform the requested action
+    #
+    # === Return
+    # object(String|Object):: Result of serialization action, or nil if block_given
     def cascade_serializers(action, packet, serializers)
       errors = []
       serializers.map do |serializer|
-        obj = nil
-        begin
-          obj = serializer.__send__(action, packet)
-        rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
-          errors << Log.format("Failed to #{action} with #{serializer.name}", e)
-        rescue Exception => e
-          errors << Log.format("Failed to #{action} with #{serializer.name}", e, :trace)
-        end
-        return obj if obj
+        object = apply_serializer(serializer, action, packet, errors)
+        return object if object
       end
       raise SerializationError.new(action, packet, serializers, errors.join("\n"))
+    end
+
+    # Apply serializer
+    #
+    # === Parameters
+    # serializer(Serializer):: Serializer to apply
+    # action(Symbol):: Serialization action: :dump or :load
+    # packet(Object|String):: Object or serialized data on which action is to be performed
+    # errors(Array):: Accumulator for serialization errors
+    #
+    # === Block
+    # Optional block that is asynchronously yielded the serialization result or an exception
+    #
+    # === Return
+    # object(String|Object):: Result of serialization action, or nil if block_given
+    def apply_serializer(serializer, action, packet, errors)
+      object = nil
+      begin
+        if block_given?
+          serializer.__send__(action, packet) { |object| yield(object) }
+        else
+          object = serializer.__send__(action, packet)
+        end
+      rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
+        errors << Log.format("Failed to #{action} with #{serializer.name}", e)
+        yield(SerializationError.new(action, packet, serializer, errors.join("\n"))) if block_given?
+      rescue Exception => e
+        errors << Log.format("Failed to #{action} with #{serializer.name}", e, :trace)
+        yield(SerializationError.new(action, packet, serializer, errors.join("\n"))) if block_given?
+      end
+      object
     end
 
     # Determine likely serialization format and order serializers accordingly

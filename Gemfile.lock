@@ -1,7 +1,7 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: 073e17d0d77a1a051a3cf3517f6d5f30396b0d23
-  branch: azure_12543_ack_after
+  revision: 85dd35d1cc883b186ee9c0554b19ce5617d76759
+  branch: azure_12543_ack_after2
   specs:
     right_amqp (0.4.0)
       eventmachine (~> 0.12.10)
