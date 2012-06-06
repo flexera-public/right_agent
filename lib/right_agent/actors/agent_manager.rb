@@ -255,8 +255,8 @@ class AgentManager
   # true
   def terminate(options = nil)
     RightScale::CommandRunner.stop
-    # Delay terminate a bit to give reply a chance to be sent
-    EM.next_tick { @agent.terminate }
+    # Delay terminate a bit to give request message a chance to be ack'd and reply to be sent
+    EM.add_timer(1) { @agent.terminate }
     true
   end
 

@@ -450,8 +450,9 @@ module RightScale
       rescue Exception => e
         Log.error("Identity queue processing error", e, :trace)
         @exceptions.track("identity queue", e, packet)
+      ensure
+        header.ack
       end
-      header.ack
       true
     end
 

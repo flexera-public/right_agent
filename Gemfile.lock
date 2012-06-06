@@ -1,6 +1,6 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: a5829903d70f604db17077b7748a00de2461d751
+  revision: 2986c4b6b7e46e5fbc9998dd2c39cd258af17185
   branch: azure_12543_async_mapper
   specs:
     right_amqp (0.4.0)
@@ -47,7 +47,7 @@ GEM
       mime-types (>= 1.16)
     right_popen (1.0.16)
       eventmachine (>= 0.12.10)
-    right_support (2.2.2)
+    right_support (2.3.0)
     rspec (2.10.0)
       rspec-core (~> 2.10.0)
       rspec-expectations (~> 2.10.0)
