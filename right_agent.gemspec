@@ -37,7 +37,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = '>= 1.8.7'
   spec.require_path = 'lib'
 
-  spec.add_dependency('right_support', '~> 1.3')
+  spec.add_dependency('right_support', ['>= 1.3', '< 3.0'])
   spec.add_dependency('right_amqp', '~> 0.4')
   spec.add_dependency('json', ['~> 1.4'])
   spec.add_dependency('eventmachine', '~> 0.12.10')

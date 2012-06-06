@@ -24,7 +24,7 @@ module RightScale
 
   # Run commands exposed by an agent.
   # External processes can send commands through a socket with the specified port.
-  # Command runner accepts connections and deserializes commands using YAML.
+  # Command runner accepts connections and unserializes commands using YAML.
   # Each command is expected to be a hash containing the :name and :options keys.
   class CommandRunner
     class << self
@@ -42,6 +42,8 @@ module RightScale
     #                        increment and retry if port already taken
     # identity(String):: Agent identity
     # commands(Hash):: Commands exposed by agent
+    # fiber_pool(NB::FiberPool):: Pool of initialized fibers to be used for executing
+    #   received commands in non-blocking fashion
     #
     # === Block
     # If a block is provided, this method will yield after all setup has been completed,
@@ -54,7 +56,7 @@ module RightScale
     #
     # === Raise
     # (RightScale::Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
-    def self.start(socket_port, identity, commands)
+    def self.start(socket_port, identity, commands, fiber_pool = nil)
       cmd_options = nil
       @listen_port = socket_port
 
@@ -65,7 +67,11 @@ module RightScale
             if cmd_cookie == @cookie
               cmd_name = c[:name].to_sym
               if commands.include?(cmd_name)
-                commands[cmd_name].call(c, conn)
+                if fiber_pool
+                  fiber_pool.spawn { commands[cmd_name].call(c, conn) }
+                else
+                  commands[cmd_name].call(c, conn)
+                end
               else
                 Log.warning("Unknown command '#{cmd_name}', known commands: #{commands.keys.join(', ')}")
               end
