@@ -139,6 +139,7 @@ rescan
 list volume
 select volume "0"
 attribute volume clear readonly noerr
+
 assign letter=S
 EOF
 
@@ -160,6 +161,7 @@ rescan
 list volume
 select volume "0"
 attribute volume clear readonly noerr
+
 assign mount="C:\\Program Files\\RightScale\\Mount\\Softlayer"
 EOF
 
@@ -186,6 +188,51 @@ EOF
 
           lambda{@platform.volume_manager.assign_device(0, "C:\\Somepath")}.should raise_error(RightScale::Platform::VolumeManager::ArgumentError)
           @platform.volume_manager.set_osinfo(old_osinfo)
+        end
+
+        it 'does not assign the device if the device is already assigned' do
+          script = <<EOF
+rescan
+list volume
+select volume "0"
+attribute volume clear readonly noerr
+
+assign mount="C:\\Program Files\\RightScale\\Mount\\Softlayer"
+EOF
+
+          flexmock(@platform.volume_manager).should_receive(:run_script).with(script).once.and_return([0, ''])
+
+          @platform.volume_manager.assign_device('0', "C:\\Program Files\\RightScale\\Mount\\Softlayer")
+          flexmock(@platform.volume_manager).should_receive(:volumes).once.and_return({:index => '0', :device => "C:\\Program Files\\RightScale\\Mount\\Softlayer"})
+          @platform.volume_manager.assign_device('0', "C:\\Program Files\\RightScale\\Mount\\Softlayer", :idempotent => true)
+        end
+
+        it 'does not clear readonly flag if :clear_readonly option is set to false' do
+          script = <<EOF
+rescan
+list volume
+select volume "0"
+
+
+assign mount="C:\\Program Files\\RightScale\\Mount\\Softlayer"
+EOF
+
+          flexmock(@platform.volume_manager).should_receive(:run_script).with(script).once.and_return([0, ''])
+          @platform.volume_manager.assign_device('0', "C:\\Program Files\\RightScale\\Mount\\Softlayer", {:clear_readonly => false})
+        end
+
+        it 'removes all previous assignments if :remove_all option is set to true' do
+          script = <<EOF
+rescan
+list volume
+select volume "0"
+attribute volume clear readonly noerr
+remove all noerr
+assign mount="C:\\Program Files\\RightScale\\Mount\\Softlayer"
+EOF
+
+          flexmock(@platform.volume_manager).should_receive(:run_script).with(script).once.and_return([0, ''])
+          @platform.volume_manager.assign_device('0', "C:\\Program Files\\RightScale\\Mount\\Softlayer", :remove_all => true)
         end
       end
 
@@ -247,6 +294,24 @@ EOF
           @platform.volume_manager.set_osinfo(old_osinfo)
         end
 
+      end
+
+      context :online_disk do
+        it 'does not online the disk if the disk is already online' do
+          script = <<EOF
+rescan
+list disk
+select disk 0
+attribute disk clear readonly noerr
+online disk noerr
+EOF
+
+          flexmock(@platform.volume_manager).should_receive(:run_script).with(script).once.and_return([0, ''])
+
+          @platform.volume_manager.online_disk(0)
+          flexmock(@platform.volume_manager).should_receive(:disks).once.and_return({:index => 0, :status => "Online"})
+          @platform.volume_manager.online_disk(0, :idempotent => true)
+        end
       end
     end
   end
