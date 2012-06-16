@@ -536,6 +536,33 @@ EOF
         true
       end
 
+      # Brings the disk given by index offline
+      #
+      # === Parameters
+      # disk_index(int):: zero-based disk index
+      #
+      # === Return
+      # always true
+      #
+      # === Raise
+      # ArgumentError:: on invalid parameters
+      # VolumeError:: on failure to online disk
+      # ParserError:: on failure to parse volume list
+      def offline_disk(disk_index)
+        raise ArgumentError.new("Invalid disk_index = #{disk_index}") unless disk_index >= 0
+        # Set some defaults for backward compatibility, allow user specified options to override defaults
+        script = <<EOF
+rescan
+list disk
+select disk #{disk_index}
+offline disk noerr
+EOF
+
+        exit_code, output_text = run_script(script)
+        raise VolumeError.new("Failed to offline disk #{disk_index}: exit code = #{exit_code}\n#{script}\n#{output_text}") if exit_code != 0
+        true
+      end
+
       # Assigns the given device name to the volume given by index and clears
       # the readonly attribute, if necessary. The device must not currently be
       # in use.
