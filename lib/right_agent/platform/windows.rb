@@ -468,8 +468,6 @@ EOF
         # partition has actually been formatted.
         raise ArgumentError.new("Invalid index = #{disk_index}") unless disk_index >= 0
         raise ArgumentError.new("Invalid device = #{device}") unless is_attachable_volume_path?(device)
-        online_command = if @os_info.major < 6; "online noerr"; else; "online disk noerr"; end
-        clear_readonly_command = if @os_info.major < 6; ""; else; "attribute disk clear readonly noerr"; end
 
         # note that Windows 2003 server version of diskpart doesn't support
         # format so that has to be done separately.
@@ -478,8 +476,8 @@ EOF
 rescan
 list disk
 select disk #{disk_index}
-#{clear_readonly_command}
-#{online_command}
+#{get_clear_readonly_command('disk')}
+#{get_online_disk_command}
 clean
 create partition primary
 #{get_assign_command_for_device(device)}
@@ -506,6 +504,8 @@ EOF
       #
       # === Parameters
       # disk_index(int):: zero-based disk index
+      # options(Hash):: A hash of options which allows different behavior while onlining a drive.  Possible options are;
+      #   :idempotent(Bool) - Checks the current disk statuses before attempting to online the disk.  If the drive is already online, it bails out making this method idempotent.
       #
       # === Return
       # always true
@@ -514,17 +514,23 @@ EOF
       # ArgumentError:: on invalid parameters
       # VolumeError:: on failure to online disk
       # ParserError:: on failure to parse volume list
-      def online_disk(disk_index)
+      def online_disk(disk_index, options={})
         raise ArgumentError.new("Invalid disk_index = #{disk_index}") unless disk_index >= 0
-        clear_readonly_command = if @os_info.major < 6; ""; else; "attribute disk clear readonly noerr"; end
-        online_command = if @os_info.major < 6; "online"; else; "online disk noerr"; end
+        # Set some defaults for backward compatibility, allow user specified options to override defaults
+        options = {:idempotent => false}.merge(options)
         script = <<EOF
 rescan
 list disk
 select disk #{disk_index}
-#{clear_readonly_command}
-#{online_command}
+#{get_clear_readonly_command('disk')}
+#{get_online_disk_command}
 EOF
+
+        if(options[:idempotent])
+          disk = disks(:index => disk_index)
+          return true if disk && disk[:status] == "Online"
+        end
+
         exit_code, output_text = run_script(script)
         raise VolumeError.new("Failed to online disk #{disk_index}: exit code = #{exit_code}\n#{script}\n#{output_text}") if exit_code != 0
         true
@@ -537,6 +543,10 @@ EOF
       # === Parameters
       # volume_device_or_index(int):: old device or zero-based volume index (from volumes list, etc.) to select for assignment.
       # device(String):: disk letter or mount path specified for the volume to create
+      # options(Hash):: A hash of options which allows different behavior while assigning a device.  Possible options are:
+      #   :clear_readonly(Bool) - Set to true by default, since the previous implementation of this method always cleared readonly
+      #   :remove_all(Bool) - Removes all previously assigned devices and paths, essentially a big RESET button for volume assignment
+      #   :idempotent(Bool) - Checks the current device assignments before assigning the device according to the specified parameters.  If the device is already assigned, it bails out making this method idempotent.
       #
       # === Return
       # always true
@@ -545,7 +555,10 @@ EOF
       # ArgumentError:: on invalid parameters
       # VolumeError:: on failure to assign device name
       # ParserError:: on failure to parse volume list
-      def assign_device(volume_device_or_index, device)
+      def assign_device(volume_device_or_index, device, options={})
+        # Set some defaults for backward compatibility, allow user specified options to override defaults
+        options = {:clear_readonly => true, :idempotent => false}.merge(options)
+
         if device.match(@assignable_path_regex) && @os_info.major < 6
           raise ArgumentError.new("Mount path assignment is not supported in this version of windows")
         end
@@ -556,11 +569,26 @@ EOF
         raise ArgumentError.new("Invalid volume_device_or_index = #{volume_device_or_index}") unless volume_selector_match
         volume_selector = volume_selector_match[1]
         raise ArgumentError.new("Invalid device = #{device}") unless is_attachable_volume_path?(device)
+        if(options[:idempotent])
+          # Device already assigned?
+          vols = volumes
+          already_assigned = vols.select do |k,v|
+              # The volume is specified by it's index and is already mounted to the specified device/path
+              (k == :index && v == volume_device_or_index && vols[:device] == device) ||
+              # The volume is specified by it's current device/path assignment and is already mounted to the specified device/path
+              (k == :device && v == volume_device_or_index)
+          end
+
+          return true if already_assigned.length > 0
+        end
+        # Validation ends here, and real stuff starts to happen
+
         script = <<EOF
 rescan
 list volume
 select volume "#{volume_selector}"
-attribute volume clear readonly noerr
+#{get_clear_readonly_command('volume') if options[:clear_readonly]}
+#{"remove all noerr" if options[:remove_all]}
 #{get_assign_command_for_device(device)}
 EOF
 
@@ -856,6 +884,25 @@ EOF
         elsif device.match(@assignable_path_regex)
           "assign mount=\"#{device}\""
         end
+      end
+
+      # Returns the correct 'online disk' diskpart command based on the OS version
+      #
+      # === Return
+      # result(String):: Either "online noerr" or "online disk noerr" depending upon the OS version
+      def get_online_disk_command()
+        if @os_info.major < 6; "online noerr" else; "online disk noerr" end
+      end
+
+      # Returns the correct 'attribute disk clear readonly' diskpart command based on the OS version
+      #
+      # === Parameters
+      # object_type(String):: One of "disk" or "volume" to clear read only for
+      #
+      # === Return
+      # result(String):: Either a blank string or "attribute #{object_type} clear readonly noerr" depending upon the OS version
+      def get_clear_readonly_command(object_type)
+        if @os_info.major < 6; "" else; "attribute #{object_type} clear readonly noerr" end
       end
 
     end # VolumeManager
