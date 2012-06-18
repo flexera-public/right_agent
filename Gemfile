@@ -20,6 +20,7 @@ gem 'eventmachine', '0.12.10'
 platform :mswin, :mingw do
   gem "win32-api", "1.4.5"
   gem "win32-dir", ">= 0.3.5"
+  gem "win32-process", "0.6.5"
 end
 
 group :development, :test do
