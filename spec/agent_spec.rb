@@ -684,7 +684,7 @@ describe RightScale::Agent do
         @sender.should_receive(:terminate).and_return([1, 10]).twice
         @sender.should_receive(:dump_requests).and_return(["request"]).once
         @dispatcher.should_receive(:dispatch_age).and_return(10).once
-        @broker.should_receive(:close).once
+        @broker.should_receive(:close).and_yield.once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em(stop_event_loop = false) do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
