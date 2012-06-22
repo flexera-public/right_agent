@@ -30,8 +30,8 @@ class AgentManager
 
   on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
 
-  expose :ping, :stats, :profile, :set_log_level, :execute, :connect, :disconnect, :connect_failed,
-         :tune_heartbeat, :terminate
+  expose_idempotent     :ping, :stats, :profile, :set_log_level, :connect, :disconnect, :connect_failed, :tune_heartbeat
+  expose_non_idempotent :execute, :terminate
 
   # Valid log levels
   LEVELS = [:debug, :info, :warn, :error, :fatal]

@@ -130,7 +130,7 @@ module RightScale
         begin
           @pending_dispatches += 1
           @last_request_dispatch_time = received_at.to_i
-          @dispatched_cache.store(token, shared_queue) if @dispatched_cache
+          @dispatched_cache.store(token, shared_queue, actor.class.idempotent?(method)) if @dispatched_cache
           if actor.method(method).arity.abs == 1
             actor.__send__(method, request.payload)
           else
