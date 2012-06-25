@@ -222,7 +222,13 @@ module RightScale
               end
             end
           elsif status == :failed
-            Log.error("Agent failed to connect to any brokers")
+            Log.error("Agent failed to connect to any brokers during startup")
+            EM.stop
+          elsif status == :timeout
+            Log.error("Agent failed to connect to any brokers after #{@options[:connect_timeout]} seconds during startup")
+            EM.stop
+          else
+            Log.error("Agent broker connect attempt failed unexpectedly with status #{status} during startup")
             EM.stop
           end
         end
@@ -465,14 +471,14 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def terminate(&blk)
+    def terminate(&block)
       begin
         if @terminating
           Log.info("[stop] Terminating immediately")
           @termination_timer.cancel if @termination_timer
           @termination_timer = nil
-          blk.call if blk
-          EM.stop
+          block.call if block
+          EM.stop if EM.reactor_running?
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
@@ -489,8 +495,7 @@ module RightScale
                 request_count, request_age = @sender.terminate
                 Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                          "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-                @broker.close { blk.call; EM.stop }
-                EM.stop unless blk
+                @broker.close { block.call if block; EM.stop if EM.reactor_running? }
               end
 
               wait_time = [timeout - (request_age || timeout), timeout - (dispatch_age || timeout), 0].max
@@ -508,16 +513,19 @@ module RightScale
                     finish.call
                   rescue Exception => e
                     Log.error("Failed while finishing termination", e, :trace)
-                    EM.stop
+                    EM.stop if EM.reactor_running?
                   end
                 end
               end
+            else
+              block.call if block
+              EM.stop if EM.reactor_running?
             end
           end
         end
       rescue Exception => e
         Log.error("Failed to terminate gracefully", e, :trace)
-        EM.stop
+        EM.stop if EM.reactor_running?
       end
       true
     end
@@ -729,7 +737,7 @@ module RightScale
           EM.next_tick do
             begin
               terminate do
-                EM.stop
+                EM.stop if EM.reactor_running?
                 old.call if old.is_a? Proc
               end
             rescue Exception => e
