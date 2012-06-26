@@ -112,6 +112,7 @@ module RightScale
     #   :grace_timeout(Integer):: Maximum number of seconds to wait after last request received before
     #     terminating regardless of whether there are still unfinished requests
     #   :dup_check(Boolean):: Whether to check for and reject duplicate requests, e.g., due to retries
+    #     or redelivery by broker after server failure
     #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for this agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
     #     if the agent crashes. Value 0 means unlimited prefetch.
@@ -200,8 +201,8 @@ module RightScale
             EM.add_timer(1) do
               begin
                 @registry = ActorRegistry.new
-                @dispatcher = Dispatcher.new(self)
-                @sender = Sender.new(self)
+                @dispatcher = create_dispatcher
+                @sender = create_sender
                 load_actors
                 setup_traps
                 setup_queues
@@ -654,6 +655,23 @@ module RightScale
       false
     end
 
+    # Create dispatcher for handling incoming requests
+    #
+    # === Return
+    # (Dispatcher):: New dispatcher
+    def create_dispatcher
+      cache = DispatchedCache.new(@identity) if @options[:dup_check]
+      Dispatcher.new(self, cache)
+    end
+
+    # Create manager for outgoing requests
+    #
+    # === Return
+    # (Sender):: New sender
+    def create_sender
+      Sender.new(self)
+    end
+
     # Load the ruby code for the actors
     #
     # === Return
@@ -796,7 +814,25 @@ module RightScale
         true
       end
 
+      begin
+        check_other(@check_status_count)
+      rescue Exception => e
+        Log.error("Failed to perform other check status check", e)
+        @exceptions.track("check status", e)
+      end
+
       @check_status_count += 1
+      true
+    end
+
+    # Allow derived classes to perform any other useful periodic checks
+    #
+    # === Parameters
+    # check_status_count(Integer):: Counter that is incremented for each status check
+    #
+    # === Return
+    # true:: Always return true
+    def check_other(check_status_count)
       true
     end
 

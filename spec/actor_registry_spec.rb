@@ -26,14 +26,12 @@ describe RightScale::ActorRegistry do
   
   class ::WebDocumentImporter
     include RightScale::Actor
-    expose :import, :cancel
+    expose_non_idempotent :import, :cancel
+    expose_idempotent :special
 
-    def import
-      1
-    end
-    def cancel
-      0
-    end
+    def import; 1 end
+    def cancel; 0 end
+    def special; 2 end
   end
 
   module ::Actors
@@ -53,7 +51,8 @@ describe RightScale::ActorRegistry do
   it "should know about all services" do
     @registry.register(WebDocumentImporter.new, nil)
     @registry.register(Actors::ComedyActor.new, nil)
-    @registry.services.sort.should == ["/actors/comedy_actor/fun_tricks", "/web_document_importer/cancel", "/web_document_importer/import"]
+    @registry.services.sort.should == ["/actors/comedy_actor/fun_tricks", "/web_document_importer/cancel",
+                                       "/web_document_importer/import", "/web_document_importer/special"]
   end
 
   it "should not register anything except RightScale::Actor" do
