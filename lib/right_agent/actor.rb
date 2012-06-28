@@ -59,20 +59,44 @@ module RightScale
         prefix = to_s.to_const_path
       end
 
+      # Add methods to list of services supported by actor and mark these methods
+      # as idempotent
+      #
+      # === Parameters
+      # methods(Array):: Symbol names for methods being exposed as actor idempotent services
+      #
+      # === Return
+      # true:: Always return true
+      def expose_idempotent(*methods)
+        @exposed ||= {}
+        methods.each do |m|
+          if @exposed[m] == false
+            Log.warning("Method #{m} declared both idempotent and non-idempotent, assuming non-idempotent")
+          else
+            @exposed[m] = true
+          end
+        end
+        true
+      end
+
       # Add methods to list of services supported by actor
+      # By default these methods are not idempotent
       #
       # === Parameters
       # meths(Array):: Symbol names for methods being exposed as actor services
       #
       # === Return
-      # @exposed(Array):: List of unique methods exposed
-      def expose(*meths)
-        @exposed ||= []
-        meths.each do |meth|
-          @exposed << meth unless @exposed.include?(meth)
+      # true:: Always return true
+      def expose_non_idempotent(*methods)
+        @exposed ||= {}
+        methods.each do |m|
+          Log.warning("Method #{m} declared both idempotent and non-idempotent, assuming non-idempotent") if @exposed[m]
+          @exposed[m] = false
         end
-        @exposed
+        true
       end
+
+      alias :expose :expose_non_idempotent
 
       # Get /prefix/method paths that actor responds to
       #
@@ -83,14 +107,25 @@ module RightScale
       # (Array):: /prefix/method strings
       def provides_for(prefix)
         return [] unless @exposed
-        @exposed.select do |meth|
-          if instance_methods.include?(meth.to_s) or instance_methods.include?(meth.to_sym)
+        @exposed.each_key.select do |method|
+          if instance_methods.include?(method.to_s) or instance_methods.include?(method.to_sym)
             true
           else
-            Log.warning("Exposing non-existing method #{meth} in actor #{name}")
+            Log.warning("Exposing non-existing method #{method} in actor #{prefix}")
             false
           end
-        end.map {|meth| "/#{prefix}/#{meth}".squeeze('/')}
+        end.map { |method| "/#{prefix}/#{method}".squeeze('/') }
+      end
+
+      # Determine whether actor method is idempotent
+      #
+      # === Parameters
+      # method(Symbol):: Name for actor method
+      #
+      # === Return
+      # (Boolean):: true if idempotent, false otherwise
+      def idempotent?(method)
+        @exposed[method] if @exposed
       end
 
       # Set method called when dispatching to this actor fails
