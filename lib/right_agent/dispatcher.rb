@@ -91,6 +91,7 @@ module RightScale
         Log.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
         return nil
       end
+      method_idempotent = actor.class.idempotent?(method)
 
       # Reject this request if its TTL has expired
       if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
@@ -111,7 +112,7 @@ module RightScale
       end
 
       # Reject this request if it is a duplicate
-      if @dispatched_cache
+      if !method_idempotent && @dispatched_cache
         if by = @dispatched_cache.serviced_by(token)
           @rejects.update("duplicate (#{method})")
           Log.info("REJECT DUP <#{token}> serviced by #{by == @identity ? 'self' : by}")
@@ -131,7 +132,7 @@ module RightScale
         begin
           @pending_dispatches += 1
           @last_request_dispatch_time = received_at.to_i
-          @dispatched_cache.store(token, shared_queue, actor.class.idempotent?(method)) if @dispatched_cache
+          @dispatched_cache.store(token, shared_queue) if !method_idempotent && @dispatched_cache
           if actor.method(method).arity.abs == 1
             actor.__send__(method, request.payload)
           else

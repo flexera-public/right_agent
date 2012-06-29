@@ -43,18 +43,16 @@ module RightScale
       @max_age = MAX_AGE
     end
 
-    # Store dispatched request token in cache unless actor method is idempotent
-    # Ignore request if from shared queue
+    # Store dispatched request token in cache unless from shared queue
     #
     # === Parameters
     # token(String):: Generated message identifier
     # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
-    # idempotent(Boolean):: Whether the actor method to be executed is idempotent
     #
     # === Return
     # true:: Always return true
-    def store(token, shared_queue, idempotent)
-      if token && !idempotent && shared_queue.nil?
+    def store(token, shared_queue)
+      if token && shared_queue.nil?
         now = Time.now.to_i
         if @cache.has_key?(token)
           @cache[token] = now
