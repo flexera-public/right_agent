@@ -49,15 +49,15 @@ module RightScale
       log_msg += ", prefix #{prefix}" if prefix && !prefix.empty?
       Log.info(log_msg)
       prefix ||= actor.class.default_prefix
-      actors[prefix.to_s] = actor
+      @actors[prefix.to_s] = actor
     end
 
     # Retrieve services provided by all of the registered actors
     #
     # === Return
-    # services(Array):: List of unique /prefix/method path strings
+    # (Array):: List of unique /prefix/method path strings
     def services
-      actors.map {|prefix, actor| actor.class.provides_for(prefix) }.flatten.uniq
+      @actors.map { |prefix, actor| actor.class.provides_for(prefix) }.flatten.uniq
     end
 
     # Retrieve actor by prefix
@@ -66,9 +66,9 @@ module RightScale
     # prefix(String):: Prefix identifying actor
     #
     # === Return
-    # actor(Actor):: Retrieved actor, may be nil
+    # (Actor|nil):: Retrieved actor, or nil if unknown
     def actor_for(prefix)
-      actor = actors[prefix]
+      @actors[prefix]
     end
 
   end # ActorRegistry
