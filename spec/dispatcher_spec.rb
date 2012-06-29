@@ -25,7 +25,7 @@ require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
 class Foo
   include RightScale::Actor
   expose_idempotent :bar, :index, :i_kill_you
-  expose_non_idempotent :incr
+  expose_non_idempotent :bar_non
   on_exception :handle_exception
 
   def index(payload)
@@ -40,7 +40,7 @@ class Foo
     ['hello', payload, request]
   end
 
-  def incr(payload)
+  def bar_non(payload)
     @i = (@i || 0) + payload
   end
 
@@ -259,8 +259,8 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
-      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
-      @cache.store(req.token, nil, false)
+      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
+      @cache.store(req.token, nil)
       @dispatcher.dispatch(req).should be_nil
       EM.stop
     end
@@ -271,9 +271,9 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
-      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
+      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
-      @cache.store("try2", nil, false)
+      @cache.store("try2", nil)
       @dispatcher.dispatch(req).should be_nil
       EM.stop
     end
@@ -283,9 +283,20 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
       @dispatcher.em = EMMock
-      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
+      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
-      @cache.store("try3", nil, false)
+      @cache.store("try3", nil)
+      @dispatcher.dispatch(req).should_not be_nil
+      EM.stop
+    end
+  end
+
+  it "should not reject duplicate idempotent requests" do
+    EM.run do
+      @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+      @dispatcher.em = EMMock
+      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
+      @cache.store(req.token, nil)
       @dispatcher.dispatch(req).should_not be_nil
       EM.stop
     end
@@ -295,7 +306,7 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
       @dispatcher.em = EMMock
-      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
+      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
       @dispatcher.dispatch(req).should_not be_nil
@@ -307,7 +318,7 @@ describe "RightScale::Dispatcher" do
     EM.run do
       @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
       @dispatcher.em = EMMock
-      req = RightScale::Request.new('/foo/incr', 1, :token => "try")
+      req = RightScale::Request.new('/foo/bar', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
       @dispatcher.dispatch(req).should_not be_nil
