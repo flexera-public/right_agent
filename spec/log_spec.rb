@@ -40,6 +40,21 @@ describe RightScale::Log do
 
   before(:all) do
     ENV['RS_LOG'] = 'true'
+
+    class RightScale::Platform::Filesystem
+      alias original_log_dir log_dir
+      def log_dir
+        # For specs, write all logs to temp_dir
+        # since log_dir may not be writable
+        temp_dir
+      end
+    end
+  end
+
+  after(:all) do
+    class RightScale::Platform::Filesystem
+      alias log_dir original_log_dir
+    end
   end
 
   before(:each) do
