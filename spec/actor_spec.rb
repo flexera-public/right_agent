@@ -70,8 +70,8 @@ describe RightScale::Actor do
 
       it "exposes as idempotent" do
         WebDocumentImporter.expose_idempotent(:more_special)
-        WebDocumentImporter.provides_for("webfiles").should == [
-          "/webfiles/import", "/webfiles/cancel", "/webfiles/special", "/webfiles/more_special"]
+        WebDocumentImporter.provides_for("webfiles").sort.should == [
+          "/webfiles/cancel", "/webfiles/import", "/webfiles/more_special", "/webfiles/special"]
         WebDocumentImporter.idempotent?(:special).should be_true
         WebDocumentImporter.idempotent?(:more_special).should be_true
       end
@@ -79,8 +79,8 @@ describe RightScale::Actor do
       it "treats already exposed non-idempotent method as non-idempotent" do
         @log.should_receive(:warning).with(/Method cancel declared both idempotent and non-idempotent/).once
         WebDocumentImporter.expose_idempotent(:cancel)
-        WebDocumentImporter.provides_for("webfiles").should == [
-          "/webfiles/import", "/webfiles/cancel", "/webfiles/special"]
+        WebDocumentImporter.provides_for("webfiles").sort.should == [
+          "/webfiles/cancel", "/webfiles/import", "/webfiles/special"]
         WebDocumentImporter.idempotent?(:cancel).should be_false
       end
 
@@ -90,8 +90,8 @@ describe RightScale::Actor do
 
       it "exposes as non-idempotent" do
         WebDocumentImporter.expose_non_idempotent(:continue)
-        WebDocumentImporter.provides_for("webfiles").should == [
-          "/webfiles/import", "/webfiles/cancel", "/webfiles/special", "/webfiles/continue"]
+        WebDocumentImporter.provides_for("webfiles").sort.should == [
+          "/webfiles/cancel", "/webfiles/continue", "/webfiles/import", "/webfiles/special"]
         WebDocumentImporter.idempotent?(:import).should be_false
         WebDocumentImporter.idempotent?(:cancel).should be_false
         WebDocumentImporter.idempotent?(:continue).should be_false
@@ -100,15 +100,15 @@ describe RightScale::Actor do
       it "treats already exposed idempotent method as non-idempotent" do
         @log.should_receive(:warning).with(/Method special declared both idempotent and non-idempotent/).once
         WebDocumentImporter.expose_non_idempotent(:special)
-        WebDocumentImporter.provides_for("webfiles").should == [
-          "/webfiles/import", "/webfiles/cancel", "/webfiles/special"]
+        WebDocumentImporter.provides_for("webfiles").sort.should == [
+          "/webfiles/cancel", "/webfiles/import", "/webfiles/special"]
         WebDocumentImporter.idempotent?(:special).should be_false
       end
 
       it "defaults expose method to declare non_idempotent" do
         WebDocumentImporter.expose(:continue)
-        WebDocumentImporter.provides_for("webfiles").should == [
-          "/webfiles/import", "/webfiles/cancel", "/webfiles/special", "/webfiles/continue"]
+        WebDocumentImporter.provides_for("webfiles").sort.should == [
+          "/webfiles/cancel", "/webfiles/continue", "/webfiles/import", "/webfiles/special"]
         WebDocumentImporter.idempotent?(:continue).should be_false
       end
 
