@@ -503,10 +503,17 @@ module RightScale
           raise PackageManagerNotFound, "No package manager binary (apt, yum, zypper) found in /usr/bin"
         end
         
-        @output = `#{command}`
+        @output = run_installer_command(command)
         @output.scan(regex) { |package| failed_packages << package.first }
         raise PackageNotFound, "The following packages were not available: #{failed_packages.join(', ')}" unless failed_packages.empty?
         return true
+      end
+
+      protected
+
+      # A test hook so we can mock the invocation of the installer.
+      def run_installer_command(cmd)
+        `#{cmd}`
       end
     end
 
