@@ -411,8 +411,7 @@ describe RightScale::Agent do
           request = RightScale::Request.new("/foo/bar", "payload")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request, @header).once
-          @header.should_receive(:ack).once
-          @dispatcher.should_receive(:dispatch).with(request).once
+          @dispatcher.should_receive(:dispatch).with(request, @header).once
           @agent.run
         end
       end
@@ -422,8 +421,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @header.should_receive(:ack).once
-          @sender.should_receive(:handle_response).with(result).once
+          @sender.should_receive(:handle_response).with(result, @header).once
           @agent.run
         end
       end
@@ -433,9 +431,19 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @header.should_receive(:ack).once
-          @sender.should_receive(:handle_response).with(result).once
+          @sender.should_receive(:handle_response).with(result, @header).once
           @sender.should_receive(:message_received).once
+          @agent.run
+        end
+      end
+
+      it "should ignore and ack unrecognized messages" do
+        run_in_em do
+          request = RightScale::Stats.new(nil, nil)
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).never
+          @header.should_receive(:ack).once
           @agent.run
         end
       end

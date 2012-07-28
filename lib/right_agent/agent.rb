@@ -431,6 +431,8 @@ module RightScale
     end
 
     # Handle packet received
+    # Delegate packet acknowledgement to dispatcher/sender
+    # Ignore requests if in the process of terminating but continue to accept responses
     #
     # === Parameters
     # packet(Request|Push|Result):: Packet received
@@ -441,8 +443,9 @@ module RightScale
     def receive(packet, header)
       begin
         case packet
-        when Push, Request then @dispatcher.dispatch(packet) unless @terminating
-        when Result        then @sender.handle_response(packet)
+        when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
+        when Result        then @sender.handle_response(packet, header)
+        else header.ack
         end
         @sender.message_received
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
@@ -450,8 +453,6 @@ module RightScale
       rescue Exception => e
         Log.error("Identity queue processing error", e, :trace)
         @exceptions.track("identity queue", e, packet)
-      ensure
-        header.ack
       end
       true
     end
