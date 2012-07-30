@@ -10,7 +10,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (0.11.0)
+    right_agent (0.12.0)
       eventmachine (~> 0.12.10)
       json (~> 1.4)
       msgpack (= 0.4.4)
@@ -39,7 +39,6 @@ GEM
       term-ansicolor
     mime-types (1.18)
     msgpack (0.4.4)
-    msgpack (0.4.4-x86-mswin32)
     net-ssh (2.5.2)
     rake (0.9.2.2)
     rbx-require-relative (0.0.9)
