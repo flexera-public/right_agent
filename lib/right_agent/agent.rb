@@ -178,7 +178,9 @@ module RightScale
       now = Time.now
       Log.info("[start] Agent #{@identity} starting; time: #{now.utc}; utc_offset: #{now.utc_offset}")
       Log.debug("Start options:")
-      log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v.respond_to?(:each) ? v.inspect : v}" }
+      log_opts = @options.inject([]) do |t, (k, v)|
+        t << "-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}"
+      end
       log_opts.each { |l| Log.debug(l) }
 
       begin
@@ -431,17 +433,21 @@ module RightScale
     end
 
     # Handle packet received
+    # Delegate packet acknowledgement to dispatcher/sender
+    # Ignore requests if in the process of terminating but continue to accept responses
     #
     # === Parameters
     # packet(Request|Push|Result):: Packet received
+    # header(AMQP::Frame::Header):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def receive(packet)
+    def receive(packet, header)
       begin
         case packet
-        when Push, Request then @dispatcher.dispatch(packet) unless @terminating
-        when Result        then @sender.handle_response(packet)
+        when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
+        when Result        then @sender.handle_response(packet, header)
+        else header.ack
         end
         @sender.message_received
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
@@ -742,7 +748,7 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) { |_, packet| receive(packet) }
+      ids = @broker.subscribe(queue, nil, options) { |_, packet, header| receive(packet, header) }
     end
 
     # Setup signal traps

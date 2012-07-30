@@ -93,4 +93,15 @@ describe RightScale::CommandRunner do
     @opt.should == payload
   end
 
+  it 'should run commands using fiber pool if provided' do
+    commands = { :test => lambda { |opt, _| @opt = opt } }
+    fiber_pool = flexmock("fiber pool")
+    fiber_pool.should_receive(:spawn).and_return(true).and_yield.once
+    flexmock(RightScale::CommandIO).should_receive(:instance).and_return(RightScale::CommandIOMock.instance)
+    cmd_options = RightScale::CommandRunner.start(@socket_port, RightScale::AgentIdentity.generate, commands, fiber_pool)
+    payload = @command_payload.merge(cmd_options)
+    RightScale::CommandIOMock.instance.trigger_listen(payload)
+    @opt.should == payload
+  end
+
 end

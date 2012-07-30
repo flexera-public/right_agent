@@ -559,9 +559,12 @@ describe RightScale::Sender do
           @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
             result = RightScale::OperationResult.from_results(response)
           end
+          header = flexmock("amqp header")
+          header.should_receive(:ack).once
           EM.add_timer(0.15) do
             @instance.pending_requests.empty?.should be_false
-            @instance.handle_response(RightScale::Result.new(token, nil, {'from' => RightScale::OperationResult.success}, nil))
+            result = RightScale::Result.new(token, nil, {'from' => RightScale::OperationResult.success}, nil)
+            @instance.handle_response(result, header)
           end
           EM.add_timer(0.3) do
             EM.stop
@@ -736,56 +739,70 @@ describe RightScale::Sender do
       RightScale::Sender.new(@agent)
       @instance = RightScale::Sender.instance
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
+      @header = flexmock("amqp header")
     end
 
     it "should deliver the response for a Request" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
-      @instance.handle_response(response)
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, @header).once
+      @instance.handle_response(response, @header)
     end
 
     it "should deliver the response for a Push" do
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
-      @instance.handle_response(response)
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, @header).once
+      @instance.handle_response(response, @header)
     end
 
     it "should not deliver TARGET_NOT_CONNECTED and TTL_EXPIRATION responses for send_retryable_request" do
+      @header.should_receive(:ack).twice
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       flexmock(@instance).should_receive(:deliver).never
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TARGET_NOT_CONNECTED)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TTL_EXPIRATION)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
     end
 
     it "should record non-delivery regardless of whether there is a response handler" do
+      @header.should_receive(:ack).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::NO_ROUTE_TO_TARGET)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       @instance.instance_variable_get(:@non_delivery_stats).total.should == 1
     end
 
     it "should log non-delivery if there is no response handler" do
+      @header.should_receive(:ack).once
       @log.should_receive(:info).with(/Non-delivery of/).once
       @instance.send_push('/welcome/aboard', 'iZac')
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::NO_ROUTE_TO_TARGET)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
     end
 
     it "should log a debug message if request no longer pending" do
+      @header.should_receive(:ack).once
       @log.should_receive(:debug).with(/No pending request for response/).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       @instance.pending_requests['token2'].should be_nil
       response = RightScale::Result.new('token2', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
+    end
+
+    it "should ack response even if fail while handling it" do
+      @header.should_receive(:ack).once
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      flexmock(response).should_receive(:token).and_raise(Exception).once
+      flexmock(@instance).should_receive(:deliver).never
+      lambda { @instance.handle_response(response, @header) }.should raise_error(Exception)
     end
   end
 
@@ -799,13 +816,15 @@ describe RightScale::Sender do
       RightScale::Sender.new(@agent)
       @instance = RightScale::Sender.instance
       flexmock(RightScale::AgentIdentity, :generate => 'token1')
+      @header = flexmock("amqp header")
+      @header.should_receive(:ack).once.by_default
     end
 
     it "should delete all associated pending Request requests" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       @instance.pending_requests['token1'].should be_nil
     end
 
@@ -813,7 +832,7 @@ describe RightScale::Sender do
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       @instance.pending_requests['token1'].should_not be_nil
     end
 
@@ -823,7 +842,7 @@ describe RightScale::Sender do
       @instance.pending_requests['token2'] = @instance.pending_requests['token1'].dup
       @instance.pending_requests['token2'].retry_parent = 'token1'
       response = RightScale::Result.new('token2', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       @instance.pending_requests['token1'].should be_nil
       @instance.pending_requests['token2'].should be_nil
     end
@@ -832,7 +851,7 @@ describe RightScale::Sender do
       called = 0
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response| called += 1}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       called.should == 1
     end
 
@@ -845,7 +864,7 @@ describe RightScale::Sender do
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       flexmock(EM).should_receive(:defer).and_yield.once
       flexmock(EM).should_receive(:next_tick).never
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       called.should == 1
     end
 
@@ -858,7 +877,7 @@ describe RightScale::Sender do
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       flexmock(EM).should_receive(:next_tick).and_yield.once
       flexmock(EM).should_receive(:defer).never
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       called.should == 1
     end
 
@@ -868,8 +887,16 @@ describe RightScale::Sender do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_| raise Exception}
       @instance.pending_requests['token1'].should_not be_nil
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response)
+      @instance.handle_response(response, @header)
       @instance.pending_requests['token1'].should be_nil
+    end
+
+    it "should ack response even if fail while delivering it" do
+      @header.should_receive(:ack).once
+      flexmock(EM).should_receive(:defer).and_raise(Exception).once
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      lambda { @instance.handle_response(response, @header) }.should raise_error(Exception)
     end
   end
 
