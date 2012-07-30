@@ -781,41 +781,49 @@ module RightScale
     end
 
     # Handle response to a request
+    # Acknowledge response after delivering it
     # Only to be called from primary thread
     #
     # === Parameters
     # response(Result):: Packet received as result of request
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def handle_response(response)
-      token = response.token
-      if response.is_a?(Result)
-        if result = OperationResult.from_results(response)
-          if result.non_delivery?
-            @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
-          elsif result.error?
-            @result_error_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+    def handle_response(response, header = nil)
+      begin
+        ack_deferred = false
+        token = response.token
+        if response.is_a?(Result)
+          if result = OperationResult.from_results(response)
+            if result.non_delivery?
+              @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+            elsif result.error?
+              @result_error_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+            end
+            @result_stats.update(result.status)
+          else
+            @result_stats.update(response.results.nil? ? "nil" : response.results)
           end
-          @result_stats.update(result.status)
-        else
-          @result_stats.update(response.results.nil? ? "nil" : response.results)
-        end
 
-        if handler = @pending_requests[token]
-          if result && result.non_delivery? && handler.kind == :send_retryable_request &&
-             [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
-            # Log and ignore so that timeout retry mechanism continues
-            # Leave purging of associated request until final response, i.e., success response or retry timeout
+          if handler = @pending_requests[token]
+            if result && result.non_delivery? && handler.kind == :send_retryable_request &&
+               [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
+              # Log and ignore so that timeout retry mechanism continues
+              # Leave purging of associated request until final response, i.e., success response or retry timeout
+              Log.info("Non-delivery of <#{token}> because #{result.content}")
+            else
+              ack_deferred = true
+              deliver(response, handler, header)
+            end
+          elsif result && result.non_delivery?
             Log.info("Non-delivery of <#{token}> because #{result.content}")
           else
-            deliver(response, handler)
+            Log.debug("No pending request for response #{response.to_s([])}")
           end
-        elsif result && result.non_delivery?
-          Log.info("Non-delivery of <#{token}> because #{result.content}")
-        else
-          Log.debug("No pending request for response #{response.to_s([])}")
         end
+      ensure
+        header.ack unless ack_deferred || header.nil?
       end
       true
     end
@@ -1172,26 +1180,40 @@ module RightScale
     # === Parameters
     # response(Result):: Packet received as result of request
     # handler(Hash):: Associated request handler
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def deliver(response, handler)
-      @request_stats.finish(handler.receive_time, response.token)
+    def deliver(response, handler, header)
+      begin
+        ack_deferred = false
+        @request_stats.finish(handler.receive_time, response.token)
 
-      @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
-      if parent = handler.retry_parent
-        @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
-      end
+        @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
+        if parent = handler.retry_parent
+          @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
+        end
 
-      if handler.response_handler
-        EM.__send__(@single_threaded ? :next_tick : :defer) do
+        if handler.response_handler
           begin
-            handler.response_handler.call(response)
-          rescue Exception => e
-            Log.error("Failed processing response #{response.to_s([])}", e, :trace)
-            @exception_stats.track("response", e, response)
+            ack_deferred = true
+            EM.__send__(@single_threaded ? :next_tick : :defer) do
+              begin
+                handler.response_handler.call(response)
+              rescue Exception => e
+                Log.error("Failed processing response #{response.to_s([])}", e, :trace)
+                @exception_stats.track("response", e, response)
+              ensure
+                header.ack if header
+              end
+            end
+          rescue Exception
+            header.ack
+            raise
           end
         end
+      ensure
+        header.ack unless ack_deferred || header.nil?
       end
       true
     end

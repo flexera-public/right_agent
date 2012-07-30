@@ -108,11 +108,13 @@ describe "RightScale::Dispatcher" do
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     @response_queue = RightScale::Dispatcher::RESPONSE_QUEUE
+    @header = flexmock("amqp header")
+    @header.should_receive(:ack).once.by_default
   end
 
   it "should dispatch a request" do
     req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == 'token'
     res.results.should == ['hello', 'you']
@@ -120,7 +122,7 @@ describe "RightScale::Dispatcher" do
 
   it "should dispatch a request with required arity" do
     req = RightScale::Request.new('/foo/bar2', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == 'token'
     res.results.should == ['hello', 'you', req]
@@ -128,7 +130,7 @@ describe "RightScale::Dispatcher" do
 
   it "should dispatch a request to the default action" do
     req = RightScale::Request.new('/foo', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == req.token
     res.results.should == ['hello', 'you']
@@ -142,13 +144,13 @@ describe "RightScale::Dispatcher" do
                                                     arg.to == "rs-mapper-1-1" &&
                                                     arg.results == ['hello', 'you']},
                                           hsh(:persistent => true, :mandatory => true)).once
-    res = @dispatcher.dispatch(req)
+    @dispatcher.dispatch(req, @header)
   end
 
   it "should handle custom prefixes" do
     @registry.register(Foo.new, 'umbongo')
     req = RightScale::Request.new('/umbongo/bar', 'you')
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == req.token
     res.results.should == ['hello', 'you']
@@ -158,7 +160,9 @@ describe "RightScale::Dispatcher" do
     flexmock(RightScale::Log).should_receive(:error).once
     req = RightScale::Request.new('/foo/i_kill_you', nil)
     flexmock(@actor).should_receive(:handle_exception).with(:i_kill_you, req, Exception).once
-    @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
+    res.results.error?.should be_true
+    (res.results.content =~ /Could not handle \/foo\/i_kill_you request/).should be_true
   end
 
   it "should call on_exception Procs defined in a subclass with the correct arguments" do
@@ -166,7 +170,7 @@ describe "RightScale::Dispatcher" do
     actor = Bar.new
     @registry.register(actor, nil)
     req = RightScale::Request.new('/bar/i_kill_you', nil)
-    @dispatcher.dispatch(req)
+    @dispatcher.dispatch(req, @header)
     called_with = actor.instance_variable_get("@called_with")
     called_with[0].should == :i_kill_you
     called_with[1].should == req
@@ -179,14 +183,14 @@ describe "RightScale::Dispatcher" do
     actor = Bar.new
     @registry.register(actor, nil)
     req = RightScale::Request.new('/bar/i_kill_you', nil)
-    @dispatcher.dispatch(req)
+    @dispatcher.dispatch(req, @header)
     actor.instance_variable_get("@scope").should == actor
   end
 
   it "should log error if something goes wrong" do
     RightScale::Log.should_receive(:error).once
     req = RightScale::Request.new('/foo/i_kill_you', nil)
-    @dispatcher.dispatch(req)
+    @dispatcher.dispatch(req, @header)
   end
 
   it "should reject requests whose time-to-live has expired" do
@@ -197,7 +201,7 @@ describe "RightScale::Dispatcher" do
     @dispatcher.em = EMMock
     req = RightScale::Push.new('/foo/bar', 'you', :expires_at => @now.to_i + 8)
     flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req).should be_nil
+    @dispatcher.dispatch(req, @header).should be_nil
   end
 
   it "should send non-delivery result if Request is rejected because its time-to-live has expired" do
@@ -213,7 +217,7 @@ describe "RightScale::Dispatcher" do
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => @response_queue, :expires_at => @now.to_i + 8})
     flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req).should be_nil
+    @dispatcher.dispatch(req, @header).should be_nil
   end
 
   it "should send error result instead of non-delivery if agent does not know about non-delivery" do
@@ -229,7 +233,7 @@ describe "RightScale::Dispatcher" do
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
     flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req).should be_nil
+    @dispatcher.dispatch(req, @header).should be_nil
   end
 
   it "should not reject requests whose time-to-live has not expired" do
@@ -238,7 +242,7 @@ describe "RightScale::Dispatcher" do
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', :expires_at => @now.to_i + 11)
     flexmock(Time).should_receive(:now).and_return(@now += 10)
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == req.token
     res.results.should == ['hello', 'you']
@@ -248,7 +252,7 @@ describe "RightScale::Dispatcher" do
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
     @dispatcher.em = EMMock
     req = RightScale::Request.new('/foo/bar', 'you', :expires_at => 0)
-    res = @dispatcher.dispatch(req)
+    res = @dispatcher.dispatch(req, @header)
     res.should(be_kind_of(RightScale::Result))
     res.token.should == req.token
     res.results.should == ['hello', 'you']
@@ -261,7 +265,7 @@ describe "RightScale::Dispatcher" do
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       @cache.store(req.token, nil)
-      @dispatcher.dispatch(req).should be_nil
+      @dispatcher.dispatch(req, @header).should be_nil
       EM.stop
     end
   end
@@ -274,7 +278,7 @@ describe "RightScale::Dispatcher" do
       req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @cache.store("try2", nil)
-      @dispatcher.dispatch(req).should be_nil
+      @dispatcher.dispatch(req, @header).should be_nil
       EM.stop
     end
   end
@@ -286,7 +290,7 @@ describe "RightScale::Dispatcher" do
       req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @cache.store("try3", nil)
-      @dispatcher.dispatch(req).should_not be_nil
+      @dispatcher.dispatch(req, @header).should_not be_nil
       EM.stop
     end
   end
@@ -297,7 +301,7 @@ describe "RightScale::Dispatcher" do
       @dispatcher.em = EMMock
       req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
       @cache.store(req.token, nil)
-      @dispatcher.dispatch(req).should_not be_nil
+      @dispatcher.dispatch(req, @header).should_not be_nil
       EM.stop
     end
   end
@@ -309,7 +313,7 @@ describe "RightScale::Dispatcher" do
       req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
-      @dispatcher.dispatch(req).should_not be_nil
+      @dispatcher.dispatch(req, @header).should_not be_nil
       EM.stop
     end
   end
@@ -321,26 +325,40 @@ describe "RightScale::Dispatcher" do
       req = RightScale::Request.new('/foo/bar', 1, :token => "try")
       req.tries.concat(["try1", "try2"])
       @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
-      @dispatcher.dispatch(req).should_not be_nil
+      @dispatcher.dispatch(req, @header).should_not be_nil
       EM.stop
     end
   end
 
   it "should return dispatch age of youngest unfinished request" do
+    @header.should_receive(:ack).never
     @dispatcher.em = EMMockNoCallback
     @dispatcher.dispatch_age.should be_nil
-    @dispatcher.dispatch(RightScale::Push.new('/foo/bar', 'you'))
+    @dispatcher.dispatch(RightScale::Push.new('/foo/bar', 'you'), @header)
     @dispatcher.dispatch_age.should == 0
-    @dispatcher.dispatch(RightScale::Request.new('/foo/bar', 'you'))
+    @dispatcher.dispatch(RightScale::Request.new('/foo/bar', 'you'), @header)
     flexmock(Time).should_receive(:now).and_return(@now += 100)
     @dispatcher.dispatch_age.should == 100
   end
 
   it "should return dispatch age of nil if all requests finished" do
     @dispatcher.dispatch_age.should be_nil
-    @dispatcher.dispatch(RightScale::Request.new('/foo/bar', 'you'))
+    @dispatcher.dispatch(RightScale::Request.new('/foo/bar', 'you'), @header)
     flexmock(Time).should_receive(:now).and_return(@now += 100)
     @dispatcher.dispatch_age.should be_nil
+  end
+
+  it "should ack request even if fail while dispatching" do
+    RightScale::Log.should_receive(:error).and_raise(Exception).once
+    req = RightScale::Request.new('/foo/i_kill_you', nil)
+    lambda { @dispatcher.dispatch(req, @header) }.should raise_error(Exception)
+  end
+
+  it "should ack request even if fail while doing final setup for processing request" do
+    @dispatcher.em = EMMock
+    flexmock(EMMock).should_receive(:defer).and_raise(Exception).once
+    req = RightScale::Request.new('/foo/bar', 'you')
+    lambda { @dispatcher.dispatch(req, @header) }.should raise_error(Exception)
   end
 
 end # RightScale::Dispatcher

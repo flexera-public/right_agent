@@ -271,6 +271,8 @@ describe RightScale::Agent do
       flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
+      @header = flexmock("amqp header")
+      @header.should_receive(:ack).by_default
       @sender = flexmock("sender", :pending_requests => [], :request_age => nil,
                          :message_received => true, :stats => "").by_default
       @sender.should_receive(:terminate).and_return([0, 0]).by_default
@@ -408,8 +410,8 @@ describe RightScale::Agent do
         run_in_em do
           request = RightScale::Request.new("/foo/bar", "payload")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
-                                             and_return(@broker_ids).and_yield(@broker_id, request).once
-          @dispatcher.should_receive(:dispatch).with(request).once
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).with(request, @header).once
           @agent.run
         end
       end
@@ -418,8 +420,8 @@ describe RightScale::Agent do
         run_in_em do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
-                                             and_return(@broker_ids).and_yield(@broker_id, result).once
-          @sender.should_receive(:handle_response).with(result).once
+                                             and_return(@broker_ids).and_yield(@broker_id, result, @header).once
+          @sender.should_receive(:handle_response).with(result, @header).once
           @agent.run
         end
       end
@@ -428,9 +430,20 @@ describe RightScale::Agent do
         run_in_em do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
-                                             and_return(@broker_ids).and_yield(@broker_id, result).once
-          @sender.should_receive(:handle_response).with(result).once
+                                             and_return(@broker_ids).and_yield(@broker_id, result, @header).once
+          @sender.should_receive(:handle_response).with(result, @header).once
           @sender.should_receive(:message_received).once
+          @agent.run
+        end
+      end
+
+      it "should ignore and ack unrecognized messages" do
+        run_in_em do
+          request = RightScale::Stats.new(nil, nil)
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).never
+          @header.should_receive(:ack).once
           @agent.run
         end
       end

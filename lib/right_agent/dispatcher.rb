@@ -71,104 +71,118 @@ module RightScale
     # Handle returning of result to requester including logging any exceptions
     # Reject requests whose TTL has expired or that are duplicates of work already dispatched
     # Work is done in background defer thread if single threaded option is false
+    # Acknowledge request after actor has responded
     #
     # === Parameters
     # request(Request|Push):: Packet containing request
+    # header(AMQP::Frame::Header):: Request header containing ack control
     # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
     #
     # === Return
     # r(Result):: Result from dispatched request, nil if not dispatched because dup or stale
-    def dispatch(request, shared_queue = nil)
+    def dispatch(request, header, shared_queue = nil)
+      begin
+        ack_deferred = false
 
-      # Determine which actor this request is for
-      prefix, method = request.type.split('/')[1..-1]
-      method ||= :index
-      method = method.to_sym
-      actor = @registry.actor_for(prefix)
-      token = request.token
-      received_at = @requests.update(method, (token if request.kind_of?(Request)))
-      if actor.nil?
-        Log.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
-        return nil
-      end
-      method_idempotent = actor.class.idempotent?(method)
-
-      # Reject this request if its TTL has expired
-      if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
-        @rejects.update("expired (#{method})")
-        Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(received_at.to_i - expires_at)} ago")
-        if request.is_a?(Request)
-          # For agents that do not know about non-delivery, use error result
-          non_delivery = if request.recv_version < 13
-            OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
-          else
-            OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
-          end
-          result = Result.new(token, request.reply_to, non_delivery, @identity, request.from, request.tries, request.persistent)
-          exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
-          @broker.publish(exchange, result, :persistent => true, :mandatory => true)
-        end
-        return nil
-      end
-
-      # Reject this request if it is a duplicate
-      if !method_idempotent && @dispatched_cache
-        if by = @dispatched_cache.serviced_by(token)
-          @rejects.update("duplicate (#{method})")
-          Log.info("REJECT DUP <#{token}> serviced by #{by == @identity ? 'self' : by}")
+        # Determine which actor this request is for
+        prefix, method = request.type.split('/')[1..-1]
+        method ||= :index
+        method = method.to_sym
+        actor = @registry.actor_for(prefix)
+        token = request.token
+        received_at = @requests.update(method, (token if request.kind_of?(Request)))
+        if actor.nil?
+          Log.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
           return nil
         end
-        request.tries.each do |t|
-          if by = @dispatched_cache.serviced_by(t)
-            @rejects.update("retry duplicate (#{method})")
-            Log.info("REJECT RETRY DUP <#{token}> of <#{t}> serviced by #{by == @identity ? 'self' : by}")
+        method_idempotent = actor.class.idempotent?(method)
+
+        # Reject this request if its TTL has expired
+        if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
+          @rejects.update("expired (#{method})")
+          Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(received_at.to_i - expires_at)} ago")
+          if request.is_a?(Request)
+            # For agents that do not know about non-delivery, use error result
+            non_delivery = if request.recv_version < 13
+              OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
+            else
+              OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
+            end
+            result = Result.new(token, request.reply_to, non_delivery, @identity, request.from, request.tries, request.persistent)
+            exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
+            @broker.publish(exchange, result, :persistent => true, :mandatory => true)
+          end
+          return nil
+        end
+
+        # Reject this request if it is a duplicate
+        if !method_idempotent && @dispatched_cache
+          if by = @dispatched_cache.serviced_by(token)
+            @rejects.update("duplicate (#{method})")
+            Log.info("REJECT DUP <#{token}> serviced by #{by == @identity ? 'self' : by}")
             return nil
           end
+          request.tries.each do |t|
+            if by = @dispatched_cache.serviced_by(t)
+              @rejects.update("retry duplicate (#{method})")
+              Log.info("REJECT RETRY DUP <#{token}> of <#{t}> serviced by #{by == @identity ? 'self' : by}")
+              return nil
+            end
+          end
         end
-      end
 
-      # Proc for performing request in actor
-      operation = lambda do
+        # Proc for performing request in actor
+        operation = lambda do
+          begin
+            @pending_dispatches += 1
+            @last_request_dispatch_time = received_at.to_i
+            @dispatched_cache.store(token, shared_queue) if !method_idempotent && @dispatched_cache
+            if actor.method(method).arity.abs == 1
+              actor.__send__(method, request.payload)
+            else
+              actor.__send__(method, request.payload, request)
+            end
+          rescue Exception => e
+            @pending_dispatches = [@pending_dispatches - 1, 0].max
+            OperationResult.error(handle_exception(actor, method, request, e))
+          end
+        end
+
+        # Proc for sending response
+        callback = lambda do |r|
+          begin
+            if request.kind_of?(Request)
+              duration = @requests.finish(received_at, token)
+              r = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
+              exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
+              @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
+            end
+          rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+            Log.error("Failed to publish result of dispatched request #{request.trace}", e)
+          rescue Exception => e
+            Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
+            @exceptions.track("publish response", e)
+          ensure
+            header.ack
+            @pending_dispatches = [@pending_dispatches - 1, 0].max
+          end
+          r # For unit tests
+        end
+
+        # Process request and send response, if any
         begin
-          @pending_dispatches += 1
-          @last_request_dispatch_time = received_at.to_i
-          @dispatched_cache.store(token, shared_queue) if !method_idempotent && @dispatched_cache
-          if actor.method(method).arity.abs == 1
-            actor.__send__(method, request.payload)
+          ack_deferred = true
+          if @single_threaded
+            @em.next_tick { callback.call(operation.call) }
           else
-            actor.__send__(method, request.payload, request)
+            @em.defer(operation, callback)
           end
-        rescue Exception => e
-          @pending_dispatches = [@pending_dispatches - 1, 0].max
-          handle_exception(actor, method, request, e)
+        rescue Exception
+          header.ack
+          raise
         end
-      end
-      
-      # Proc for sending response
-      callback = lambda do |r|
-        begin
-          if request.kind_of?(Request)
-            duration = @requests.finish(received_at, token)
-            r = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
-            exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
-            @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
-          end
-        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-          Log.error("Failed to publish result of dispatched request #{request.trace}", e)
-        rescue Exception => e
-          Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
-          @exceptions.track("publish response", e)
-        ensure
-          @pending_dispatches = [@pending_dispatches - 1, 0].max
-        end
-        r # For unit tests
-      end
-
-      # Process request and send response, if any
-      if @single_threaded
-        @em.next_tick { callback.call(operation.call) }
-      else
-        @em.defer(operation, callback)
+      ensure
+        header.ack unless ack_deferred
       end
     end
 
@@ -238,28 +252,28 @@ module RightScale
     # actor(Actor):: Actor that failed to process request
     # method(Symbol):: Name of actor method being dispatched to
     # request(Packet):: Packet that dispatcher is acting upon
-    # e(Exception):: Exception that was raised
+    # exception(Exception):: Exception that was raised
     #
     # === Return
-    # error(String):: Error description for this exception
-    def handle_exception(actor, method, request, e)
-      error = Log.format("Failed processing #{request.type}", e, :trace)
-      Log.error(error)
+    # (String):: Error description for this exception
+    def handle_exception(actor, method, request, exception)
+      error = "Could not handle #{request.type} request"
+      Log.error(error, exception, :trace)
       begin
         if actor && actor.class.exception_callback
           case actor.class.exception_callback
           when Symbol, String
-            actor.send(actor.class.exception_callback, method, request, e)
+            actor.send(actor.class.exception_callback, method, request, exception)
           when Proc
-            actor.instance_exec(method, request, e, &actor.class.exception_callback)
+            actor.instance_exec(method, request, exception, &actor.class.exception_callback)
           end
         end
-        @exceptions.track(request.type, e)
-      rescue Exception => e2
-        Log.error("Failed handling error for #{request.type}", e2, :trace)
-        @exceptions.track(request.type, e2) rescue nil
+        @exceptions.track(request.type, exception)
+      rescue Exception => e
+        Log.error("Failed handling error for #{request.type}", e, :trace)
+        @exceptions.track(request.type, e) rescue nil
       end
-      error
+      Log.format(error, exception)
     end
 
   end # Dispatcher
