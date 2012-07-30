@@ -178,7 +178,9 @@ module RightScale
       now = Time.now
       Log.info("[start] Agent #{@identity} starting; time: #{now.utc}; utc_offset: #{now.utc_offset}")
       Log.debug("Start options:")
-      log_opts = @options.inject([]){ |t, (k, v)| t << "-  #{k}: #{v.respond_to?(:each) ? v.inspect : v}" }
+      log_opts = @options.inject([]) do |t, (k, v)|
+        t << "-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}"
+      end
       log_opts.each { |l| Log.debug(l) }
 
       begin
