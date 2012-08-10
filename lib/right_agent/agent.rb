@@ -76,6 +76,9 @@ module RightScale
       :heartbeat          => 60
     }
 
+    # Default block to be activated when finish terminating
+    DEFAULT_TERMINATE_BLOCK = lambda { EM.stop if EM.reactor_running? }
+
     # Initializes a new agent and establishes an AMQP connection.
     # This must be used inside EM.run block or if EventMachine reactor
     # is already started, for instance, by a Thin server that your Merb/Rails
@@ -120,9 +123,10 @@ module RightScale
     #     exception(Exception):: Exception
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
-    #   :ready_callback(Proc):: Called once agent is connected ready to service (no argument)
-    #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
-    #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online
+    #   :ready_callback(Proc):: Called once agent is connected to broker and ready for service (no argument)
+    #   :restart_callback(Proc):: Called on each restart vote with votes being initiated by offline queue
+    #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online (no argument)
+    #   :abnormal_terminate_callback(Proc):: Called at end of termination when terminate abnormally (no argument)
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
     #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
@@ -161,7 +165,6 @@ module RightScale
       @tags.flatten!
       @options.freeze
       @deferred_tasks = []
-      @terminating = false
       @last_stat_reset_time = @service_start_time = Time.now
       reset_agent_stats
       true
@@ -182,6 +185,7 @@ module RightScale
         t << "-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}"
       end
       log_opts.each { |l| Log.debug(l) }
+      terminate_callback = @options[:abnormal_terminate_callback]
 
       begin
         # Capture process id in file after optional daemonize
@@ -219,29 +223,29 @@ module RightScale
                 @check_status_brokers = @broker.all
                 EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
                 @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
+              rescue SystemExit
+                raise
               rescue Exception => e
-                Log.error("Agent failed startup", e, :trace) unless e.message == "exit"
-                EM.stop
+                terminate("failed startup after connecting to a broker", e, &terminate_callback)
               end
             end
           elsif status == :failed
-            Log.error("Agent failed to connect to any brokers during startup")
-            EM.stop
+            terminate("failed to connect to any brokers during startup", &terminate_callback)
           elsif status == :timeout
-            Log.error("Agent failed to connect to any brokers after #{@options[:connect_timeout]} seconds during startup")
-            EM.stop
+            terminate("failed to connect to any brokers after #{@options[:connect_timeout]} seconds during startup",
+                      &terminate_callback)
           else
-            Log.error("Agent broker connect attempt failed unexpectedly with status #{status} during startup")
-            EM.stop
+            terminate("broker connect attempt failed unexpectedly with status #{status} during startup",
+                      &terminate_callback)
           end
         end
-      rescue SystemExit => e
-        raise e
+      rescue SystemExit
+        raise
       rescue PidFile::AlreadyRunning
+        EM.stop if EM.reactor_running?
         raise
       rescue Exception => e
-        Log.error("Agent failed startup", e, :trace) unless e.message == "exit"
-        raise e
+        terminate("failed startup", e, &terminate_callback)
       end
       true
     end
@@ -472,20 +476,27 @@ module RightScale
 
     # Gracefully terminate execution by allowing unfinished tasks to complete
     # Immediately terminate if called a second time
+    # Report reason for termination if it is abnormal
+    #
+    # === Parameters
+    # reason(String):: Reason for abnormal termination, if any
+    # exception(Exception|String):: Exception or other parenthetical error information, if any
     #
     # === Block
     # Optional block to be executed after termination is complete
     #
     # === Return
     # true:: Always return true
-    def terminate(&block)
+    def terminate(reason = nil, exception = nil, &block)
+      block ||= DEFAULT_TERMINATE_BLOCK
       begin
-        if @terminating
-          Log.info("[stop] Terminating immediately")
+        Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
+        if @terminating || @broker.nil?
+          @terminating = true
           @termination_timer.cancel if @termination_timer
           @termination_timer = nil
-          block.call if block
-          EM.stop if EM.reactor_running?
+          Log.info("[stop] Terminating immediately")
+          block.call
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
@@ -502,7 +513,7 @@ module RightScale
                 request_count, request_age = @sender.terminate
                 Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                          "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-                @broker.close { block.call if block; EM.stop if EM.reactor_running? }
+                @broker.close { block.call }
               end
 
               wait_time = [timeout - (request_age || timeout), timeout - (dispatch_age || timeout), 0].max
@@ -520,19 +531,20 @@ module RightScale
                     finish.call
                   rescue Exception => e
                     Log.error("Failed while finishing termination", e, :trace)
-                    EM.stop if EM.reactor_running?
+                    begin block.call; rescue Exception; end
                   end
                 end
               end
             else
-              block.call if block
-              EM.stop if EM.reactor_running?
+              block.call
             end
           end
         end
+      rescue SystemExit
+        raise
       rescue Exception => e
         Log.error("Failed to terminate gracefully", e, :trace)
-        EM.stop if EM.reactor_running?
+        begin block.call; rescue Exception; end
       end
       true
     end
@@ -761,7 +773,7 @@ module RightScale
           EM.next_tick do
             begin
               terminate do
-                EM.stop if EM.reactor_running?
+                DEFAULT_TERMINATE_BLOCK.call
                 old.call if old.is_a? Proc
               end
             rescue Exception => e
