@@ -571,6 +571,24 @@ describe RightScale::Agent do
 
     describe "Terminating" do
 
+      it "should log error for abnormal termination" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @broker.should_receive(:nil?).and_return(true)
+          @log.should_receive(:error).with("[stop] Terminating because just because", nil, :trace).once
+          @agent.terminate("just because")
+        end
+      end
+
+      it "should log error plus exception for abnormal termination" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @broker.should_receive(:nil?).and_return(true)
+          @log.should_receive(:error).with(/Terminating because just because/, Exception, :trace).once
+          @agent.terminate("just because", Exception.new("error"))
+        end
+      end
+
       it "should close unusable broker connections at start of termination" do
         @broker.should_receive(:unusable).and_return(["rs-broker-123-1"]).once
         @broker.should_receive(:close_one).with("rs-broker-123-1", false).once
@@ -690,6 +708,15 @@ describe RightScale::Agent do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
+          @agent.terminate
+        end
+      end
+
+      it "should terminate immediately if broker not initialized" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @broker.should_receive(:nil?).and_return(true)
+          @log.should_receive(:info).with("[stop] Terminating immediately").once
           @agent.terminate
         end
       end
