@@ -20,13 +20,12 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'singleton'
 
 module RightScale
 
   # Agent tags management
   class AgentTagManager
-    include Singleton
+    include RightSupport::Ruby::EasySingleton
 
     # (Agent) Agent being managed
     attr_accessor :agent

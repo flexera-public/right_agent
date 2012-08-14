@@ -75,7 +75,7 @@ describe "RightScale::DispatchedCache" do
     it "should remove old cache entries when store new one" do
       @cache.store(@token1, nil)
       @cache.store(@token2, nil)
-      @cache.instance_variable_get(:@cache).keys.should == [@token1, @token2]
+      @cache.instance_variable_get(:@cache).keys.should =~ [@token1, @token2]
       @cache.instance_variable_get(:@lru).should == [@token1, @token2]
       flexmock(Time).should_receive(:now).and_return(@now += RightScale::DispatchedCache::MAX_AGE + 1)
       @cache.store(@token3, nil)

@@ -9,8 +9,6 @@
 # License Agreement between RightScale.com, Inc. and
 # the licensee.
 
-require 'singleton'
-
 module RightScale
 
   # Class which allows listening for data and sending data on sockets
@@ -18,7 +16,7 @@ module RightScale
   # the agent without having to go through RabbitMQ.
   class CommandIO
 
-    include Singleton
+    include RightSupport::Ruby::EasySingleton
 
     # ensure uniqueness of handler to avoid confusion.
     raise "#{ServerInputHandler.name} is already defined" if defined?(ServerInputHandler)

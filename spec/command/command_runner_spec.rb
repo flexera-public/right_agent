@@ -26,7 +26,7 @@ module RightScale
 
   class CommandIOMock < CommandIO
 
-    include Singleton
+    include RightSupport::Ruby::EasySingleton
 
     def trigger_listen(payload)
       @test_callback.call(payload)
