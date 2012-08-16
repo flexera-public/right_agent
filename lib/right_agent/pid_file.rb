@@ -116,7 +116,7 @@ module RightScale
         open(@cookie_file,'r') do |f|
           command_options = (YAML.load(f.read) rescue {}) || {}
           content.merge!(command_options)
-        end if File.exists?(@cookie_file)
+        end if File.reamdable?(@cookie_file)
       end
       content
     end
