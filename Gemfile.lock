@@ -1,9 +1,9 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: ed733147ee8a93e31247f47203508bb24b9d60b9
-  branch: master
+  revision: eafcb941351fd5b5706dd318e7c10d5ecb7ce646
+  branch: release4.4
   specs:
-    right_amqp (0.5.0)
+    right_amqp (0.5.1)
       eventmachine (~> 0.12.10)
       right_support (>= 1.2, < 3.0)
 
