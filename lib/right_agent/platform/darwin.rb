@@ -97,18 +97,29 @@ module RightScale
         '/var/lib/rightscale/right_link'
       end
 
+      # Data which is awaiting some kind of later processing
       def spool_dir
         '/var/spool'
       end
 
+      # Cached data from applications. Such data is locally generated as a
+      # result of time-consuming I/O or calculation. The application must
+      # be able to regenerate or restore the data.
       def cache_dir
         '/var/cache/rightscale'
       end
 
+      # System logs
       def log_dir
         '/var/log'
       end
 
+      # Source code, for reference purposes and for development.
+      def source_code_dir
+        '/usr/src'
+      end
+
+      # Temporary files.
       def temp_dir
         '/tmp'
       end
