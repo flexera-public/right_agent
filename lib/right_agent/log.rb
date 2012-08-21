@@ -354,6 +354,10 @@ module RightScale
         end
         if new_level != @level
           @logger.info("[setup] Setting log level to #{level_to_sym(new_level).to_s.upcase}")
+          if new_level == Logger::DEBUG && !RightScale::Platform.windows?
+            @logger.info("[setup] Check syslog configuration to ensure debug messages are not discarded!")
+          else
+          end
           @logger.level = @level = new_level
         end
         # Notify even if unchanged since don't know when callback was set
