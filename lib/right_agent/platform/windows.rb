@@ -185,6 +185,11 @@ module RightScale
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'log'))
       end
 
+      # Source code, for reference purposes and for development.
+      def source_code_dir
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'src'))
+      end
+
       # Temp directory for the current platform
       def temp_dir
         if @temp_dir.nil?
