@@ -157,7 +157,7 @@ module RightScale
       # result of time-consuming I/O or calculation. The application must
       # be able to regenerate or restore the data.
       def cache_dir
-        '/var/cache/rightscale'
+        '/var/cache'
       end
 
       # System logs
