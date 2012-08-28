@@ -29,7 +29,6 @@ RIGHTSCALE_LOG_DEFINED = true
 
 require 'logger'
 require 'right_support'
-require 'singleton'
 
 require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'multiplexer'))
@@ -42,7 +41,7 @@ module RightScale
 
     # Expecting use of RightScale patched Singleton so that clients of this
     # class do not need to use '.instance' in Log calls
-    include Singleton
+    include RightSupport::Ruby::EasySingleton
 
     # Default formatter for a Log
     class Formatter < Logger::Formatter
@@ -147,7 +146,6 @@ module RightScale
     # === Return
     # (true|false):: True if this object or its proxy responds to the names method, false otherwise
     def respond_to?(m)
-      init unless @initialized
       super(m) || @logger.respond_to?(m)
     end
 
