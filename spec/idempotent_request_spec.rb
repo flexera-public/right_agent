@@ -26,7 +26,7 @@ describe RightScale::IdempotentRequest do
 
   module RightScale
     class SenderMock
-      include Singleton
+      include RightSupport::Ruby::EasySingleton
     end
   end
 

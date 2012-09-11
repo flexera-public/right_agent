@@ -30,7 +30,7 @@ unless defined?(RightScale::Platform)
 # some install-time gem dependency issues.
 
 require 'rbconfig'
-
+require 'right_support'
 
 
 # Load ruby interpreter monkey-patches first (to ensure File.normalize_path is defined, etc.).
@@ -69,7 +69,7 @@ module RightScale
   #     - suse?
   class Platform
 
-    include Singleton
+    include RightSupport::Ruby::EasySingleton
 
     # Generic platform family
     #

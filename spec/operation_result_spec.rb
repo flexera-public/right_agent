@@ -40,7 +40,7 @@ describe RightScale::OperationResult do
       result = RightScale::OperationResult.from_results(@hash)
       result.kind_of?(RightScale::OperationResult).should be_true
       result.status_code.should == RightScale::OperationResult::SUCCESS
-      result.content.should == 1
+      result.content.should == @hash.values[0].content
     end
 
     it "should handle individual result and return it as an OperationResult" do
@@ -158,7 +158,9 @@ describe RightScale::OperationResult do
 
     it "should convert error content to string if necessary" do
       result = RightScale::OperationResult.error({"data" => "some data", "message" => "some problem"})
-      result.to_s.should == "error ({\"data\"=>\"some data\", \"message\"=>\"some problem\"})"
+      result.to_s.should start_with ("error (")
+      result.to_s.should include("\"data\"=>\"some data\"")
+      result.to_s.should include("\"message\"=>\"some problem\"")
     end
 
     it "should truncate error message if too long" do
