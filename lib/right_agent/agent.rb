@@ -165,7 +165,8 @@ module RightScale
       @tags.flatten!
       @options.freeze
       @deferred_tasks = []
-      @last_stat_reset_time = @service_start_time = Time.now
+      @history = History.new(@identity)
+      @last_stat_reset_time = Time.now
       reset_agent_stats
       true
     end
@@ -178,6 +179,7 @@ module RightScale
       Log.init(@identity, @options[:log_path], :print => true)
       Log.level = @options[:log_level] if @options[:log_level]
       RightSupport::Log::Mixin.default_logger = Log
+      @history.update("start")
       now = Time.now
       Log.info("[start] Agent #{@identity} starting; time: #{now.utc}; utc_offset: #{now.utc_offset}")
       Log.debug("Start options:")
@@ -212,6 +214,7 @@ module RightScale
                 load_actors
                 setup_traps
                 setup_queues
+                @history.update("run")
                 start_console if @options[:console] && !@options[:daemonize]
 
                 # Need to keep reconnect interval at least :connect_timeout in size,
@@ -490,6 +493,7 @@ module RightScale
     def terminate(reason = nil, exception = nil, &block)
       block ||= DEFAULT_TERMINATE_BLOCK
       begin
+        @history.update("stop")
         Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
         if @terminating || @broker.nil?
           @terminating = true
@@ -497,6 +501,7 @@ module RightScale
           @termination_timer = nil
           Log.info("[stop] Terminating immediately")
           block.call
+          @history.update("graceful exit") if @broker.nil?
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
@@ -538,6 +543,7 @@ module RightScale
             else
               block.call
             end
+            @history.update("graceful exit")
           end
         end
       rescue SystemExit
@@ -572,7 +578,7 @@ module RightScale
         "send stats"      => @sender.stats(reset),
         "last reset time" => @last_stat_reset_time.to_i,
         "stat time"       => now.to_i,
-        "service uptime"  => (now - @service_start_time).to_i,
+        "service uptime"  => @history.analyze_service,
         "machine uptime"  => Platform.shell.uptime
       }
       stats["revision"] = @revision if @revision

@@ -50,6 +50,9 @@ describe RightScale::Agent do
                          :non_delivery => true).by_default
       @broker.should_receive(:connection_status).and_yield(:connected)
       flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
+      @history = flexmock("history")
+      @history.should_receive(:update).and_return(true).by_default
+      flexmock(RightScale::History).should_receive(:new).and_return(@history)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @identity = "rs-instance-123-1"
@@ -139,6 +142,9 @@ describe RightScale::Agent do
                          :non_delivery => true).by_default
       @broker.should_receive(:connection_status).and_yield(:connected)
       flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
+      @history = flexmock("history")
+      @history.should_receive(:update).and_return(true).by_default
+      flexmock(RightScale::History).should_receive(:new).and_return(@history)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
       @identity = "rs-instance-123-1"
@@ -271,6 +277,10 @@ describe RightScale::Agent do
       flexmock(RightAMQP::HABrokerClient).should_receive(:new).and_return(@broker)
       flexmock(RightScale::PidFile).should_receive(:new).
               and_return(flexmock("pid file", :check=>true, :write=>true, :remove=>true))
+      @history = flexmock("history")
+      @history.should_receive(:update).and_return(true).by_default
+      @history.should_receive(:analyze_service).and_return({}).by_default
+      flexmock(RightScale::History).should_receive(:new).and_return(@history)
       @header = flexmock("amqp header")
       @header.should_receive(:ack).by_default
       @sender = flexmock("sender", :pending_requests => [], :request_age => nil,
@@ -330,6 +340,13 @@ describe RightScale::Agent do
           flexmock(@agent).should_receive(:update_configuration).with(:host => ["123"], :port => [1, 2]).and_return(true).once
           @agent.connect("123", 2, 1, 1)
         end
+      end
+
+      it "should update history with start and then run when agent is for service" do
+        @history.should_receive(:update).with("start").and_return(true).ordered.once
+        flexmock(@agent).should_receive(:setup_queues).ordered.once
+        @history.should_receive(:update).with("run").and_return(true).ordered.once
+        @agent.run
       end
 
       it "should log error if fail to connect to broker" do
@@ -728,7 +745,6 @@ describe RightScale::Agent do
       it "should terminate immediately if broker not initialized" do
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          @broker.should_receive(:nil?).and_return(true)
           @log.should_receive(:info).with("[stop] Terminating immediately").once
           @agent.terminate
         end
@@ -749,6 +765,39 @@ describe RightScale::Agent do
           called.should == 0
           @agent.terminate { called += 1 }
           called.should == 1
+        end
+      end
+
+      it "should update history with stop and graceful exit if broker not initialized" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @log.should_receive(:error).once
+          @history.should_receive(:update).with("stop").and_return(true).ordered.once
+          @history.should_receive(:update).with("graceful exit").and_return(true).ordered.once
+          @agent.terminate("just because")
+        end
+      end
+
+      it "should update history with stop but not graceful exit if called a second time to terminate immediately" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          @agent.run
+          @agent.instance_variable_set(:@terminating, true)
+          @history.should_receive(:update).with("stop").and_return(true).once
+          @history.should_receive(:update).with("graceful exit").never
+          @agent.terminate
+        end
+      end
+
+      it "should update history with stop and graceful exit if gracefully terminate" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          flexmock(@agent).should_receive(:load_actors).and_return(true)
+          @agent.run
+          @history.should_receive(:update).with("stop").and_return(true).ordered.once
+          @history.should_receive(:update).with("graceful exit").and_return(true).ordered.once
+          @agent.terminate
         end
       end
 
