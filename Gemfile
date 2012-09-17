@@ -2,6 +2,10 @@ source :rubygems
 
 gemspec
 
+gem 'right_support',
+    :git => 'git@github.com:rightscale/right_support.git',
+    :branch => 'azure_13683_service_up_stats'
+
 gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
     :branch => 'master'
