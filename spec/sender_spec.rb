@@ -804,6 +804,22 @@ describe RightScale::Sender do
       flexmock(@instance).should_receive(:deliver).never
       lambda { @instance.handle_response(response, @header) }.should raise_error(Exception)
     end
+
+    it "should not attempt to ack response if fail while handling it and there is no header" do
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      exception = Exception.new("test")
+      flexmock(response).should_receive(:token).and_raise(exception).once
+      flexmock(@instance).should_receive(:deliver).never
+      lambda { @instance.handle_response(response, nil) }.should raise_error(exception)
+    end
+
+    it "should not attempt to ack response if there is no header" do
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, nil).once
+      @instance.handle_response(response)
+    end
   end
 
   describe "when delivering a response" do
@@ -892,11 +908,26 @@ describe RightScale::Sender do
     end
 
     it "should ack response even if fail while delivering it" do
-      @header.should_receive(:ack).once
       flexmock(EM).should_receive(:defer).and_raise(Exception).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       lambda { @instance.handle_response(response, @header) }.should raise_error(Exception)
+    end
+
+    it "should not attempt to ack response if fail while delivering it and there is no header" do
+      @header.should_receive(:ack).never
+      exception = Exception.new("test")
+      flexmock(EM).should_receive(:defer).and_raise(exception).once
+      @instance.send_push('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      lambda { @instance.handle_response(response, nil) }.should raise_error(exception)
+    end
+
+    it "should not attempt to ack response if there is no header" do
+      @header.should_receive(:ack).never
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
+      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
+      @instance.handle_response(response)
     end
   end
 

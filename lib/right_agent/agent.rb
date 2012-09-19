@@ -442,16 +442,16 @@ module RightScale
     #
     # === Parameters
     # packet(Request|Push|Result):: Packet received
-    # header(AMQP::Frame::Header):: Request header containing ack control
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def receive(packet, header)
+    def receive(packet, header = nil)
       begin
         case packet
         when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
         when Result        then @sender.handle_response(packet, header)
-        else header.ack
+        else header.ack if header
         end
         @sender.message_received
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e

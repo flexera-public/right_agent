@@ -1208,7 +1208,7 @@ module RightScale
               end
             end
           rescue Exception
-            header.ack
+            header.ack if header
             raise
           end
         end
