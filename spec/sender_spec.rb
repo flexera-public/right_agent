@@ -811,7 +811,7 @@ describe RightScale::Sender do
       exception = Exception.new("test")
       flexmock(response).should_receive(:token).and_raise(exception).once
       flexmock(@instance).should_receive(:deliver).never
-      lambda { @instance.handle_response(response, nil) }.should raise_error(exception)
+      lambda { @instance.handle_response(response, nil) }.should raise_error(Exception, "test")
     end
 
     it "should not attempt to ack response if there is no header" do
@@ -920,7 +920,7 @@ describe RightScale::Sender do
       flexmock(EM).should_receive(:defer).and_raise(exception).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      lambda { @instance.handle_response(response, nil) }.should raise_error(exception)
+      lambda { @instance.handle_response(response, nil) }.should raise_error(Exception, "test")
     end
 
     it "should not attempt to ack response if there is no header" do
