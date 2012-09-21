@@ -465,6 +465,16 @@ describe RightScale::Agent do
         end
       end
 
+      it "should ignore unrecognized messages and not attempt to ack if there is no header" do
+        run_in_em do
+          request = RightScale::Stats.new(nil, nil)
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, nil).once
+          @dispatcher.should_receive(:dispatch).never
+          @agent.run
+        end
+      end
+
     end
 
     describe "Tuning heartbeat" do

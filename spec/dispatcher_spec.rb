@@ -354,11 +354,32 @@ describe "RightScale::Dispatcher" do
     lambda { @dispatcher.dispatch(req, @header) }.should raise_error(Exception)
   end
 
+  it "should not attempt to ack request if fail while dispatching and there is no header" do
+    @header.should_receive(:ack).never
+    RightScale::Log.should_receive(:error).and_raise(Exception).once
+    req = RightScale::Request.new('/foo/i_kill_you', nil)
+    lambda { @dispatcher.dispatch(req, nil) }.should raise_error(Exception)
+  end
+
   it "should ack request even if fail while doing final setup for processing request" do
     @dispatcher.em = EMMock
     flexmock(EMMock).should_receive(:defer).and_raise(Exception).once
     req = RightScale::Request.new('/foo/bar', 'you')
     lambda { @dispatcher.dispatch(req, @header) }.should raise_error(Exception)
+  end
+
+  it "should not attempt to ack request if fail while doing final setup for processing request and there is no header" do
+    @header.should_receive(:ack).never
+    @dispatcher.em = EMMock
+    flexmock(EMMock).should_receive(:defer).and_raise(Exception).once
+    req = RightScale::Request.new('/foo/bar', 'you')
+    lambda { @dispatcher.dispatch(req, nil) }.should raise_error(Exception)
+  end
+
+  it "should not attempt to ack request if dispatch a request and there is no header" do
+    @header.should_receive(:ack).never
+    req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
+    @dispatcher.dispatch(req, nil)
   end
 
 end # RightScale::Dispatcher

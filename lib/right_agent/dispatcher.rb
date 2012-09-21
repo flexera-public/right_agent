@@ -75,12 +75,12 @@ module RightScale
     #
     # === Parameters
     # request(Request|Push):: Packet containing request
-    # header(AMQP::Frame::Header):: Request header containing ack control
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
     #
     # === Return
-    # r(Result):: Result from dispatched request, nil if not dispatched because dup or stale
-    def dispatch(request, header, shared_queue = nil)
+    # (Result|nil):: Result from dispatched request, nil if not dispatched because dup or stale
+    def dispatch(request, header = nil, shared_queue = nil)
       begin
         ack_deferred = false
 
@@ -92,7 +92,7 @@ module RightScale
         token = request.token
         received_at = @requests.update(method, (token if request.kind_of?(Request)))
         if actor.nil?
-          Log.error("No actor for dispatching request <#{request.token}> of type #{request.type}")
+          Log.error("No actor for dispatching request <#{token}> of type #{request.type}")
           return nil
         end
         method_idempotent = actor.class.idempotent?(method)
@@ -163,7 +163,7 @@ module RightScale
             Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
             @exceptions.track("publish response", e)
           ensure
-            header.ack
+            header.ack if header
             @pending_dispatches = [@pending_dispatches - 1, 0].max
           end
           r # For unit tests
@@ -178,11 +178,11 @@ module RightScale
             @em.defer(operation, callback)
           end
         rescue Exception
-          header.ack
+          header.ack if header
           raise
         end
       ensure
-        header.ack unless ack_deferred
+        header.ack unless ack_deferred || header.nil?
       end
     end
 
