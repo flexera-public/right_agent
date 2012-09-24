@@ -117,6 +117,7 @@ module RightScale
     def initialize
       # Was log ever used?
       @initialized = false
+      @logger = RightSupport::Log::NullLogger.new  # ensures respond_to? works before init is called
     end
 
     # Forward all method calls to underlying Logger object created with init
