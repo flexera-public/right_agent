@@ -219,7 +219,7 @@ module RightScale
 
       # Path to right link configuration and internal usage scripts
       def private_bin_dir
-        return pretty_path(File.join(right_link_home_dir, 'right_link', 'scripts', 'windows'))
+        return pretty_path(File.join(right_link_home_dir, 'bin'))
       end
 
       def sandbox_dir
