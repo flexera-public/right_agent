@@ -162,7 +162,6 @@ module RightScale
       @tags.flatten!
       @options.freeze
       @deferred_tasks = []
-      @history = History.new(@identity)
       @last_stat_reset_time = Time.now
       reset_agent_stats
       true
@@ -197,38 +196,13 @@ module RightScale
         # Initiate AMQP broker connection, wait for connection before proceeding
         # otherwise messages published on failed connection will be lost
         @broker = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options)
-        @all_setup.each { |s| @remaining_setup[s] = @broker.all }
+        @queues.each { |s| @remaining_queue_setup[s] = @broker.all }
         @broker.connection_status(:one_off => @options[:connect_timeout]) do |status|
           if status == :connected
             # Need to give EM (on Windows) a chance to respond to the AMQP handshake
             # before doing anything interesting to prevent AMQP handshake from
             # timing-out; delay post-connected activity a second.
-            EM.add_timer(1) do
-              begin
-                @registry = ActorRegistry.new
-                @dispatcher = create_dispatcher
-                @sender = create_sender
-                load_actors
-                setup_traps
-                setup_queues
-                @history.update("run")
-                start_console if @options[:console] && !@options[:daemonize]
-
-                # Need to keep reconnect interval at least :connect_timeout in size,
-                # otherwise connection_status callback will not timeout prior to next
-                # reconnect attempt, which can result in repeated attempts to setup
-                # queues when finally do connect
-                interval = [@options[:check_interval], @options[:connect_timeout]].max
-                @check_status_count = 0
-                @check_status_brokers = @broker.all
-                EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-                @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
-              rescue SystemExit
-                raise
-              rescue Exception => e
-                terminate("failed startup after connecting to a broker", e, &terminate_callback)
-              end
-            end
+            EM.add_timer(1) { start_service(&terminate_callback) }
           elsif status == :failed
             terminate("failed to connect to any brokers during startup", &terminate_callback)
           elsif status == :timeout
@@ -343,7 +317,7 @@ module RightScale
               if status == :connected
                 setup_queues([id])
                 remaining = 0
-                @remaining_setup.each_value { |ids| remaining += ids.size }
+                @remaining_queue_setup.each_value { |ids| remaining += ids.size }
                 Log.info("[setup] Finished subscribing to queues after reconnecting to broker #{id}") if remaining == 0
                 unless update_configuration(:host => @broker.hosts, :port => @broker.ports)
                   Log.warning("Successfully connected to broker #{id} but failed to update config file")
@@ -476,40 +450,8 @@ module RightScale
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
           @check_status_timer = nil
-          timeout = @options[:grace_timeout]
           Log.info("[stop] Agent #{@identity} terminating")
-
-          stop_gracefully(timeout) do
-            if @sender
-              request_count, request_age = @sender.terminate
-
-              finish = lambda do
-                request_count, request_age = @sender.terminate
-                Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
-                         "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-                @broker.close { block.call }
-              end
-
-              if (wait_time = [timeout - (request_age || timeout), 0].max) > 0
-                Log.info("[stop] Termination waiting #{wait_time} seconds for completion of #{request_count} " +
-                         "requests initiated as recently as #{request_age} seconds ago")
-                @termination_timer = EM::Timer.new(wait_time) do
-                  begin
-                    Log.info("[stop] Continuing with termination")
-                    finish.call
-                  rescue Exception => e
-                    Log.error("Failed while finishing termination", e, :trace)
-                    begin block.call; rescue Exception; end
-                  end
-                end
-              else
-                finish.call
-              end
-            else
-              block.call
-            end
-            @history.update("graceful exit")
-          end
+          stop_gracefully(@options[:grace_timeout], &block)
         end
       rescue SystemExit
         raise
@@ -596,7 +538,7 @@ module RightScale
     # opts(Hash):: Configuration options
     #
     # === Return
-    # (String):: Serialized agent identity
+    # true:: Always return true
     def set_configuration(opts)
       @options = DEFAULT_OPTIONS.clone
       @options.update(opts)
@@ -616,10 +558,9 @@ module RightScale
       @agent_name = @options[:agent_name]
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
       @revision = revision
-
-      @remaining_setup = {}
-      @all_setup = [:setup_identity_queue]
-      @identity
+      @queues = [@identity]
+      @remaining_queue_setup = {}
+      @history = History.new(@identity)
     end
 
     # Update agent's persisted configuration
@@ -642,6 +583,39 @@ module RightScale
     rescue Exception => e
       Log.error("Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e, :trace)
       false
+    end
+
+    # Start service now that connected to at least one broker
+    #
+    # === Block
+    # Optional block to be executed if terminate abnormally
+    #
+    # === Return
+    # true:: Always return true
+    def start_service(&terminate_callback)
+      begin
+        @registry = ActorRegistry.new
+        @dispatcher = create_dispatcher
+        @sender = create_sender
+        load_actors
+        setup_traps
+        setup_non_delivery
+        setup_queues
+        @history.update("run")
+        start_console if @options[:console] && !@options[:daemonize]
+        EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
+
+        # Need to keep reconnect interval at least :connect_timeout in size,
+        # otherwise connection_status callback will not timeout prior to next
+        # reconnect attempt, which can result in repeated attempts to setup
+        # queues when finally do connect
+        setup_status_checks([@options[:check_interval], @options[:connect_timeout]].max)
+      rescue SystemExit
+        raise
+      rescue Exception => e
+        terminate("failed startup after connecting to a broker", e, &terminate_callback)
+      end
+      true
     end
 
     # Create dispatcher for handling incoming requests
@@ -691,64 +665,6 @@ module RightScale
       true
     end
 
-    # Setup the queues on the specified brokers for this agent
-    # Also configure message non-delivery handling
-    #
-    # === Parameters
-    # ids(Array):: Identity of brokers for which to subscribe, defaults to all usable
-    #
-    # === Return
-    # true:: Always return true
-    def setup_queues(ids = nil)
-      @broker.non_delivery do |reason, type, token, from, to|
-        begin
-          @non_deliveries.update(type)
-          reason = case reason
-          when "NO_ROUTE" then OperationResult::NO_ROUTE_TO_TARGET
-          when "NO_CONSUMERS" then OperationResult::TARGET_NOT_CONNECTED
-          else reason.to_s
-          end
-          result = Result.new(token, from, OperationResult.non_delivery(reason), to)
-          @sender.handle_response(result)
-        rescue Exception => e
-          Log.error("Failed handling non-delivery for <#{token}>", e, :trace)
-          @exceptions.track("message return", e)
-        end
-      end
-      # Do the setup regardless of whether remaining setup is empty since may be reconnecting
-      @all_setup.each { |setup| @remaining_setup[setup] -= self.__send__(setup, ids) }
-      true
-    end
-
-    # Setup identity queue for this agent
-    #
-    # === Parameters
-    # ids(Array):: Identity of brokers for which to subscribe, defaults to all usable
-    #
-    # === Return
-    # ids(Array):: Identity of brokers to which subscribe submitted (although may still fail)
-    def setup_identity_queue(ids = nil)
-      queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
-      filter = [:from, :tags, :tries, :persistent]
-      options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) do |_, packet, header|
-        begin
-          case packet
-          when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
-          when Result        then @sender.handle_response(packet, header)
-          else header.ack if header
-          end
-          @sender.message_received
-        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-          Log.error("Identity queue processing error", e)
-        rescue Exception => e
-          Log.error("Identity queue processing error", e, :trace)
-          @exceptions.track("identity queue", e, packet)
-        end
-      end
-      ids
-    end
-
     # Setup signal traps
     #
     # === Return
@@ -771,6 +687,70 @@ module RightScale
       true
     end
 
+    # Setup non-delivery handler
+    #
+    # === Return
+    # true:: Always return true
+    def setup_non_delivery
+      @broker.non_delivery do |reason, type, token, from, to|
+        begin
+          @non_deliveries.update(type)
+          reason = case reason
+          when "NO_ROUTE" then OperationResult::NO_ROUTE_TO_TARGET
+          when "NO_CONSUMERS" then OperationResult::TARGET_NOT_CONNECTED
+          else reason.to_s
+          end
+          result = Result.new(token, from, OperationResult.non_delivery(reason), to)
+          @sender.handle_response(result)
+        rescue Exception => e
+          Log.error("Failed handling non-delivery for <#{token}>", e, :trace)
+          @exceptions.track("message return", e)
+        end
+      end
+    end
+
+    # Setup the queues on the specified brokers for this agent
+    # Do the setup regardless of whether remaining setup is empty since may be reconnecting
+    #
+    # === Parameters
+    # ids(Array):: Identity of brokers for which to subscribe, defaults to all usable
+    #
+    # === Return
+    # true:: Always return true
+    def setup_queues(ids = nil)
+      @queues.each { |q| @remaining_queue_setup[q] -= setup_queue(q, ids) }
+      true
+    end
+
+    # Setup queue for this agent
+    #
+    # === Parameters
+    # name(String):: Queue name
+    # ids(Array):: Identity of brokers for which to subscribe, defaults to all usable
+    #
+    # === Return
+    # (Array):: Identity of brokers to which subscribe submitted (although may still fail)
+    def setup_queue(name, ids = nil)
+      queue = {:name => name, :options => {:durable => true, :no_declare => @options[:secure]}}
+      filter = [:from, :tags, :tries, :persistent]
+      options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
+      @broker.subscribe(queue, nil, options) do |_, packet, header|
+        begin
+          case packet
+          when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
+          when Result        then @sender.handle_response(packet, header)
+          else header.ack if header
+          end
+          @sender.message_received
+        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+          Log.error("Identity queue processing error", e)
+        rescue Exception => e
+          Log.error("Identity queue processing error", e, :trace)
+          @exceptions.track("identity queue", e, packet)
+        end
+      end
+    end
+
     # Finish any remaining agent setup
     #
     # === Return
@@ -784,21 +764,37 @@ module RightScale
       true
     end
 
+    # Setup periodic status check
+    #
+    # === Parameters
+    # interval(Integer):: Number of seconds between status checks
+    #
+    # === Return
+    # true:: Always return true
+    def setup_status_checks(interval)
+      @check_status_count = 0
+      @check_status_brokers = @broker.all
+      @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
+      true
+    end
+
     # Check status of agent by gathering current operation statistics and publishing them,
     # finishing any queue setup, and executing any deferred tasks
+    # Although agent termination cancels the check_status_timer, this method could induce
+    # termination, therefore the termination status needs to be checked before each step
     #
     # === Return
     # true:: Always return true
     def check_status
       begin
-        finish_setup
+        finish_setup unless @terminating
       rescue Exception => e
         Log.error("Failed finishing setup", e)
         @exceptions.track("check status", e)
       end
 
       begin
-        if @stats_routing_key
+        if @stats_routing_key && !@terminating
           exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
           @broker.publish(exchange, Stats.new(stats.content, @identity), :no_log => true,
                           :routing_key => @stats_routing_key, :brokers => @check_status_brokers.rotate!)
@@ -808,18 +804,21 @@ module RightScale
         @exceptions.track("check status", e)
       end
 
-      @deferred_tasks.reject! do |t|
-        begin
-          t.call
-        rescue Exception => e
-          Log.error("Failed to perform deferred task", e)
-          @exceptions.track("check status", e)
+
+      unless @terminating
+        @deferred_tasks.reject! do |t|
+          begin
+            t.call
+          rescue Exception => e
+            Log.error("Failed to perform deferred task", e)
+            @exceptions.track("check status", e)
+          end
+          true
         end
-        true
       end
 
       begin
-        check_other(@check_status_count)
+        check_other(@check_status_count) unless @terminating
       rescue Exception => e
         Log.error("Failed to perform other check status check", e)
         @exceptions.track("check status", e)
@@ -859,13 +858,57 @@ module RightScale
     #   terminating regardless of whether there are still unfinished requests
     #
     # === Block
-    # Required block to be executed after stopping message receipt wherever possible
+    # Optional block to be executed after stopping message processing wherever possible
     #
     # === Return
     # true:: Always return true
-    def stop_gracefully(timeout)
+    def stop_gracefully(timeout, &block)
       @broker.unusable.each { |id| @broker.close_one(id, propagate = false) }
-      yield
+      finish_terminating(timeout, &block)
+    end
+
+    # Finish termination after all requests have been processed
+    #
+    # === Parameters
+    # timeout(Integer):: Maximum number of seconds to wait after last request received before
+    #   terminating regardless of whether there are still unfinished requests
+    #
+    # === Block
+    # Optional block to be executed after stopping message processing wherever possible
+    #
+    # === Return
+    # true:: Always return true
+    def finish_terminating(timeout, &block)
+      if @sender
+        request_count, request_age = @sender.terminate
+
+        finish = lambda do
+          request_count, request_age = @sender.terminate
+          Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
+                   "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
+          @broker.close { block.call }
+        end
+
+        if (wait_time = [timeout - (request_age || timeout), 0].max) > 0
+          Log.info("[stop] Termination waiting #{wait_time} seconds for completion of #{request_count} " +
+                   "requests initiated as recently as #{request_age} seconds ago")
+          @termination_timer = EM::Timer.new(wait_time) do
+            begin
+              Log.info("[stop] Continuing with termination")
+              finish.call
+            rescue Exception => e
+              Log.error("Failed while finishing termination", e, :trace)
+              begin block.call; rescue Exception; end
+            end
+          end
+        else
+          finish.call
+        end
+      else
+        block.call
+      end
+      @history.update("graceful exit")
+      true
     end
 
     # Determine current revision of software
