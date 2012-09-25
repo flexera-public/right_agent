@@ -305,7 +305,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
           @agent.run
-          @agent.instance_variable_get(:@remaining_setup).should == {:setup_identity_queue => @broker_ids.last(1)}
+          @agent.instance_variable_get(:@remaining_queue_setup).should == {@identity => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
           @agent.__send__(:check_status)
@@ -415,13 +415,47 @@ describe RightScale::Agent do
     end
 
     describe "Handling messages" do
-  
+
       it "should use dispatcher to handle requests" do
         run_in_em do
           request = RightScale::Request.new("/foo/bar", "payload")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request, @header).once
-          @dispatcher.should_receive(:dispatch).with(request, @header).once
+          @dispatcher.should_receive(:dispatch).with(request).once
+          @agent.run
+        end
+      end
+
+      it "should publish result from dispatched request to response queue" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          result = flexmock("result")
+          @dispatcher.should_receive(:dispatch).with(request).and_return(result).once
+          @broker.should_receive(:publish).with(hsh(:name => "response"), result,
+                                                hsh(:persistent => true, :mandatory => true)).once
+          @agent.run
+        end
+      end
+
+      it "should not publish result from dispatched request if there is none" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).with(request).and_return(nil).once
+          @broker.should_receive(:publish).never
+          @agent.run
+        end
+      end
+
+      it "should ignore dispatcher duplicate request errors" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).and_raise(RightScale::Dispatcher::DuplicateRequest).once
           @agent.run
         end
       end
@@ -431,7 +465,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @sender.should_receive(:handle_response).with(result, @header).once
+          @sender.should_receive(:handle_response).with(result).once
           @agent.run
         end
       end
@@ -441,7 +475,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @sender.should_receive(:handle_response).with(result, @header).once
+          @sender.should_receive(:handle_response).with(result).once
           @sender.should_receive(:message_received).once
           @agent.run
         end
@@ -458,12 +492,26 @@ describe RightScale::Agent do
         end
       end
 
-      it "should ignore unrecognized messages and not attempt to ack if there is no header" do
+      it "should ack if request dispatch fails" do
         run_in_em do
-          request = RightScale::Stats.new(nil, nil)
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @log.should_receive(:error).with(/Failed to dispatch request/, Exception, :trace).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
-                                             and_return(@broker_ids).and_yield(@broker_id, request, nil).once
-          @dispatcher.should_receive(:dispatch).never
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).and_raise(Exception)
+          @header.should_receive(:ack).once
+          @agent.run
+        end
+      end
+
+      it "should ack if response delivery fails" do
+        run_in_em do
+          result = RightScale::Result.new("token", "to", "results", "from")
+          @log.should_receive(:error).with(/Failed to deliver response/, Exception, :trace).once
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, result, @header).once
+          @sender.should_receive(:handle_response).and_raise(Exception)
+          @header.should_receive(:ack).once
           @agent.run
         end
       end

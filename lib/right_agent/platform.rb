@@ -250,6 +250,20 @@ module RightScale
       platform_service(:installer)
     end
 
+    # Determines which cloud we're on by the cheap but simple expedient of
+    # reading the RightScale cloud file
+    def resolve_cloud_type
+      cloud_type = read_cloud_file
+      @ec2 = false
+      @rackspace = false
+      @eucalyptus = false
+      case cloud_type
+        when 'ec2' then @ec2 = true
+        when 'rackspace' then @rackspace = true
+        when 'eucalyptus' then @eucalyptus = true
+      end
+    end
+
     private
 
     # Load platform specific implementation
@@ -283,20 +297,6 @@ module RightScale
 
     def require_windows
       require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'windows'))
-    end
-
-    # Determines which cloud we're on by the cheap but simple expedient of
-    # reading the RightScale cloud file
-    def resolve_cloud_type
-      cloud_type = read_cloud_file
-      @ec2 = false
-      @rackspace = false
-      @eucalyptus = false
-      case cloud_type
-        when 'ec2' then @ec2 = true
-        when 'rackspace' then @rackspace = true
-        when 'eucalyptus' then @eucalyptus = true
-      end
     end
 
     # Reads the RightScale cloud file and returns its contents
