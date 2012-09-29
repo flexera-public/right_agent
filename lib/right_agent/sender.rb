@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -27,6 +27,8 @@ module RightScale
   # If requested, it will queue requests when there are no broker connections
   # All requests go through the mapper for security purposes
   class Sender
+
+    class MessageSendFailed < Exception; end
 
     # Request that is waiting for a response
     class PendingRequest
@@ -432,7 +434,6 @@ module RightScale
       # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds and
       # if have reached timeout limit
       # Ignore request if already checking a connection
-      # Only to be called from primary thread
       #
       # === Parameters
       # id(String):: Identity of specific broker to use to send ping, defaults to any
@@ -577,19 +578,14 @@ module RightScale
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
     #     by the receiver, 0 means never expire
     #   :secure(Boolean):: true indicates to use Security features of rabbitmq to restrict agents to themselves
-    #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
-    #     to do requested work on EM defer thread and all else, such as pings on main thread
     def initialize(agent)
       @agent = agent
       @identity = @agent.identity
       @options = @agent.options || {}
       @broker = @agent.broker
       @secure = @options[:secure]
-      @single_threaded = @options[:single_threaded]
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
       @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
-
-      # Only to be accessed from primary thread
       @pending_requests = PendingRequests.new
 
       reset_stats
@@ -782,7 +778,6 @@ module RightScale
 
     # Handle response to a request
     # Acknowledge response after delivering it
-    # Only to be called from primary thread
     #
     # === Parameters
     # response(Result):: Packet received as result of request
@@ -792,7 +787,6 @@ module RightScale
     # true:: Always return true
     def handle_response(response, header = nil)
       begin
-        ack_deferred = false
         token = response.token
         if response.is_a?(Result)
           if result = OperationResult.from_results(response)
@@ -813,8 +807,7 @@ module RightScale
               # Leave purging of associated request until final response, i.e., success response or retry timeout
               Log.info("Non-delivery of <#{token}> because #{result.content}")
             else
-              ack_deferred = true
-              deliver(response, handler, header)
+              deliver(response, handler)
             end
           elsif result && result.non_delivery?
             Log.info("Non-delivery of <#{token}> because #{result.content}")
@@ -823,7 +816,7 @@ module RightScale
           end
         end
       ensure
-        header.ack unless ack_deferred || header.nil?
+        header.ack if header
       end
       true
     end
@@ -1045,33 +1038,24 @@ module RightScale
         token = AgentIdentity.generate
         non_duplicate = kind == :send_persistent_request
         received_at = @request_stats.update(method, token)
+        request = Request.new(type, payload)
+        request.from = @identity
+        request.token = token
+        if target.is_a?(Hash)
+          request.tags = target[:tags] || []
+          request.scope = target[:scope]
+          request.selector = :any
+        else
+          request.target = target
+        end
+        request.expires_at = Time.now.to_i + @options[:time_to_live] if !non_duplicate && @options[:time_to_live] && @options[:time_to_live] != 0
+        request.persistent = non_duplicate
         @request_kinds.update(kind.to_s[5..-1])
-
-        # Using next_tick to ensure on primary thread since using @pending_requests
-        EM.next_tick do
-          begin
-            request = Request.new(type, payload)
-            request.from = @identity
-            request.token = token
-            if target.is_a?(Hash)
-              request.tags = target[:tags] || []
-              request.scope = target[:scope]
-              request.selector = :any
-            else
-              request.target = target
-            end
-            request.expires_at = Time.now.to_i + @options[:time_to_live] if !non_duplicate && @options[:time_to_live] && @options[:time_to_live] != 0
-            request.persistent = non_duplicate
-            @pending_requests[token] = PendingRequest.new(kind, received_at, callback)
-            if non_duplicate
-              publish(request)
-            else
-              publish_with_timeout_retry(request, token)
-            end
-          rescue Exception => e
-            Log.error("Failed to send #{type} #{kind.to_s}", e, :trace)
-            @exception_stats.track(kind.to_s, e, request)
-          end
+        @pending_requests[token] = PendingRequest.new(kind, received_at, callback)
+        if non_duplicate
+          publish(request)
+        else
+          publish_with_timeout_retry(request, token)
         end
       end
       true
@@ -1172,49 +1156,22 @@ module RightScale
     end
 
     # Deliver the response and remove associated request(s) from pending
-    # Use defer thread instead of primary if not single threaded, consistent with dispatcher,
-    # so that all shared data is accessed from the same thread
-    # Do callback if there is an exception, consistent with agent identity queue handling
-    # Only to be called from primary thread
     #
     # === Parameters
     # response(Result):: Packet received as result of request
     # handler(Hash):: Associated request handler
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def deliver(response, handler, header)
-      begin
-        ack_deferred = false
-        @request_stats.finish(handler.receive_time, response.token)
+    def deliver(response, handler)
+      @request_stats.finish(handler.receive_time, response.token)
 
-        @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
-        if parent = handler.retry_parent
-          @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
-        end
-
-        if handler.response_handler
-          begin
-            ack_deferred = true
-            EM.__send__(@single_threaded ? :next_tick : :defer) do
-              begin
-                handler.response_handler.call(response)
-              rescue Exception => e
-                Log.error("Failed processing response #{response.to_s([])}", e, :trace)
-                @exception_stats.track("response", e, response)
-              ensure
-                header.ack if header
-              end
-            end
-          rescue Exception
-            header.ack if header
-            raise
-          end
-        end
-      ensure
-        header.ack unless ack_deferred || header.nil?
+      @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
+      if parent = handler.retry_parent
+        @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
       end
+
+      handler.response_handler.call(response) if handler.response_handler
       true
     end
 
