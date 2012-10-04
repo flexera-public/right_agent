@@ -73,7 +73,7 @@ module RightScale
       :check_interval     => 5 * 60,
       :grace_timeout      => 30,
       :prefetch           => 1,
-      :heartbeat          => 60
+      :heartbeat          => 0
     }
 
     # Default block to be activated when finish terminating
