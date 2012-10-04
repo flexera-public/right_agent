@@ -105,9 +105,9 @@ describe RightScale::Agent do
       @agent.options[:root_dir].should == Dir.pwd
     end
 
-    it "for heartbeat is 60" do
+    it "for heartbeat is 0" do
       @agent.options.should include(:heartbeat)
-      @agent.options[:heartbeat].should == 60
+      @agent.options[:heartbeat].should == 0
     end
 
   end
