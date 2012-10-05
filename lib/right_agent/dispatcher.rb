@@ -63,21 +63,38 @@ module RightScale
       @@instance = self
     end
 
-    # Dispatch request to appropriate actor for servicing
+    # Determine whether an actor is registered
+    #
+    # === Parameters
+    # actor(String):: Name of actor
+    #
+    # === Return
+    # (Boolean):: true if registered, otherwise false
+    def registered?(actor)
+      @registry.actor_for(actor)
+    end
+
+    # Route request to appropriate actor for servicing
     # Handle returning of result to requester including logging any exceptions
     # Reject requests whose TTL has expired or that are duplicates of work already dispatched
     # Acknowledge request after actor has responded
     #
     # === Parameters
     # request(Request|Push):: Packet containing request
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control; result is not
+    #   published if header is nil
     # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
     #
     # === Return
-    # (Result|nil):: Result from dispatched request, nil if not dispatched because dup or stale
+    # (Result|nil):: Result from dispatched request or nil if request is not dispatched
+    #   because its type is unknown, it is a duplicate, or its TTL has expired
     def dispatch(request, header = nil, shared_queue = nil)
       begin
+        # Log request if it did not come from a broker queue using broker client log format
+        Log.info("RECV bx #{request.to_s([:from, :tags, :tries, :persistent], :recv_version)}") unless header
+
         # Determine which actor this request is for
+        ack_deferred = false
         prefix, method = request.type.split('/')[1..-1]
         method ||= :index
         method = method.to_sym
@@ -86,6 +103,7 @@ module RightScale
         received_at = @request_stats.update(method, (token if request.kind_of?(Request)))
         if actor.nil?
           Log.error("No actor for dispatching request <#{token}> of type #{request.type}")
+          @dispatch_failure_stats.update("unknown #{request.type}")
           return nil
         end
         method_idempotent = actor.class.idempotent?(method)
@@ -140,25 +158,30 @@ module RightScale
           end
         end
 
-        # Proc for sending response
+        # Proc for creating response and optionally publishing it
         callback = lambda do |r|
           begin
             if request.kind_of?(Request)
               duration = @request_stats.finish(received_at, token)
-              r = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
-              exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
-              @broker.publish(exchange, r, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
+              result = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
+              if header
+                exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
+                @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
+              end
+              result
+            else
+              Result.new(request.token, request.from, OperationResult.success(:targets => shared_queue || @identity), @identity)
             end
           rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
             Log.error("Failed to publish result of dispatched request #{request.trace}", e)
+            @response_failure_stats.update("NoConnectedBrokers")
           rescue Exception => e
             Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
+            @response_failure_stats.update(e.class.name)
             @exception_stats.track("publish response", e)
           end
-          r # For unit tests
         end
 
-        # Process request and send response, if any
         callback.call(operation.call)
       ensure
         header.ack if header
@@ -174,6 +197,8 @@ module RightScale
     # stats(Hash):: Current statistics:
     #   "dispatched cache"(Hash|nil):: Number of dispatched requests cached and age of youngest and oldest,
     #     or nil if empty
+    #   "dispatch failures"(Hash|nil):: Dispatch failure activity stats with keys "total", "percent", "last", and "rate"
+    #     with percentage breakdown per failure type, or nil if none
     #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
     #     "total"(Integer):: Total for category
     #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
@@ -182,14 +207,18 @@ module RightScale
     #     "stale (<method>)"), or nil if none
     #   "requests"(Hash|nil):: Request activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per request type, or nil if none
+    #   "response failures"(Hash|nil):: Response failure activity stats with keys "total", "percent", "last", and "rate"
+    #     with percentage breakdown per failure type, or nil if none
     #   "response time"(Float):: Average number of seconds to respond to a request recently
     def stats(reset = false)
       stats = {
-        "dispatched cache" => (@dispatched_cache.stats if @dispatched_cache),
-        "exceptions"       => @exception_stats.stats,
-        "rejects"          => @reject_stats.all,
-        "requests"         => @request_stats.all,
-        "response time"    => @request_stats.avg_duration
+        "dispatched cache"  => (@dispatched_cache.stats if @dispatched_cache),
+        "dispatch failures" => @dispatch_failure_stats.all,
+        "exceptions"        => @exception_stats.stats,
+        "rejects"           => @reject_stats.all,
+        "requests"          => @request_stats.all,
+        "response failures" => @response_failure_stats.all,
+        "response time"     => @request_stats.avg_duration
       }
       reset_stats if reset
       stats
@@ -204,6 +233,8 @@ module RightScale
     def reset_stats
       @reject_stats = RightSupport::Stats::Activity.new
       @request_stats = RightSupport::Stats::Activity.new
+      @dispatch_failure_stats = RightSupport::Stats::Activity.new
+      @response_failure_stats = RightSupport::Stats::Activity.new
       @exception_stats = RightSupport::Stats::Exceptions.new(@agent)
       true
     end

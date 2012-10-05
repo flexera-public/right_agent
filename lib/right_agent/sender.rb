@@ -28,8 +28,8 @@ module RightScale
   # All requests go through the mapper for security purposes
   class Sender
 
-    class RightNetSendFailed < Exception; end
-    class RightNetUnavailable < Exception; end
+    class SendFailure < Exception; end
+    class TemporarilyOffline < Exception; end
 
     # Request that is waiting for a response
     class PendingRequest
@@ -634,6 +634,14 @@ module RightScale
       @offline_handler.disable if @options[:offline_queueing]
     end
 
+    # Determine whether currently offline
+    #
+    # === Return
+    # (Boolean):: true if offline or if not connected to any brokers, otherwise false
+    def offline?
+      (@options[:offline_queueing] && @offline_handler.offline?) || @broker.connected.size == 0
+    end
+
     # Update the time this agent last received a request or response message
     # Also forward this message receipt notification to any callbacks that have registered
     #
@@ -675,6 +683,11 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_push(type, payload = nil, target = nil, &callback)
       build_and_send_packet(:send_push, type, payload, target, callback)
     end
@@ -709,6 +722,11 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_persistent_push(type, payload = nil, target = nil, &callback)
       build_and_send_packet(:send_persistent_push, type, payload, target, callback)
     end
@@ -745,6 +763,9 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If block missing
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_retryable_request(type, payload = nil, target = nil, &callback)
       raise ArgumentError, "Missing block for response callback" unless callback
       build_and_send_packet(:send_retryable_request, type, payload, target, callback)
@@ -780,6 +801,9 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If block missing
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
+    # SendFailure:: If publishing of request failed unexpectedly
     def send_persistent_request(type, payload = nil, target = nil, &callback)
       raise ArgumentError, "Missing block for response callback" unless callback
       build_and_send_packet(:send_persistent_request, type, payload, target, callback)
@@ -1046,6 +1070,9 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If target is invalid
+    # SendFailure:: If publishing of request fails unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def build_and_send_packet(kind, type, payload, target, callback)
       validate_target(target, allow_selector = false)
       if should_queue?
@@ -1065,19 +1092,20 @@ module RightScale
       true
     end
 
-    # Publish request
+    # Publish request to request queue
     # Use mandatory flag to request return of message if it cannot be delivered
     #
     # === Parameters
-    # request(Push|Request):: Packet to be sent
+    # packet(Push|Request):: Packet to be sent
     # ids(Array|nil):: Identity of specific brokers to choose from, or nil if any okay
     #
     # === Return
     # (Array):: Identity of brokers published to
     #
     # === Raise
-    # RightNetUnavailable:: If cannot publish because not connected to any brokers
-    # RightNetSendFailed:: If publish fails unexpectedly
+    # SendFailure:: If publishing of request fails unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def publish(request, ids = nil)
       begin
         exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
@@ -1087,13 +1115,13 @@ module RightScale
         msg = "Failed to publish request #{request.to_s([:tags, :target, :tries])}"
         Log.error(msg, e)
         @send_failure_stats.update("NoConnectedBrokers")
-        raise RightNetUnavailable.new(msg + " (#{e.class}: #{e.message})")
+        raise TemporarilyOffline.new(msg + " (#{e.class}: #{e.message})")
       rescue Exception => e
         msg = "Failed to publish request #{request.to_s([:tags, :target, :tries])}"
         Log.error(msg, e, :trace)
         @send_failure_stats.update(e.class.name)
         @exception_stats.track("publish", e, request)
-        raise RightNetSendFailed.new(msg + " (#{e.class}: #{e.message})")
+        raise SendFailure.new(msg + " (#{e.class}: #{e.message})")
       end
     end
 

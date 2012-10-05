@@ -282,6 +282,15 @@ describe RightScale::Sender do
       @instance.offline_handler.queue.size.should == 1
     end
 
+    it 'should raise exception if not connected to any brokers and :offline_queueing disabled' do
+      @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+      @broker.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers)
+      @agent.should_receive(:options).and_return({:offline_queueing => false})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::TemporarilyOffline)
+    end
+
     it "should store the response handler if given" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
@@ -316,7 +325,7 @@ describe RightScale::Sender do
     it "should log exceptions and re-raise them" do
       @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
       @broker.should_receive(:publish).and_raise(Exception)
-      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::RightNetSendFailed)
+      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::SendFailure)
     end
   end
 
@@ -497,6 +506,15 @@ describe RightScale::Sender do
       @instance.offline_handler.queue.size.should == 1
     end
 
+    it 'should raise exception if not connected to any brokers and :offline_queueing disabled' do
+      @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+      @broker.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers)
+      @agent.should_receive(:options).and_return({:offline_queueing => false})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|} }.should raise_error(RightScale::Sender::TemporarilyOffline)
+    end
+
     it "should dump the pending requests" do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000))
@@ -515,7 +533,7 @@ describe RightScale::Sender do
     it "should log exceptions and re-raise them" do
       @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
       @broker.should_receive(:publish).and_raise(Exception)
-      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|r|} }.should raise_error(RightScale::Sender::RightNetSendFailed)
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|r|} }.should raise_error(RightScale::Sender::SendFailure)
     end
 
     describe "with retry" do

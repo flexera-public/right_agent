@@ -436,33 +436,6 @@ module RightScale
       res
     end
 
-    # Handle packet received
-    # Delegate packet acknowledgement to dispatcher/sender
-    # Ignore requests if in the process of terminating but continue to accept responses
-    #
-    # === Parameters
-    # packet(Request|Push|Result):: Packet received
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
-    #
-    # === Return
-    # true:: Always return true
-    def receive(packet, header = nil)
-      begin
-        case packet
-        when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
-        when Result        then @sender.handle_response(packet, header)
-        else header.ack if header
-        end
-        @sender.message_received
-      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        Log.error("Identity queue processing error", e)
-      rescue Exception => e
-        Log.error("Identity queue processing error", e, :trace)
-        @exceptions.track("identity queue", e, packet)
-      end
-      true
-    end
-
     # Defer task until next status check
     #
     # === Block
@@ -758,7 +731,22 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) { |_, packet, header| receive(packet, header) }
+      ids = @broker.subscribe(queue, nil, options) do |_, packet, header|
+        begin
+          case packet
+          when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
+          when Result        then @sender.handle_response(packet, header)
+          else header.ack if header
+          end
+          @sender.message_received
+        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+          Log.error("Identity queue processing error", e)
+        rescue Exception => e
+          Log.error("Identity queue processing error", e, :trace)
+          @exceptions.track("identity queue", e, packet)
+        end
+      end
+      ids
     end
 
     # Setup signal traps
