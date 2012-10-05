@@ -312,6 +312,12 @@ describe RightScale::Sender do
       @instance.pending_requests['xyz'].should_not be_nil
       @instance.pending_requests['abc'].should be_nil
     end
+
+    it "should log exceptions and re-raise them" do
+      @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
+      @broker.should_receive(:publish).and_raise(Exception)
+      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::RightNetSendFailed)
+    end
   end
 
   describe "when making a send_persistent_push request" do
@@ -392,28 +398,28 @@ describe RightScale::Sender do
 
     it "should validate target" do
       @broker.should_receive(:publish)
-      lambda { @instance.send_retryable_request('/foo/bar', nil) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "target") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, {}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, []) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :bogus => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:bogus => 1}) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :bogus) }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil) {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "target") {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, {}) {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags") {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) {|_|} }.should be_true
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, 1) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, []) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :bogus => 1) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => 1) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:bogus => 1}) {|_|} }.should raise_error(ArgumentError)
+      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :bogus) {|_|} }.should raise_error(ArgumentError)
     end
 
     it "should create a Request object" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set correct attributes on the request message" do
@@ -426,7 +432,7 @@ describe RightScale::Sender do
         request.target.should be_nil
         request.expires_at.should == 1000100
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should disable time-to-live if disabled in configuration" do
@@ -438,14 +444,14 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.expires_at.should == 0
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set the correct target if specified" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.target.should == 'my-target'
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should set the correct target selectors if specified" do
@@ -454,12 +460,12 @@ describe RightScale::Sender do
         request.selector.should == :any
         request.scope.should == {:account => 123}
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123})
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123}) {|_|}
     end
 
     it "should set up for retrying the request if necessary by default" do
       flexmock(@instance).should_receive(:publish_with_timeout_retry).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should store the response handler" do
@@ -473,7 +479,7 @@ describe RightScale::Sender do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should be_nil
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['abc'].receive_time.should == Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(Time.at(1000100))
       @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should == 100
@@ -487,15 +493,29 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).never
       @instance.enable_offline_mode
       @instance.offline_handler.mode.should == :offline
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.offline_handler.queue.size.should == 1
     end
 
     it "should dump the pending requests" do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000))
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.dump_requests.should == ["#{Time.at(1000000).localtime} <abc>"]
+    end
+
+    it "should not allow a selector target" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac', :selector => :all) }.should raise_error(ArgumentError)
+    end
+
+    it "should raise error if there is no callback block" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') }.should raise_error(ArgumentError)
+    end
+
+    it "should log exceptions and re-raise them" do
+      @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
+      @broker.should_receive(:publish).and_raise(Exception)
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|r|} }.should raise_error(RightScale::Sender::RightNetSendFailed)
     end
 
     describe "with retry" do
@@ -505,7 +525,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should not setup for retry if retry_interval nil" do
@@ -514,7 +534,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should not setup for retry if publish failed" do
@@ -523,7 +543,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return([]).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should setup for retry if retry_timeout and retry_interval not nil and publish successful" do
@@ -532,7 +552,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return(@broker_ids).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should adjust retry interval by recent request duration" do
@@ -602,7 +622,7 @@ describe RightScale::Sender do
           @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
             request.expires_at.should == (expires_at ||= request.expires_at)
           end, hsh(:persistent => false, :mandatory => true)).and_return(@broker_ids).twice
-          @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+          @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
           EM.add_timer(0.2) { EM.stop }
         end
       end
@@ -683,7 +703,7 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set correct attributes on the request message" do
@@ -696,14 +716,14 @@ describe RightScale::Sender do
         request.target.should be_nil
         request.expires_at.should == 0
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set the correct target if specified" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.target.should == 'my-target'
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should set the correct target selectors if specified" do
@@ -712,12 +732,20 @@ describe RightScale::Sender do
         request.selector.should == :any
         request.scope.should == {:account => 123}
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123})
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123}) {|_|}
     end
 
     it "should not set up for retrying the request" do
       flexmock(@instance).should_receive(:publish_with_timeout_retry).never
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
+    end
+
+    it "should not allow a selector target" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac', :selector => :all) }.should raise_error(ArgumentError)
+    end
+
+    it "should raise error if there is no callback block" do
+      lambda { @instance.send_persistent_request('/welcome/aboard', 'iZac') }.should raise_error(ArgumentError)
     end
   end
 
