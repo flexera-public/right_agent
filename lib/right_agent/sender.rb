@@ -1004,10 +1004,19 @@ module RightScale
       true
     end
 
-    # Validate target argument of send
+    # Validate target argument of send per the semantics of each kind of send:
+    #   - The target is either a specific target name, a non-empty hash, or nil
+    #   - A specific target name must be a string
+    #   - A non-empty hash target
+    #     - may have keys in symbol or string format
+    #     - may be allowed to contain a :selector key with value :any or :all,
+    #       depending on the kind of send
+    #     - may contain a :scope key with a hash value with keys :account and/or :shard
+    #     - may contain a :tags key with an array value
     #
     # === Parameters
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets;
+    #   returned with all hash keys converted to symbols
     # allow_selector(Boolean):: Whether to allow :selector
     #
     # === Return
@@ -1016,35 +1025,44 @@ module RightScale
     # === Raise
     # ArgumentError:: If target is invalid
     def validate_target(target, allow_selector)
+      choices = (allow_selector ? ":selector, " : "") + ":tags and/or :scope"
       if target.is_a?(Hash)
-        selector = allow_selector ? ":selector, " : ""
         t = SerializationHelper.symbolize_keys(target)
-        if s = target[:scope]
-          if s.is_a?(Hash)
-            s = SerializationHelper.symbolize_keys(s)
-            if ([:account, :shard] & s.keys).empty? && !s.empty?
-              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account and :shard allowed"
+
+        if selector = t[:selector]
+          if allow_selector
+            selector = selector.to_sym
+            unless [:any, :all].include?(selector)
+              raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
             end
-            t[:scope] = s
+            t[:selector] = selector
+          else
+            raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{choices}"
+          end
+        end
+
+        if scope = t[:scope]
+          if scope.is_a?(Hash)
+            scope = SerializationHelper.symbolize_keys(scope)
+            unless (scope[:account] || scope[:shard]) && (scope.keys - [:account, :shard]).empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account and :shard"
+            end
+            t[:scope] = scope
           else
             raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account and/or :shard"
           end
-        elsif s = t[:selector]
-          if allow_selector
-            s = s.to_sym
-            unless [:any, :all].include?(s)
-              raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
-            end
-            t[:selector] = s
-          else
-            raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{selector}:tags and/or :scope"
-          end
-        elsif !t.has_key?(:tags) && !t.empty?
-          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{selector}:tags and/or :scope"
+        end
+
+        if (tags = t[:tags]) && !tags.is_a?(Array)
+          raise ArgumentError, "Invalid target tags (#{t[:tags].inspect}), must be an array"
+        end
+
+        unless (selector || scope || tags) && (t.keys - [:selector, :scope, :tags]).empty?
+          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{choices}"
         end
         target = t
       elsif !target.nil? && !target.is_a?(String)
-        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of #{selector}:tags and/or :scope"
+        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of #{choices}"
       end
       true
     end
@@ -1074,7 +1092,7 @@ module RightScale
     # TemporarilyOffline:: If cannot publish request because currently not connected
     #    to any brokers and offline queueing is disabled
     def build_and_send_packet(kind, type, payload, target, callback)
-      validate_target(target, allow_selector = false)
+      validate_target(target, allow_selector = !!(kind.to_s =~ /push/))
       if should_queue?
         @offline_handler.queue_request(kind, type, payload, target, callback)
       else

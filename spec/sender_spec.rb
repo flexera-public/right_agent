@@ -192,7 +192,135 @@ describe RightScale::Sender do
       end
     end
   end
-  
+
+  describe "when validating a target" do
+    before(:each) do
+      @timer = flexmock("timer")
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer)
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
+      @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
+      @agent.should_receive(:options).and_return({}).by_default
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      @instance.initialize_offline_queue
+    end
+
+    it "should accept nil target" do
+      @instance.__send__(:validate_target, nil, true).should be_true
+    end
+
+    it "should accept named target" do
+      @instance.__send__(:validate_target, "name", true).should be_true
+    end
+
+    describe "and target is a hash" do
+
+      describe "and selector is allowed" do
+
+        it "should accept :all or :any selector" do
+          @instance.__send__(:validate_target, {:selector => :all}, true).should be_true
+          @instance.__send__(:validate_target, {"selector" => "any"}, true).should be_true
+        end
+
+        it "should reject values other than :all or :any" do
+          lambda { @instance.__send__(:validate_target, {:selector => :other}, true) }.
+              should raise_error(ArgumentError, /Invalid target selector/)
+        end
+
+      end
+
+      describe "and selector is not allowed" do
+
+        it "should reject selector" do
+          lambda { @instance.__send__(:validate_target, {:selector => :all}, false) }.
+              should raise_error(ArgumentError, /Invalid target hash/)
+        end
+
+      end
+
+      describe "and tags is specified" do
+
+        it "should accept tags" do
+          @instance.__send__(:validate_target, {:tags => []}, true).should be_true
+          @instance.__send__(:validate_target, {"tags" => ["tag"]}, true).should be_true
+        end
+
+        it "should reject non-array" do
+          lambda { @instance.__send__(:validate_target, {:tags => {}}, true) }.
+              should raise_error(ArgumentError, /Invalid target tags/)
+        end
+
+      end
+
+      describe "and scope is specified" do
+
+        it "should accept account" do
+          @instance.__send__(:validate_target, {:scope => {:account => 1}}, true).should be_true
+          @instance.__send__(:validate_target, {"scope" => {"account" => 1}}, true).should be_true
+        end
+
+        it "should accept shard" do
+          @instance.__send__(:validate_target, {:scope => {:shard => 1}}, true).should be_true
+          @instance.__send__(:validate_target, {"scope" => {"shard" => 1}}, true).should be_true
+        end
+
+        it "should accept account and shard" do
+          @instance.__send__(:validate_target, {"scope" => {:shard => 1, "account" => 1}}, true).should be_true
+        end
+
+        it "should reject keys other than account and shard" do
+          target = {"scope" => {:shard => 1, "account" => 1, :other => 2}}
+          lambda { @instance.__send__(:validate_target, target, true) }.
+              should raise_error(ArgumentError, /Invalid target scope/)
+        end
+
+        it "should reject empty hash" do
+          lambda { @instance.__send__(:validate_target, {:scope => {}}, true) }.
+              should raise_error(ArgumentError, /Invalid target scope/)
+        end
+
+      end
+
+      describe "and multiple are specified" do
+
+        it "should accept scope and tags" do
+          @instance.__send__(:validate_target, {:scope => {:shard => 1}, :tags => []}, true).should be_true
+        end
+
+        it "should accept scope, tags, and selector" do
+          target = {:scope => {:shard => 1}, :tags => ["tag"], :selector => :all}
+          @instance.__send__(:validate_target, target, true).should be_true
+        end
+
+        it "should reject selector if not allowed" do
+          target = {:scope => {:shard => 1}, :tags => ["tag"], :selector => :all}
+          lambda { @instance.__send__(:validate_target, target, false) }.
+              should raise_error(ArgumentError, /Invalid target hash/)
+        end
+
+      end
+
+      it "should reject keys other than selector, scope, and tags" do
+        target = {:scope => {:shard => 1}, :tags => [], :selector => :all, :other => 2}
+        lambda { @instance.__send__(:validate_target, target, true) }.
+            should raise_error(ArgumentError, /Invalid target hash/)
+      end
+
+      it "should reject empty hash" do
+        lambda { @instance.__send__(:validate_target, {}, true) }.
+            should raise_error(ArgumentError, /Invalid target hash/)
+      end
+
+      it "should reject value that is not nil, string, or hash" do
+        lambda { @instance.__send__(:validate_target, [], true) }.
+            should raise_error(ArgumentError, /Invalid target/)
+      end
+
+    end
+
+  end
+
   describe "when making a push request" do
     before(:each) do
       @timer = flexmock("timer")
@@ -208,22 +336,8 @@ describe RightScale::Sender do
 
     it "should validate target" do
       @broker.should_receive(:publish)
-      lambda { @instance.send_push('/foo/bar', nil) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "target") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, {}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :tags => "tags") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "tags" => "tags") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :scope => {}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :selector => :all) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "selector" => "any") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, []) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :bogus => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :scope => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :scope => {:bogus => 1}) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :selector => :bogus) }.should raise_error(ArgumentError)
+      flexmock(@instance).should_receive(:validate_target).with("target", true).once
+      @instance.send_push('/foo/bar', nil, "target").should be_true
     end
 
     it "should create a Push object" do
@@ -407,21 +521,8 @@ describe RightScale::Sender do
 
     it "should validate target" do
       @broker.should_receive(:publish)
-      lambda { @instance.send_retryable_request('/foo/bar', nil) {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "target") {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, {}) {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags") {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) {|_|} }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, 1) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, []) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :bogus => 1) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => 1) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:bogus => 1}) {|_|} }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :bogus) {|_|} }.should raise_error(ArgumentError)
+      flexmock(@instance).should_receive(:validate_target).with("target", false).once
+      @instance.send_retryable_request('/foo/bar', nil, "target") {_}.should be_true
     end
 
     it "should create a Request object" do
