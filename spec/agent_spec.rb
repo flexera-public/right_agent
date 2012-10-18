@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -240,14 +240,7 @@ describe RightScale::Agent do
       @agent.tags.should include("sample_tag_1")
       @agent.tags.should include("sample_tag_2")
     end
-    
-    it "for threadpool_size" do
-      @agent = RightScale::Agent.new(:threadpool_size => 5, :identity => @identity)
-      flexmock(@agent).should_receive(:load_actors).and_return(true)
-      @agent.run
-      @agent.dispatcher.em.threadpool_size.should == 5
-    end
-    
+
   end
 
   describe "" do
@@ -651,33 +644,8 @@ describe RightScale::Agent do
         end
       end
 
-      it "should wait to terminate if there are recent dispatches" do
-        @sender.should_receive(:terminate).and_return([0, 20]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(20).and_return(@timer).once
-        flexmock(EM::Timer).should_receive(:new).with(10, Proc).once
-        run_in_em do
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          @agent.run
-          @agent.terminate
-        end
-      end
-
-      it "should wait to terminate if there are recent unfinished requests or recent dispatches" do
-        @sender.should_receive(:terminate).and_return([1, 21]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(22).once
-        flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
-        run_in_em do
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          @agent.run
-          @agent.terminate
-        end
-      end
-
       it "should log that terminating and then log the reason for waiting to terminate" do
         @sender.should_receive(:terminate).and_return([1, 21]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(22).once
         flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).once
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
@@ -691,7 +659,6 @@ describe RightScale::Agent do
 
       it "should not log reason for waiting to terminate if no need to wait" do
         @sender.should_receive(:terminate).and_return([0, nil]).twice
-        @dispatcher.should_receive(:dispatch_age).and_return(nil).once
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(0, Proc).never
         run_in_em do
@@ -707,7 +674,6 @@ describe RightScale::Agent do
       it "should continue with termination after waiting and log that continuing" do
         @sender.should_receive(:terminate).and_return([1, 10]).twice
         @sender.should_receive(:dump_requests).and_return(["request"]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
@@ -725,7 +691,6 @@ describe RightScale::Agent do
       it "should execute block after all brokers have been closed" do
         @sender.should_receive(:terminate).and_return([1, 10]).twice
         @sender.should_receive(:dump_requests).and_return(["request"]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).and_yield.once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
@@ -741,7 +706,6 @@ describe RightScale::Agent do
       it "should stop EM if no block specified" do
         @sender.should_receive(:terminate).and_return([1, 10]).twice
         @sender.should_receive(:dump_requests).and_return(["request"]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(10).once
         @broker.should_receive(:close).and_yield.once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em(stop_event_loop = false) do
@@ -762,7 +726,6 @@ describe RightScale::Agent do
 
       it "should terminate immediately if called a second time but should still execute block" do
         @sender.should_receive(:terminate).and_return([1, 10]).once
-        @dispatcher.should_receive(:dispatch_age).and_return(10).once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).once
         @timer.should_receive(:cancel).once
         @periodic_timer.should_receive(:cancel).once

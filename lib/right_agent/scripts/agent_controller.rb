@@ -1,5 +1,5 @@
 # === Synopsis:
-#   RightScale RightAgent Controller (rnac) - (c) 2009-2011 RightScale Inc
+#   RightScale RightAgent Controller (rnac) - (c) 2009-2012 RightScale Inc
 #
 #   rnac is a command line tool for managing a RightAgent
 #
@@ -85,12 +85,10 @@ module RightScale
 
     FORCED_OPTIONS =
     {
-      :threadpool_size => 1
     }
 
     DEFAULT_OPTIONS =
     {
-      :single_threaded => true,
       :log_dir => Platform.filesystem.log_dir,
       :daemonize => true
     }
@@ -521,7 +519,7 @@ module RightScale
 end # RightScale
 
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the

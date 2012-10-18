@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -58,7 +58,6 @@ describe RightScale::Sender do
 
   describe "when monitoring broker connectivity" do
     before(:each) do
-      flexmock(EM).should_receive(:next_tick).and_yield.by_default
       @now = Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(@now).by_default
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
@@ -193,7 +192,135 @@ describe RightScale::Sender do
       end
     end
   end
-  
+
+  describe "when validating a target" do
+    before(:each) do
+      @timer = flexmock("timer")
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer)
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
+      @agent = flexmock("Agent", :identity => "agent", :broker => @broker).by_default
+      @agent.should_receive(:options).and_return({}).by_default
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      @instance.initialize_offline_queue
+    end
+
+    it "should accept nil target" do
+      @instance.__send__(:validate_target, nil, true).should be_true
+    end
+
+    it "should accept named target" do
+      @instance.__send__(:validate_target, "name", true).should be_true
+    end
+
+    describe "and target is a hash" do
+
+      describe "and selector is allowed" do
+
+        it "should accept :all or :any selector" do
+          @instance.__send__(:validate_target, {:selector => :all}, true).should be_true
+          @instance.__send__(:validate_target, {"selector" => "any"}, true).should be_true
+        end
+
+        it "should reject values other than :all or :any" do
+          lambda { @instance.__send__(:validate_target, {:selector => :other}, true) }.
+              should raise_error(ArgumentError, /Invalid target selector/)
+        end
+
+      end
+
+      describe "and selector is not allowed" do
+
+        it "should reject selector" do
+          lambda { @instance.__send__(:validate_target, {:selector => :all}, false) }.
+              should raise_error(ArgumentError, /Invalid target hash/)
+        end
+
+      end
+
+      describe "and tags is specified" do
+
+        it "should accept tags" do
+          @instance.__send__(:validate_target, {:tags => []}, true).should be_true
+          @instance.__send__(:validate_target, {"tags" => ["tag"]}, true).should be_true
+        end
+
+        it "should reject non-array" do
+          lambda { @instance.__send__(:validate_target, {:tags => {}}, true) }.
+              should raise_error(ArgumentError, /Invalid target tags/)
+        end
+
+      end
+
+      describe "and scope is specified" do
+
+        it "should accept account" do
+          @instance.__send__(:validate_target, {:scope => {:account => 1}}, true).should be_true
+          @instance.__send__(:validate_target, {"scope" => {"account" => 1}}, true).should be_true
+        end
+
+        it "should accept shard" do
+          @instance.__send__(:validate_target, {:scope => {:shard => 1}}, true).should be_true
+          @instance.__send__(:validate_target, {"scope" => {"shard" => 1}}, true).should be_true
+        end
+
+        it "should accept account and shard" do
+          @instance.__send__(:validate_target, {"scope" => {:shard => 1, "account" => 1}}, true).should be_true
+        end
+
+        it "should reject keys other than account and shard" do
+          target = {"scope" => {:shard => 1, "account" => 1, :other => 2}}
+          lambda { @instance.__send__(:validate_target, target, true) }.
+              should raise_error(ArgumentError, /Invalid target scope/)
+        end
+
+        it "should reject empty hash" do
+          lambda { @instance.__send__(:validate_target, {:scope => {}}, true) }.
+              should raise_error(ArgumentError, /Invalid target scope/)
+        end
+
+      end
+
+      describe "and multiple are specified" do
+
+        it "should accept scope and tags" do
+          @instance.__send__(:validate_target, {:scope => {:shard => 1}, :tags => []}, true).should be_true
+        end
+
+        it "should accept scope, tags, and selector" do
+          target = {:scope => {:shard => 1}, :tags => ["tag"], :selector => :all}
+          @instance.__send__(:validate_target, target, true).should be_true
+        end
+
+        it "should reject selector if not allowed" do
+          target = {:scope => {:shard => 1}, :tags => ["tag"], :selector => :all}
+          lambda { @instance.__send__(:validate_target, target, false) }.
+              should raise_error(ArgumentError, /Invalid target hash/)
+        end
+
+      end
+
+      it "should reject keys other than selector, scope, and tags" do
+        target = {:scope => {:shard => 1}, :tags => [], :selector => :all, :other => 2}
+        lambda { @instance.__send__(:validate_target, target, true) }.
+            should raise_error(ArgumentError, /Invalid target hash/)
+      end
+
+      it "should reject empty hash" do
+        lambda { @instance.__send__(:validate_target, {}, true) }.
+            should raise_error(ArgumentError, /Invalid target hash/)
+      end
+
+      it "should reject value that is not nil, string, or hash" do
+        lambda { @instance.__send__(:validate_target, [], true) }.
+            should raise_error(ArgumentError, /Invalid target/)
+      end
+
+    end
+
+  end
+
   describe "when making a push request" do
     before(:each) do
       @timer = flexmock("timer")
@@ -209,22 +336,8 @@ describe RightScale::Sender do
 
     it "should validate target" do
       @broker.should_receive(:publish)
-      lambda { @instance.send_push('/foo/bar', nil) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "target") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, {}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :tags => "tags") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "tags" => "tags") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :scope => {}) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, :selector => :all) }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, "selector" => "any") }.should be_true
-      lambda { @instance.send_push('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, []) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :bogus => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :scope => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :scope => {:bogus => 1}) }.should raise_error(ArgumentError)
-      lambda { @instance.send_push('/foo/bar', nil, :selector => :bogus) }.should raise_error(ArgumentError)
+      flexmock(@instance).should_receive(:validate_target).with("target", true).once
+      @instance.send_push('/foo/bar', nil, "target").should be_true
     end
 
     it "should create a Push object" do
@@ -283,6 +396,15 @@ describe RightScale::Sender do
       @instance.offline_handler.queue.size.should == 1
     end
 
+    it 'should raise exception if not connected to any brokers and :offline_queueing disabled' do
+      @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+      @broker.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers)
+      @agent.should_receive(:options).and_return({:offline_queueing => false})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::TemporarilyOffline)
+    end
+
     it "should store the response handler if given" do
       response_handler = lambda {}
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
@@ -312,6 +434,12 @@ describe RightScale::Sender do
       @instance.send_push('/welcome/aboard', 'iZac', &response_handler)
       @instance.pending_requests['xyz'].should_not be_nil
       @instance.pending_requests['abc'].should be_nil
+    end
+
+    it "should log exceptions and re-raise them" do
+      @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
+      @broker.should_receive(:publish).and_raise(Exception)
+      lambda { @instance.send_push('/welcome/aboard', 'iZac') }.should raise_error(RightScale::Sender::SendFailure)
     end
   end
 
@@ -380,7 +508,6 @@ describe RightScale::Sender do
     before(:each) do
       @timer = flexmock("timer")
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
-      flexmock(EM).should_receive(:next_tick).and_yield.by_default
       @broker_id = "broker"
       @broker_ids = [@broker_id]
       @broker = flexmock("Broker", :subscribe => true, :publish => @broker_ids, :connected? => true,
@@ -394,33 +521,15 @@ describe RightScale::Sender do
 
     it "should validate target" do
       @broker.should_receive(:publish)
-      lambda { @instance.send_retryable_request('/foo/bar', nil) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "target") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, {}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "tags" => "tags") }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :tags => "tags", :scope => {:shard => 1}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, "scope" => {:shard => 1, "account" => 1}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {}) }.should be_true
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :all) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, []) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :bogus => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => 1) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :scope => {:bogus => 1}) }.should raise_error(ArgumentError)
-      lambda { @instance.send_retryable_request('/foo/bar', nil, :selector => :bogus) }.should raise_error(ArgumentError)
+      flexmock(@instance).should_receive(:validate_target).with("target", false).once
+      @instance.send_retryable_request('/foo/bar', nil, "target") {_}.should be_true
     end
 
     it "should create a Request object" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
-    end
-
-    it "should process request in next tick to preserve pending request data integrity" do
-      flexmock(EM).should_receive(:next_tick).and_yield.once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set correct attributes on the request message" do
@@ -433,7 +542,7 @@ describe RightScale::Sender do
         request.target.should be_nil
         request.expires_at.should == 1000100
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should disable time-to-live if disabled in configuration" do
@@ -445,14 +554,14 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.expires_at.should == 0
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set the correct target if specified" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.target.should == 'my-target'
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should set the correct target selectors if specified" do
@@ -461,12 +570,12 @@ describe RightScale::Sender do
         request.selector.should == :any
         request.scope.should == {:account => 123}
       end, hsh(:persistent => false, :mandatory => true)).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123})
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123}) {|_|}
     end
 
     it "should set up for retrying the request if necessary by default" do
       flexmock(@instance).should_receive(:publish_with_timeout_retry).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should store the response handler" do
@@ -480,7 +589,7 @@ describe RightScale::Sender do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should be_nil
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.pending_requests['abc'].receive_time.should == Time.at(1000000)
       flexmock(Time).should_receive(:now).and_return(Time.at(1000100))
       @instance.pending_requests.kind(RightScale::Sender::PendingRequests::REQUEST_KINDS).youngest_age.should == 100
@@ -494,15 +603,38 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).never
       @instance.enable_offline_mode
       @instance.offline_handler.mode.should == :offline
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.offline_handler.queue.size.should == 1
+    end
+
+    it 'should raise exception if not connected to any brokers and :offline_queueing disabled' do
+      @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+      @broker.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers)
+      @agent.should_receive(:options).and_return({:offline_queueing => false})
+      RightScale::Sender.new(@agent)
+      @instance = RightScale::Sender.instance
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|} }.should raise_error(RightScale::Sender::TemporarilyOffline)
     end
 
     it "should dump the pending requests" do
       flexmock(RightScale::AgentIdentity).should_receive(:generate).and_return('abc').once
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000))
-      @instance.send_retryable_request('/welcome/aboard', 'iZac')
+      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       @instance.dump_requests.should == ["#{Time.at(1000000).localtime} <abc>"]
+    end
+
+    it "should not allow a selector target" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac', :selector => :all) }.should raise_error(ArgumentError)
+    end
+
+    it "should raise error if there is no callback block" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') }.should raise_error(ArgumentError)
+    end
+
+    it "should log exceptions and re-raise them" do
+      @log.should_receive(:error).with(/Failed to publish request/, Exception, :trace).once
+      @broker.should_receive(:publish).and_raise(Exception)
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac') {|r|} }.should raise_error(RightScale::Sender::SendFailure)
     end
 
     describe "with retry" do
@@ -512,7 +644,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should not setup for retry if retry_interval nil" do
@@ -521,7 +653,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should not setup for retry if publish failed" do
@@ -530,7 +662,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return([]).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should setup for retry if retry_timeout and retry_interval not nil and publish successful" do
@@ -539,7 +671,7 @@ describe RightScale::Sender do
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return(@broker_ids).once
-        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       end
 
       it "should adjust retry interval by recent request duration" do
@@ -609,7 +741,7 @@ describe RightScale::Sender do
           @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
             request.expires_at.should == (expires_at ||= request.expires_at)
           end, hsh(:persistent => false, :mandatory => true)).and_return(@broker_ids).twice
-          @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+          @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
           EM.add_timer(0.2) { EM.stop }
         end
       end
@@ -675,7 +807,6 @@ describe RightScale::Sender do
     before(:each) do
       @timer = flexmock("timer")
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
-      flexmock(EM).should_receive(:next_tick).and_yield.by_default
       @broker_id = "broker"
       @broker_ids = [@broker_id]
       @broker = flexmock("Broker", :subscribe => true, :publish => @broker_ids, :connected? => true,
@@ -691,7 +822,7 @@ describe RightScale::Sender do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set correct attributes on the request message" do
@@ -704,14 +835,14 @@ describe RightScale::Sender do
         request.target.should be_nil
         request.expires_at.should == 0
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac') {|_|}
     end
 
     it "should set the correct target if specified" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.target.should == 'my-target'
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
     end
 
     it "should set the correct target selectors if specified" do
@@ -720,18 +851,25 @@ describe RightScale::Sender do
         request.selector.should == :any
         request.scope.should == {:account => 123}
       end, hsh(:persistent => true, :mandatory => true)).once
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123})
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123}) {|_|}
     end
 
     it "should not set up for retrying the request" do
       flexmock(@instance).should_receive(:publish_with_timeout_retry).never
-      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
+      @instance.send_persistent_request('/welcome/aboard', 'iZac', 'my-target') {|_|}
+    end
+
+    it "should not allow a selector target" do
+      lambda { @instance.send_retryable_request('/welcome/aboard', 'iZac', :selector => :all) }.should raise_error(ArgumentError)
+    end
+
+    it "should raise error if there is no callback block" do
+      lambda { @instance.send_persistent_request('/welcome/aboard', 'iZac') }.should raise_error(ArgumentError)
     end
   end
 
   describe "when handling a response" do
     before(:each) do
-      flexmock(EM).should_receive(:next_tick).and_yield.by_default
       flexmock(EM).should_receive(:defer).and_yield.by_default
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0]).by_default
@@ -743,16 +881,18 @@ describe RightScale::Sender do
     end
 
     it "should deliver the response for a Request" do
+      @header.should_receive(:ack).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, @header).once
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
       @instance.handle_response(response, @header)
     end
 
     it "should deliver the response for a Push" do
+      @header.should_receive(:ack).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, @header).once
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
       @instance.handle_response(response, @header)
     end
 
@@ -817,14 +957,13 @@ describe RightScale::Sender do
     it "should not attempt to ack response if there is no header" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest, nil).once
+      flexmock(@instance).should_receive(:deliver).with(response, RightScale::Sender::PendingRequest).once
       @instance.handle_response(response)
     end
   end
 
   describe "when delivering a response" do
     before(:each) do
-      flexmock(EM).should_receive(:next_tick).and_yield.by_default
       flexmock(EM).should_receive(:defer).and_yield.by_default
       @broker = flexmock("Broker", :subscribe => true, :publish => ["broker"], :connected? => true,
                          :identity_parts => ["host", 123, 0, 0]).by_default
@@ -871,44 +1010,8 @@ describe RightScale::Sender do
       called.should == 1
     end
 
-    it "should defer the response handler call if not single threaded" do
-      @agent.should_receive(:options).and_return({:single_threaded => false})
-      RightScale::Sender.new(@agent)
-      @instance = RightScale::Sender.instance
-      called = 0
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response| called += 1}
-      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(EM).should_receive(:defer).and_yield.once
-      flexmock(EM).should_receive(:next_tick).never
-      @instance.handle_response(response, @header)
-      called.should == 1
-    end
-
-    it "should not defer the response handler call if single threaded" do
-      @agent.should_receive(:options).and_return({:single_threaded => true})
-      RightScale::Sender.new(@agent)
-      @instance = RightScale::Sender.instance
-      called = 0
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response| called += 1}
-      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      flexmock(EM).should_receive(:next_tick).and_yield.once
-      flexmock(EM).should_receive(:defer).never
-      @instance.handle_response(response, @header)
-      called.should == 1
-    end
-
-    it "should log an error if the response handler raises an exception but still delete pending request" do
-      @agent.should_receive(:options).and_return({:single_threaded => true})
-      @log.should_receive(:error).with(/Failed processing response/, Exception, :trace).once
-      @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_| raise Exception}
-      @instance.pending_requests['token1'].should_not be_nil
-      response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
-      @instance.handle_response(response, @header)
-      @instance.pending_requests['token1'].should be_nil
-    end
-
     it "should ack response even if fail while delivering it" do
-      flexmock(EM).should_receive(:defer).and_raise(Exception).once
+      flexmock(@instance).should_receive(:deliver).and_raise(Exception).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       lambda { @instance.handle_response(response, @header) }.should raise_error(Exception)
@@ -917,7 +1020,7 @@ describe RightScale::Sender do
     it "should not attempt to ack response if fail while delivering it and there is no header" do
       @header.should_receive(:ack).never
       exception = Exception.new("test")
-      flexmock(EM).should_receive(:defer).and_raise(exception).once
+      flexmock(@instance).should_receive(:deliver).and_raise(exception).once
       @instance.send_push('/welcome/aboard', 'iZac') {|_|}
       response = RightScale::Result.new('token1', 'to', RightScale::OperationResult.success, 'target1')
       lambda { @instance.handle_response(response, nil) }.should raise_error(Exception, "test")

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -27,6 +27,9 @@ module RightScale
   # If requested, it will queue requests when there are no broker connections
   # All requests go through the mapper for security purposes
   class Sender
+
+    class SendFailure < Exception; end
+    class TemporarilyOffline < Exception; end
 
     # Request that is waiting for a response
     class PendingRequest
@@ -432,7 +435,6 @@ module RightScale
       # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds and
       # if have reached timeout limit
       # Ignore request if already checking a connection
-      # Only to be called from primary thread
       #
       # === Parameters
       # id(String):: Identity of specific broker to use to send ping, defaults to any
@@ -484,7 +486,7 @@ module RightScale
           request = Request.new("/mapper/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
           @sender.pending_requests[request.token] = PendingRequest.new(:send_persistent_request, Time.now, handler)
           ids = [@ping_id] if @ping_id
-          @ping_id = @sender.publish(request, ids).first
+          @ping_id = @sender.__send__(:publish, request, ids).first
         end
         true
       end
@@ -549,7 +551,7 @@ module RightScale
     # (Agent) Associated agent
     attr_reader :agent
 
-    # Accessor for use by actor
+    # For direct access to current sender
     #
     # === Return
     # (Sender):: This sender instance if defined, otherwise nil
@@ -577,19 +579,14 @@ module RightScale
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
     #     by the receiver, 0 means never expire
     #   :secure(Boolean):: true indicates to use Security features of rabbitmq to restrict agents to themselves
-    #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
-    #     to do requested work on EM defer thread and all else, such as pings on main thread
     def initialize(agent)
       @agent = agent
       @identity = @agent.identity
       @options = @agent.options || {}
       @broker = @agent.broker
       @secure = @options[:secure]
-      @single_threaded = @options[:single_threaded]
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
       @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
-
-      # Only to be accessed from primary thread
       @pending_requests = PendingRequests.new
 
       reset_stats
@@ -637,6 +634,14 @@ module RightScale
       @offline_handler.disable if @options[:offline_queueing]
     end
 
+    # Determine whether currently offline
+    #
+    # === Return
+    # (Boolean):: true if offline or if not connected to any brokers, otherwise false
+    def offline?
+      (@options[:offline_queueing] && @offline_handler.offline?) || @broker.connected.size == 0
+    end
+
     # Update the time this agent last received a request or response message
     # Also forward this message receipt notification to any callbacks that have registered
     #
@@ -678,8 +683,13 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_push(type, payload = nil, target = nil, &callback)
-      build_push(:send_push, type, payload, target, &callback)
+      build_and_send_packet(:send_push, type, payload, target, callback)
     end
 
     # Send a request to a single target or multiple targets with no response expected other
@@ -712,8 +722,13 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_persistent_push(type, payload = nil, target = nil, &callback)
-      build_push(:send_persistent_push, type, payload, target, &callback)
+      build_and_send_packet(:send_persistent_push, type, payload, target, callback)
     end
 
     # Send a request to a single target with a response expected
@@ -745,8 +760,15 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # ArgumentError:: If block missing
+    # SendFailure:: If publishing of request failed unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
     def send_retryable_request(type, payload = nil, target = nil, &callback)
-      build_request(:send_retryable_request, type, payload, target, &callback)
+      raise ArgumentError, "Missing block for response callback" unless callback
+      build_and_send_packet(:send_retryable_request, type, payload, target, callback)
     end
 
     # Send a request to a single target with a response expected
@@ -776,13 +798,62 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # ArgumentError:: If block missing
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
+    # SendFailure:: If publishing of request failed unexpectedly
     def send_persistent_request(type, payload = nil, target = nil, &callback)
-      build_request(:send_persistent_request, type, payload, target, &callback)
+      raise ArgumentError, "Missing block for response callback" unless callback
+      build_and_send_packet(:send_persistent_request, type, payload, target, callback)
+    end
+
+    # Build packet
+    #
+    # === Parameters
+    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
+    #   or :send_persistent_request
+    # type(String):: Dispatch route for the request; typically identifies actor and action
+    # payload(Object):: Data to be sent with marshalling en route
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets
+    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
+    #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
+    # callback(Boolean):: Whether this request has an associated response callback
+    #
+    # === Return
+    # (Push|Request):: Packet created
+    def build_packet(kind, type, payload, target, callback = false)
+      kind_str = kind.to_s
+      persistent = !!(kind_str =~ /persistent/)
+      if kind_str =~ /push/
+        packet = Push.new(type, payload)
+        packet.selector = target[:selector] || :any if target.is_a?(Hash)
+        packet.confirm = true if callback
+      else
+        packet = Request.new(type, payload)
+        ttl = @options[:time_to_live]
+        packet.expires_at = Time.now.to_i + ttl if !persistent && ttl && ttl != 0
+        packet.selector = :any
+      end
+      packet.from = @identity
+      packet.token = AgentIdentity.generate
+      packet.persistent = persistent
+      if target.is_a?(Hash)
+        packet.tags = target[:tags] || []
+        packet.scope = target[:scope]
+      else
+        packet.target = target
+      end
+      packet
     end
 
     # Handle response to a request
     # Acknowledge response after delivering it
-    # Only to be called from primary thread
     #
     # === Parameters
     # response(Result):: Packet received as result of request
@@ -792,7 +863,6 @@ module RightScale
     # true:: Always return true
     def handle_response(response, header = nil)
       begin
-        ack_deferred = false
         token = response.token
         if response.is_a?(Result)
           if result = OperationResult.from_results(response)
@@ -813,8 +883,7 @@ module RightScale
               # Leave purging of associated request until final response, i.e., success response or retry timeout
               Log.info("Non-delivery of <#{token}> because #{result.content}")
             else
-              ack_deferred = true
-              deliver(response, handler, header)
+              deliver(response, handler)
             end
           elsif result && result.non_delivery?
             Log.info("Non-delivery of <#{token}> because #{result.content}")
@@ -823,34 +892,9 @@ module RightScale
           end
         end
       ensure
-        header.ack unless ack_deferred || header.nil?
+        header.ack if header
       end
       true
-    end
-
-    # Publish request
-    # Use mandatory flag to request return of message if it cannot be delivered
-    #
-    # === Parameters
-    # request(Push|Request):: Packet to be sent
-    # ids(Array|nil):: Identity of specific brokers to choose from, or nil if any okay
-    #
-    # === Return
-    # ids(Array):: Identity of brokers published to
-    def publish(request, ids = nil)
-      begin
-        exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
-        ids = @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
-                              :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
-      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        Log.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e)
-        ids = []
-      rescue Exception => e
-        Log.error("Failed to publish request #{request.to_s([:tags, :target, :tries])}", e, :trace)
-        @exception_stats.track("publish", e, request)
-        ids = []
-      end
-      ids
     end
 
     # Take any actions necessary to quiesce mapper interaction in preparation
@@ -909,6 +953,8 @@ module RightScale
     #     with percentage breakdown per operation result type, or nil if none
     #   "retries"(Hash|nil):: Retry activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per request type, or nil if none
+    #   "send failure"(Hash|nil):: Send failure activity stats with keys "total", "percent", "last", and "rate"
+    #     with percentage breakdown per failure type, or nil if none
     def stats(reset = false)
       offlines = @offline_stats.all
       offlines.merge!("duration" => @offline_stats.avg_duration) if offlines
@@ -925,13 +971,14 @@ module RightScale
         "non-deliveries"   => @non_delivery_stats.all,
         "offlines"         => offlines,
         "pings"            => @ping_stats.all,
-        "request kinds"    => @request_kinds.all,
+        "request kinds"    => @request_kind_stats.all,
         "requests"         => @request_stats.all,
         "requests pending" => pending,
         "response time"    => @request_stats.avg_duration,
         "result errors"    => @result_error_stats.all,
         "results"          => @result_stats.all,
-        "retries"          => @retry_stats.all
+        "retries"          => @retry_stats.all,
+        "send failures"    => @send_failure_stats.all
       }
       reset_stats if reset
       stats
@@ -951,136 +998,25 @@ module RightScale
       @result_error_stats = RightSupport::Stats::Activity.new
       @non_delivery_stats = RightSupport::Stats::Activity.new
       @offline_stats = RightSupport::Stats::Activity.new(measure_rate = false)
-      @request_kinds = RightSupport::Stats::Activity.new(measure_rate = false)
+      @request_kind_stats = RightSupport::Stats::Activity.new(measure_rate = false)
+      @send_failure_stats = RightSupport::Stats::Activity.new
       @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @options[:exception_callback])
       true
     end
 
-    # Build and send Push packet
+    # Validate target argument of send per the semantics of each kind of send:
+    #   - The target is either a specific target name, a non-empty hash, or nil
+    #   - A specific target name must be a string
+    #   - A non-empty hash target
+    #     - may have keys in symbol or string format
+    #     - may be allowed to contain a :selector key with value :any or :all,
+    #       depending on the kind of send
+    #     - may contain a :scope key with a hash value with keys :account and/or :shard
+    #     - may contain a :tags key with an array value
     #
     # === Parameters
-    # kind(Symbol):: Kind of push: :send_push or :send_persistent_push
-    # type(String):: Dispatch route for the request; typically identifies actor and action
-    # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, or hash for selecting potentially multiple
-    #   targets, or nil if routing solely using type
-    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Scoping to be used to restrict routing
-    #     :account(Integer):: Restrict to agents with this account id
-    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
-    #       ones with no shard id
-    #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :any
-    #
-    # === Block
-    # Optional block used to process routing responses asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
-    #     with an initial SUCCESS response containing the targets to which the mapper published the
-    #     request and any additional responses indicating any failures to actually route the request
-    #     to those targets, use RightScale::OperationResult.from_results to decode
-    #
-    # === Return
-    # true:: Always return true
-    #
-    # === Raise
-    # ArgumentError:: If target is invalid
-    def build_push(kind, type, payload = nil, target = nil, &callback)
-      validate_target(target, allow_selector = true)
-      if should_queue?
-        @offline_handler.queue_request(kind, type, payload, target, callback)
-      else
-        method = type.split('/').last
-        received_at = @request_stats.update(method)
-        push = Push.new(type, payload)
-        push.from = @identity
-        push.token = AgentIdentity.generate
-        if target.is_a?(Hash)
-          push.tags = target[:tags] || []
-          push.scope = target[:scope]
-          push.selector = target[:selector] || :any
-        else
-          push.target = target
-        end
-        push.persistent = kind == :send_persistent_push
-        @request_kinds.update((push.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
-        if callback
-          push.confirm = true
-          @pending_requests[push.token] = PendingRequest.new(kind, received_at, callback)
-        end
-        publish(push)
-      end
-      true
-    end
-
-    # Build and send Request packet
-    #
-    # === Parameters
-    # kind(Symbol):: Kind of request: :send_retryable_request or :send_persistent_request
-    # type(String):: Dispatch route for the request; typically identifies actor and action
-    # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
-    #   randomly, or nil if routing solely using type
-    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Scoping to be used to restrict routing
-    #     :account(Integer):: Restrict to agents with this account id
-    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
-    #       ones with no shard id
-    #
-    # === Block
-    # Required block used to process response asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
-    #     use RightScale::OperationResult.from_results to decode
-    #
-    # === Return
-    # true:: Always return true
-    #
-    # === Raise
-    # ArgumentError:: If target is invalid
-    def build_request(kind, type, payload, target, &callback)
-      validate_target(target, allow_selector = false)
-      if should_queue?
-        @offline_handler.queue_request(kind, type, payload, target, callback)
-      else
-        method = type.split('/').last
-        token = AgentIdentity.generate
-        non_duplicate = kind == :send_persistent_request
-        received_at = @request_stats.update(method, token)
-        @request_kinds.update(kind.to_s[5..-1])
-
-        # Using next_tick to ensure on primary thread since using @pending_requests
-        EM.next_tick do
-          begin
-            request = Request.new(type, payload)
-            request.from = @identity
-            request.token = token
-            if target.is_a?(Hash)
-              request.tags = target[:tags] || []
-              request.scope = target[:scope]
-              request.selector = :any
-            else
-              request.target = target
-            end
-            request.expires_at = Time.now.to_i + @options[:time_to_live] if !non_duplicate && @options[:time_to_live] && @options[:time_to_live] != 0
-            request.persistent = non_duplicate
-            @pending_requests[token] = PendingRequest.new(kind, received_at, callback)
-            if non_duplicate
-              publish(request)
-            else
-              publish_with_timeout_retry(request, token)
-            end
-          rescue Exception => e
-            Log.error("Failed to send #{type} #{kind.to_s}", e, :trace)
-            @exception_stats.track(kind.to_s, e, request)
-          end
-        end
-      end
-      true
-    end
-
-    # Validate target argument of send
-    #
-    # === Parameters
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets of which one is picked
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets;
+    #   returned with all hash keys converted to symbols
     # allow_selector(Boolean):: Whether to allow :selector
     #
     # === Return
@@ -1089,33 +1025,122 @@ module RightScale
     # === Raise
     # ArgumentError:: If target is invalid
     def validate_target(target, allow_selector)
+      choices = (allow_selector ? ":selector, " : "") + ":tags and/or :scope"
       if target.is_a?(Hash)
-        selector = allow_selector ? ":selector, " : ""
         t = SerializationHelper.symbolize_keys(target)
-        if s = target[:scope]
-          if s.is_a?(Hash)
-            s = SerializationHelper.symbolize_keys(s)
-            if ([:account, :shard] & s.keys).empty? && !s.empty?
-              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account and :shard allowed"
+
+        if selector = t[:selector]
+          if allow_selector
+            selector = selector.to_sym
+            unless [:any, :all].include?(selector)
+              raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
             end
-            t[:scope] = s
+            t[:selector] = selector
+          else
+            raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{choices}"
+          end
+        end
+
+        if scope = t[:scope]
+          if scope.is_a?(Hash)
+            scope = SerializationHelper.symbolize_keys(scope)
+            unless (scope[:account] || scope[:shard]) && (scope.keys - [:account, :shard]).empty?
+              raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), choices are :account and :shard"
+            end
+            t[:scope] = scope
           else
             raise ArgumentError, "Invalid target scope (#{t[:scope].inspect}), must be a hash of :account and/or :shard"
           end
-        elsif (s = t[:selector]) && allow_selector
-          s = s.to_sym
-          unless [:any, :all].include?(s)
-            raise ArgumentError, "Invalid target selector (#{t[:selector].inspect}), choices are :any and :all"
-          end
-          t[:selector] = s
-        elsif !t.has_key?(:tags) && !t.empty?
-          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{selector}:tags and/or :scope"
+        end
+
+        if (tags = t[:tags]) && !tags.is_a?(Array)
+          raise ArgumentError, "Invalid target tags (#{t[:tags].inspect}), must be an array"
+        end
+
+        unless (selector || scope || tags) && (t.keys - [:selector, :scope, :tags]).empty?
+          raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{choices}"
         end
         target = t
       elsif !target.nil? && !target.is_a?(String)
-        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of #{selector}:tags and/or :scope"
+        raise ArgumentError, "Invalid target (#{target.inspect}), choices are specific target name or a hash of #{choices}"
       end
       true
+    end
+
+    # Build and send packet
+    #
+    # === Parameters
+    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
+    #   or :send_persistent_request
+    # type(String):: Dispatch route for the request; typically identifies actor and action
+    # payload(Object):: Data to be sent with marshalling en route
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets
+    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
+    #   :scope(Hash):: Scoping to be used to restrict routing
+    #     :account(Integer):: Restrict to agents with this account id
+    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
+    #       ones with no shard id
+    #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
+    # callback(Proc|nil):: Block used to process routing response
+    #
+    # === Return
+    # true:: Always return true
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
+    # SendFailure:: If publishing of request fails unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
+    def build_and_send_packet(kind, type, payload, target, callback)
+      validate_target(target, allow_selector = !!(kind.to_s =~ /push/))
+      if should_queue?
+        @offline_handler.queue_request(kind, type, payload, target, callback)
+      else
+        packet = build_packet(kind, type, payload, target, callback)
+        method = type.split('/').last
+        received_at = @request_stats.update(method, packet.token)
+        @request_kind_stats.update((packet.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
+        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
+        if !packet.persistent && kind.to_s =~ /request/
+          publish_with_timeout_retry(packet, packet.token)
+        else
+          publish(packet)
+        end
+      end
+      true
+    end
+
+    # Publish request to request queue
+    # Use mandatory flag to request return of message if it cannot be delivered
+    #
+    # === Parameters
+    # packet(Push|Request):: Packet to be sent
+    # ids(Array|nil):: Identity of specific brokers to choose from, or nil if any okay
+    #
+    # === Return
+    # (Array):: Identity of brokers published to
+    #
+    # === Raise
+    # SendFailure:: If publishing of request fails unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
+    def publish(request, ids = nil)
+      begin
+        exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
+        @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
+                        :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
+      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+        msg = "Failed to publish request #{request.to_s([:tags, :target, :tries])}"
+        Log.error(msg, e)
+        @send_failure_stats.update("NoConnectedBrokers")
+        raise TemporarilyOffline.new(msg + " (#{e.class}: #{e.message})")
+      rescue Exception => e
+        msg = "Failed to publish request #{request.to_s([:tags, :target, :tries])}"
+        Log.error(msg, e, :trace)
+        @send_failure_stats.update(e.class.name)
+        @exception_stats.track("publish", e, request)
+        raise SendFailure.new(msg + " (#{e.class}: #{e.message})")
+      end
     end
 
     # Publish request with one or more retries if do not receive a response in time
@@ -1172,49 +1197,22 @@ module RightScale
     end
 
     # Deliver the response and remove associated request(s) from pending
-    # Use defer thread instead of primary if not single threaded, consistent with dispatcher,
-    # so that all shared data is accessed from the same thread
-    # Do callback if there is an exception, consistent with agent identity queue handling
-    # Only to be called from primary thread
     #
     # === Parameters
     # response(Result):: Packet received as result of request
     # handler(Hash):: Associated request handler
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def deliver(response, handler, header)
-      begin
-        ack_deferred = false
-        @request_stats.finish(handler.receive_time, response.token)
+    def deliver(response, handler)
+      @request_stats.finish(handler.receive_time, response.token)
 
-        @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
-        if parent = handler.retry_parent
-          @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
-        end
-
-        if handler.response_handler
-          begin
-            ack_deferred = true
-            EM.__send__(@single_threaded ? :next_tick : :defer) do
-              begin
-                handler.response_handler.call(response)
-              rescue Exception => e
-                Log.error("Failed processing response #{response.to_s([])}", e, :trace)
-                @exception_stats.track("response", e, response)
-              ensure
-                header.ack if header
-              end
-            end
-          rescue Exception
-            header.ack if header
-            raise
-          end
-        end
-      ensure
-        header.ack unless ack_deferred || header.nil?
+      @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
+      if parent = handler.retry_parent
+        @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
       end
+
+      handler.response_handler.call(response) if handler.response_handler
       true
     end
 

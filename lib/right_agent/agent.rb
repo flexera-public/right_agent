@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -129,9 +129,6 @@ module RightScale
     #   :abnormal_terminate_callback(Proc):: Called at end of termination when terminate abnormally (no argument)
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
-    #   :single_threaded(Boolean):: true indicates to run all operations in one thread; false indicates
-    #     to do requested work on EM defer thread and all else on main thread
-    #   :threadpool_size(Integer):: Number of threads in EM thread pool
     #   :vhost(String):: AMQP broker virtual host
     #   :user(String):: AMQP broker user
     #   :pass(String):: AMQP broker password
@@ -439,33 +436,6 @@ module RightScale
       res
     end
 
-    # Handle packet received
-    # Delegate packet acknowledgement to dispatcher/sender
-    # Ignore requests if in the process of terminating but continue to accept responses
-    #
-    # === Parameters
-    # packet(Request|Push|Result):: Packet received
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
-    #
-    # === Return
-    # true:: Always return true
-    def receive(packet, header = nil)
-      begin
-        case packet
-        when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
-        when Result        then @sender.handle_response(packet, header)
-        else header.ack if header
-        end
-        @sender.message_received
-      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        Log.error("Identity queue processing error", e)
-      rescue Exception => e
-        Log.error("Identity queue processing error", e, :trace)
-        @exceptions.track("identity queue", e, packet)
-      end
-      true
-    end
-
     # Defer task until next status check
     #
     # === Block
@@ -511,7 +481,6 @@ module RightScale
 
           stop_gracefully(timeout) do
             if @sender
-              dispatch_age = @dispatcher.dispatch_age
               request_count, request_age = @sender.terminate
 
               finish = lambda do
@@ -521,15 +490,9 @@ module RightScale
                 @broker.close { block.call }
               end
 
-              wait_time = [timeout - (request_age || timeout), timeout - (dispatch_age || timeout), 0].max
-              if wait_time == 0
-                finish.call
-              else
-                reason = ""
-                reason = "completion of #{request_count} requests initiated as recently as #{request_age} seconds ago" if request_age
-                reason += " and " if request_age && dispatch_age
-                reason += "requests received as recently as #{dispatch_age} seconds ago" if dispatch_age
-                Log.info("[stop] Termination waiting #{wait_time} seconds for #{reason}")
+              if (wait_time = [timeout - (request_age || timeout), 0].max) > 0
+                Log.info("[stop] Termination waiting #{wait_time} seconds for completion of #{request_count} " +
+                         "requests initiated as recently as #{request_age} seconds ago")
                 @termination_timer = EM::Timer.new(wait_time) do
                   begin
                     Log.info("[stop] Continuing with termination")
@@ -539,6 +502,8 @@ module RightScale
                     begin block.call; rescue Exception; end
                   end
                 end
+              else
+                finish.call
               end
             else
               block.call
@@ -766,7 +731,22 @@ module RightScale
       queue = {:name => @identity, :options => {:durable => true, :no_declare => @options[:secure]}}
       filter = [:from, :tags, :tries, :persistent]
       options = {:ack => true, Request => filter, Push => filter, Result => [:from], :brokers => ids}
-      ids = @broker.subscribe(queue, nil, options) { |_, packet, header| receive(packet, header) }
+      ids = @broker.subscribe(queue, nil, options) do |_, packet, header|
+        begin
+          case packet
+          when Push, Request then @dispatcher.dispatch(packet, header) unless @terminating
+          when Result        then @sender.handle_response(packet, header)
+          else header.ack if header
+          end
+          @sender.message_received
+        rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+          Log.error("Identity queue processing error", e)
+        rescue Exception => e
+          Log.error("Identity queue processing error", e, :trace)
+          @exceptions.track("identity queue", e, packet)
+        end
+      end
+      ids
     end
 
     # Setup signal traps
