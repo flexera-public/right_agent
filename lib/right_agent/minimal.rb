@@ -24,9 +24,10 @@ require 'rubygems'
 require 'eventmachine'
 require 'fileutils'
 require 'yaml'
+require 'right_support'
 
-# load definition for File.normalize_path, etc.
-require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
+# Load ruby interpreter monkey-patches first (to ensure File.normalize_path is defined, etc.).
+require File.expand_path(File.join(File.dirname(__FILE__), 'monkey_patches', 'ruby_patch'))
 
 unless defined?(RIGHT_AGENT_BASE_DIR)
   RIGHT_AGENT_BASE_DIR = File.normalize_path(File.dirname(__FILE__))

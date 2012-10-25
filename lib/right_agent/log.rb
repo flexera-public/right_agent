@@ -30,7 +30,6 @@ RIGHTSCALE_LOG_DEFINED = true
 require 'logger'
 require 'right_support'
 
-require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'multiplexer'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'exceptions'))
 
