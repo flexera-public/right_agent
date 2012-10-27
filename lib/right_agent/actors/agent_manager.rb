@@ -30,7 +30,7 @@ class AgentManager
 
   on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
 
-  expose_idempotent     :ping, :stats, :profile, :set_log_level, :connect, :disconnect, :connect_failed, :tune_heartbeat
+  expose_idempotent     :ping, :stats, :profile, :set_log_level, :connect, :disconnect, :connect_failed
   expose_non_idempotent :execute, :terminate
 
   # Valid log levels
@@ -211,37 +211,6 @@ class AgentManager
       end
     rescue Exception => e
       res = error_result("Failed to notify agent that brokers #{options[:brokers]} are unusable", e)
-    end
-    res
-  end
-
-  # Tune connection heartbeat frequency for all brokers
-  # Any response to this request is not likely to get through if :immediate is specified
-  # because the broker connections will be in flux
-  # Use of :immediate should be avoided when this is a fanned out request to avoid
-  # overloading the brokers
-  #
-  # === Parameters
-  # options(Hash):: Tune options:
-  #   :heartbeat(Integer):: New AMQP connection heartbeat setting, nil or 0 means disable
-  #   :immediate(Boolean):: Whether to tune heartbeat immediately rather than defer until next
-  #     status check
-  #
-  # === Return
-  # res(RightScale::OperationResult):: Success unless exception is raised
-  def tune_heartbeat(options)
-    options = RightScale::SerializationHelper.symbolize_keys(options)
-    res = success_result
-    begin
-      if options[:immediate]
-        if error = @agent.tune_heartbeat(options[:heartbeat])
-          res = error_result(error)
-        end
-      else
-        @agent.defer_task { @agent.tune_heartbeat(options[:heartbeat]) }
-      end
-    rescue Exception => e
-      res = error_result("Failed to tune heartbeat", e)
     end
     res
   end

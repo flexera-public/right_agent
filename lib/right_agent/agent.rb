@@ -161,7 +161,6 @@ module RightScale
       @tags << opts[:tag] if opts[:tag]
       @tags.flatten!
       @options.freeze
-      @deferred_tasks = []
       @last_stat_reset_time = Time.now
       reset_agent_stats
       true
@@ -234,58 +233,6 @@ module RightScale
     # (Actor):: Actor registered
     def register(actor, prefix = nil)
       @registry.register(actor, prefix)
-    end
-
-    # Tune connection heartbeat frequency for all brokers
-    # Causes a reconnect to each broker
-    #
-    # === Parameters
-    # heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
-    #   connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
-    #
-    # === Return
-    # res(String|nil):: Error message if failed, otherwise nil
-    def tune_heartbeat(heartbeat)
-      res = nil
-      begin
-        Log.info("[setup] Reconnecting each broker to tune heartbeat to #{heartbeat}")
-        @broker.heartbeat = heartbeat
-        update_configuration(:heartbeat => heartbeat)
-        ids = []
-        all = @broker.all
-        all.each do |id|
-          begin
-            host, port, index, priority = @broker.identity_parts(id)
-            @broker.connect(host, port, index, priority, force = true) do |id|
-              @broker.connection_status(:one_off => @options[:connect_timeout], :brokers => [id]) do |status|
-                begin
-                  if status == :connected
-                    setup_queues([id])
-                    tuned = (heartbeat && heartbeat != 0) ? "Tuned heartbeat to #{heartbeat} seconds" : "Disabled heartbeat"
-                    Log.info("[setup] #{tuned} for broker #{id}")
-                  else
-                    Log.error("Failed to reconnect to broker #{id} to tune heartbeat, status #{status.inspect}")
-                  end
-                rescue Exception => e
-                  Log.error("Failed to setup queues for broker #{id} when tuning heartbeat", e, :trace)
-                  @exception_stats.track("tune heartbeat", e)
-                end
-              end
-            end
-            ids << id
-          rescue Exception => e
-            res = Log.format("Failed to reconnect to broker #{id} to tune heartbeat", e)
-            Log.error("Failed to reconnect to broker #{id} to tune heartbeat", e, :trace)
-            @exception_stats.track("tune heartbeat", e)
-          end
-        end
-        res = "Failed to tune heartbeat for brokers #{(all - ids).inspect}" unless (all - ids).empty?
-      rescue Exception => e
-        res = Log.format("Failed tuning broker connection heartbeat", e)
-        Log.error("Failed tuning broker connection heartbeat", e, :trace)
-        @exception_stats.track("tune heartbeat", e)
-      end
-      res
     end
 
     # Connect to an additional broker or reconnect it if connection has failed
@@ -408,17 +355,6 @@ module RightScale
         @exception_stats.track("connect failed", e)
       end
       res
-    end
-
-    # Defer task until next status check
-    #
-    # === Block
-    # Required block to be activated on next status check
-    #
-    # === Return
-    # true:: Always return true
-    def defer_task(&task)
-      @deferred_tasks << task
     end
 
     # Gracefully terminate execution by allowing unfinished tasks to complete
@@ -778,7 +714,7 @@ module RightScale
     #
     # === Parameters
     # request(Push|Request):: Packet containing request
-    # queue(String):: Name of queue from which message was received (in case needed in derived classes)
+    # queue(String):: Name of queue from which message was received
     #
     # === Return
     # true:: Always return true
@@ -790,10 +726,10 @@ module RightScale
         end
       rescue Dispatcher::DuplicateRequest
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        Log.error("Failed to publish result of dispatched request #{request.trace}", e)
+        Log.error("Failed to publish result of dispatched request #{request.trace} from queue #{queue}", e)
         @request_failure_stats.update("NoConnectedBrokers")
       rescue Exception => e
-        Log.error("Failed to dispatch request #{request.trace}", e, :trace)
+        Log.error("Failed to dispatch request #{request.trace} from queue #{queue}", e, :trace)
         @request_failure_stats.update(e.class.name)
         @exception_stats.track("request", e)
       end
@@ -845,8 +781,8 @@ module RightScale
       true
     end
 
-    # Check status of agent by gathering current operation statistics and publishing them,
-    # finishing any queue setup, and executing any deferred tasks
+    # Check status of agent by gathering current operation statistics and publishing them
+    # and finishing any queue setup
     # Although agent termination cancels the check_status_timer, this method could induce
     # termination, therefore the termination status needs to be checked before each step
     #
@@ -869,19 +805,6 @@ module RightScale
       rescue Exception => e
         Log.error("Failed publishing stats", e)
         @exception_stats.track("check status", e)
-      end
-
-
-      unless @terminating
-        @deferred_tasks.reject! do |t|
-          begin
-            t.call
-          rescue Exception => e
-            Log.error("Failed to perform deferred task", e)
-            @exception_stats.track("check status", e)
-          end
-          true
-        end
       end
 
       begin
