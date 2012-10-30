@@ -275,7 +275,7 @@ module RightScale
     # === Return
     # (String):: Directory path name
     def self.cfg_dir
-      @cfg_dir ||= Platform.filesystem.right_agent_cfg_dir
+      @cfg_dir ||= right_agent_cfg_dir
     end
 
     # Path to generated agent configuration file
@@ -362,7 +362,7 @@ module RightScale
     # === Return
     # (String):: Directory path name
     def self.pid_dir
-      @pid_dir ||= Platform.filesystem.pid_dir
+      @pid_dir ||= RightSupport::Platform.filesystem.pid_dir
     end
 
     # Retrieve agent process id file
@@ -489,7 +489,7 @@ module RightScale
 
     # Platform-specific base directory for RightAgent configuration files.
     def self.right_agent_cfg_dir
-      if RightSupport:Platform.linux? || RightSupport::Platform.darwin?
+      if RightSupport::Platform.linux? || RightSupport::Platform.darwin?
         '/var/lib/rightscale/right_agent'
       elsif RightSupport::Platform.windows?
         return RightSupport::Platform.filesystem.pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))

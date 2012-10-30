@@ -9,7 +9,7 @@ GIT
 
 GIT
   remote: git@github.com:rightscale/right_support.git
-  revision: bf8a876ae75a01c63ce599e7e99dcccac19d8f6c
+  revision: 0855ab08034da488109766de97a8a21dbc008a40
   branch: aqua_12_12_acu43036_move_platform
   specs:
     right_support (2.5.5)

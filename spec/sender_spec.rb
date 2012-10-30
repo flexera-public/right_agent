@@ -707,7 +707,7 @@ describe RightScale::Sender do
       end
 
       it "should timeout after retrying twice" do
-        pending 'Too difficult to get timing right for Windows' if RightScale::Platform.windows?
+        pending 'Too difficult to get timing right for Windows' if RightSupport::Platform.windows?
         EM.run do
           result = RightScale::OperationResult.success
           @log.should_receive(:warning).once

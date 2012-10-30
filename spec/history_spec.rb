@@ -38,7 +38,7 @@ describe RightScale::History do
     @pid = Process.pid
     @now = Time.at(1000000)
     flexmock(Time).should_receive(:now).and_return(@now).by_default
-    FileUtils.mkdir_p(@test_dir = File.join(RightScale::Platform.filesystem.temp_dir, 'history_test'))
+    FileUtils.mkdir_p(@test_dir = File.join(RightSupport::Platform.filesystem.temp_dir, 'history_test'))
     RightScale::AgentConfig.pid_dir = @test_dir
     @history = RightScale::History.new(@identity)
   end

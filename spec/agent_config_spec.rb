@@ -27,7 +27,7 @@ describe RightScale::AgentConfig do
   before(:all) do
     @agent_config = RightScale::AgentConfig
     @pwd_dir = Dir.pwd
-    @tmp_dir = RightScale::Platform.filesystem.temp_dir
+    @tmp_dir = RightSupport::Platform.filesystem.temp_dir
     @test_dir = File.join(@tmp_dir, 'agent_config_test')
     @agent_id1 = "rs-agent-1-1"
     FileUtils.mkdir_p(@root_dir1 = File.join(@test_dir, 'root1'))
@@ -108,7 +108,7 @@ describe RightScale::AgentConfig do
   end
 
   it 'should default configuration directory to platform specific directory' do
-    @agent_config.cfg_dir.should == RightScale::Platform.filesystem.right_agent_cfg_dir
+    @agent_config.cfg_dir.should == @agent_config.right_agent_cfg_dir
   end
 
   it 'should set configuration directory' do
@@ -117,7 +117,7 @@ describe RightScale::AgentConfig do
   end
 
   it 'should default process id directory to platform specific directory' do
-    @agent_config.pid_dir.should == RightScale::Platform.filesystem.pid_dir
+    @agent_config.pid_dir.should == RightSupport::Platform.filesystem.pid_dir
   end
 
   it 'should set process id directory' do
@@ -142,7 +142,7 @@ describe RightScale::AgentConfig do
 
   it 'should return actors directory paths containing other actors directories' do
     module RightScale
-      AgentConfig.module_eval { def self.other_actors_dirs; [RightScale::Platform.filesystem.temp_dir] end }
+      AgentConfig.module_eval { def self.other_actors_dirs; [RightSupport::Platform.filesystem.temp_dir] end }
     end
     @agent_config.root_dir = [@root_dir1, @root_dir2]
     @agent_config.actors_dirs.should == [@actors1, @tmp_dir, @actors]

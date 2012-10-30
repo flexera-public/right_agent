@@ -89,7 +89,7 @@ module RightScale
 
     DEFAULT_OPTIONS =
     {
-      :log_dir => Platform.filesystem.log_dir,
+      :log_dir => RightSupport::Platform.filesystem.log_dir,
       :daemonize => true
     }
 

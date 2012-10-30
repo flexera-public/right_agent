@@ -72,7 +72,7 @@ module RightScale
     # === Return
     # id(String):: Random 128-bit hexadecimal string
     def self.generate
-      bytes = Platform.rng.pseudorandom_bytes(16)
+      bytes = RightSupport::Platform.rng.pseudorandom_bytes(16)
       #Transform into hex string
       id = bytes.unpack('H*')[0]
     end

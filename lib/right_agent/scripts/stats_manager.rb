@@ -182,7 +182,7 @@ module RightScale
     def init_log
       Log.program_name = "stats_manager"
       Log.log_to_file_only(true)
-      Log.init("stats_manager", Platform.filesystem.temp_dir, :print => true)
+      Log.init("stats_manager", RightSupport::Platform.filesystem.temp_dir, :print => true)
       RightSupport::Log::Mixin.default_logger = Log
       true
     end

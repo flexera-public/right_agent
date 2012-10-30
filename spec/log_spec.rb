@@ -41,7 +41,7 @@ describe RightScale::Log do
   before(:all) do
     ENV['RS_LOG'] = 'true'
 
-    class RightScale::Platform::Filesystem
+    class RightSupport::Platform::Filesystem
       alias original_log_dir log_dir
       def log_dir
         # For specs, write all logs to temp_dir
@@ -52,7 +52,7 @@ describe RightScale::Log do
   end
 
   after(:all) do
-    class RightScale::Platform::Filesystem
+    class RightSupport::Platform::Filesystem
       alias log_dir original_log_dir
     end
   end
@@ -89,7 +89,7 @@ describe RightScale::Log do
     before(:each) do
       # note that log directory doesn't necessarily exist in Windows dev/test
       # environment.
-      log_dir = RightScale::Platform.filesystem.log_dir
+      log_dir = RightSupport::Platform.filesystem.log_dir
       FileUtils.mkdir_p(log_dir) unless File.directory?(log_dir)
 
       # use a unique name for the test because the file cannot be deleted after
