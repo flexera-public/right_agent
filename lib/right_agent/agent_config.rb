@@ -396,7 +396,7 @@ module RightScale
       if options = load_cfg(agent_name)
         @root_dirs = array(options[:root_dir])
         @pid_dir = options[:pid_dir]
-        options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
+        options[:log_path] = options[:log_dir] || RightSupport::Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity])
         options.merge!(pid_file.read_pid) if pid_file.exists?
       end
