@@ -5,6 +5,9 @@ gemspec
 gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
     :branch => 'master'
+gem 'right_support',
+    :git => 'git@github.com:rightscale/right_support.git',
+    :branch => 'aqua_12_12_acu43036_move_platform'
 
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # use that version so we can run right_agent specs under both Windows and Linux.

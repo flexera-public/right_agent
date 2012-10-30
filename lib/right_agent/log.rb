@@ -30,7 +30,6 @@ RIGHTSCALE_LOG_DEFINED = true
 require 'logger'
 require 'right_support'
 
-require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'multiplexer'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'exceptions'))
 
@@ -353,7 +352,7 @@ module RightScale
         end
         if new_level != @level
           @logger.info("[setup] Setting log level to #{level_to_sym(new_level).to_s.upcase}")
-          if new_level == Logger::DEBUG && !RightScale::Platform.windows?
+          if new_level == Logger::DEBUG && !RightSupport::Platform.windows?
             @logger.info("[setup] Check syslog configuration to ensure debug messages are not discarded!")
           else
           end
@@ -429,7 +428,7 @@ module RightScale
         @level_frozen = false
         logger = nil
 
-        if @log_to_file_only || Platform.windows?
+        if @log_to_file_only || RightSupport::Platform.windows?
           if path
             file = File.join(path, "#{identity}.log")
           else

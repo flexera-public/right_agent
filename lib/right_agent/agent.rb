@@ -535,7 +535,7 @@ module RightScale
         "name"            => @agent_name,
         "identity"        => @identity,
         "hostname"        => Socket.gethostname,
-        "memory"          => Platform.process.resident_set_size,
+        "memory"          => RightSupport::Platform.process.resident_set_size,
         "version"         => AgentConfig.protocol_version,
         "brokers"         => @broker.stats(reset),
         "agent stats"     => agent_stats(reset),
@@ -544,7 +544,7 @@ module RightScale
         "last reset time" => @last_stat_reset_time.to_i,
         "stat time"       => now.to_i,
         "service uptime"  => @history.analyze_service,
-        "machine uptime"  => Platform.shell.uptime
+        "machine uptime"  => RightSupport::Platform.shell.uptime
       }
       stats["revision"] = @revision if @revision
       result = OperationResult.success(stats)
@@ -606,7 +606,7 @@ module RightScale
 
       @options[:log_path] = false
       if @options[:daemonize] || @options[:log_dir]
-        @options[:log_path] = (@options[:log_dir] || Platform.filesystem.log_dir)
+        @options[:log_path] = (@options[:log_dir] || RightSupport::Platform.filesystem.log_dir)
         FileUtils.mkdir_p(@options[:log_path]) unless File.directory?(@options[:log_path])
       end
 

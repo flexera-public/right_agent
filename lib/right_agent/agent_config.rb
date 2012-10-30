@@ -21,7 +21,6 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 module RightScale
-
   # Helper methods for accessing RightAgent files, directories, and processes.
   # Values returned are driven by root_dir, cfg_dir, and pid_dir, which may be set
   # but have defaults, and secondarily by the contents of the associated agent
@@ -276,7 +275,7 @@ module RightScale
     # === Return
     # (String):: Directory path name
     def self.cfg_dir
-      @cfg_dir ||= Platform.filesystem.right_agent_cfg_dir
+      @cfg_dir ||= right_agent_cfg_dir
     end
 
     # Path to generated agent configuration file
@@ -363,7 +362,7 @@ module RightScale
     # === Return
     # (String):: Directory path name
     def self.pid_dir
-      @pid_dir ||= Platform.filesystem.pid_dir
+      @pid_dir ||= RightSupport::Platform.filesystem.pid_dir
     end
 
     # Retrieve agent process id file
@@ -397,7 +396,7 @@ module RightScale
       if options = load_cfg(agent_name)
         @root_dirs = array(options[:root_dir])
         @pid_dir = options[:pid_dir]
-        options[:log_path] = options[:log_dir] || Platform.filesystem.log_dir
+        options[:log_path] = options[:log_dir] || RightSupport::Platform.filesystem.log_dir
         pid_file = PidFile.new(options[:identity])
         options.merge!(pid_file.read_pid) if pid_file.exists?
       end
@@ -472,6 +471,44 @@ module RightScale
         end
       end
       file
+    end
+
+    # Directory containing generated agent configuration files
+    # @deprecated
+    def cfg_dir
+      warn "cfg_dir is deprecated; please use right_agent_cfg_dir"
+      right_agent_cfg_dir
+    end
+
+    # RightScale state directory for the current platform
+    # @deprecated
+    def right_scale_state_dir
+      warn "right_scale_state_dir is deprecated; please use either right_scale_static_state_dir or right_agent_dynamic_state_dir"
+      right_scale_static_state_dir
+    end
+
+    # Platform-specific base directory for RightAgent configuration files.
+    def self.right_agent_cfg_dir
+      if RightSupport::Platform.linux? || RightSupport::Platform.darwin?
+        '/var/lib/rightscale/right_agent'
+      elsif RightSupport::Platform.windows?
+        return RightSupport::Platform.filesystem.pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))
+      else
+        raise NotImplementedError, "Unsupported platform"
+      end
+    end
+
+    # Platform-specific base directory for RightScale state that is static in nature
+    # (doesn't get rewritten frequently) and applies to the whole platform, not to any
+    # specific component.
+    def self.right_scale_static_state_dir
+      if RightSupport::Platform.linux? || RightSupport::Platform.darwin?
+        '/etc/rightscale.d'
+      elsif RightSupport::Platform.windows?
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d'))
+      else
+        raise NotImplementedError, "Unsupported platform"
+      end
     end
 
   end # AgentConfig

@@ -7,6 +7,13 @@ GIT
       eventmachine (~> 0.12.10)
       right_support (>= 1.2, < 3.0)
 
+GIT
+  remote: git@github.com:rightscale/right_support.git
+  revision: 0855ab08034da488109766de97a8a21dbc008a40
+  branch: aqua_12_12_acu43036_move_platform
+  specs:
+    right_support (2.5.5)
+
 PATH
   remote: .
   specs:
@@ -27,10 +34,9 @@ GEM
     diff-lcs (1.1.3)
     eventmachine (0.12.10)
     eventmachine (0.12.10-x86-mswin32)
+    ffi (1.1.5)
     flexmock (0.9.0)
-    jruby-pageant (1.1.1)
     json (1.4.6)
-    json (1.4.6-x86-mswin32)
     linecache (0.46)
       rbx-require-relative (> 0.0.4)
     linecache19 (0.5.12)
@@ -38,26 +44,24 @@ GEM
     memprof (0.3.10)
       rest-client (>= 1.4.2)
       term-ansicolor
-    mime-types (1.18)
+    mime-types (1.19)
     msgpack (0.4.4)
     msgpack (0.4.4-x86-mswin32)
-    net-ssh (2.6.0)
-      jruby-pageant (>= 1.1.1)
+    net-ssh (2.6.1)
     rake (0.9.2.2)
     rbx-require-relative (0.0.9)
     rest-client (1.6.7)
       mime-types (>= 1.16)
     right_popen (1.0.16)
       eventmachine (>= 0.12.10)
-    right_support (2.5.2)
-    rspec (2.10.0)
-      rspec-core (~> 2.10.0)
-      rspec-expectations (~> 2.10.0)
-      rspec-mocks (~> 2.10.0)
-    rspec-core (2.10.1)
-    rspec-expectations (2.10.0)
+    rspec (2.11.0)
+      rspec-core (~> 2.11.0)
+      rspec-expectations (~> 2.11.0)
+      rspec-mocks (~> 2.11.0)
+    rspec-core (2.11.1)
+    rspec-expectations (2.11.3)
       diff-lcs (~> 1.1.3)
-    rspec-mocks (2.10.1)
+    rspec-mocks (2.11.3)
     ruby-debug (0.10.4)
       columnize (>= 0.1)
       ruby-debug-base (~> 0.10.4.0)
@@ -75,13 +79,13 @@ GEM
       archive-tar-minitar (>= 0.5.2)
     term-ansicolor (1.0.7)
     win32-api (1.4.5-x86-mswin32)
-    win32-dir (0.3.7)
-      windows-pr (>= 1.0.9)
+    win32-dir (0.4.1)
+      ffi (>= 1.0.0)
     win32-process (0.6.5)
       windows-pr (>= 1.1.2)
-    windows-api (0.4.1)
+    windows-api (0.4.2)
       win32-api (>= 1.4.5)
-    windows-pr (1.2.1)
+    windows-pr (1.2.2)
       win32-api (>= 1.4.5)
       windows-api (>= 0.3.0)
 
@@ -97,6 +101,7 @@ DEPENDENCIES
   rake (>= 0.9.2.2)
   right_agent!
   right_amqp!
+  right_support!
   rspec (~> 2.8)
   ruby-debug
   ruby-debug19
