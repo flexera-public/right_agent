@@ -501,7 +501,7 @@ module RightScale
     # Platform-specific base directory for RightScale state that is static in nature
     # (doesn't get rewritten frequently) and applies to the whole platform, not to any
     # specific component.
-    def right_scale_static_state_dir
+    def self.right_scale_static_state_dir
       if RightSupport:Platform.linux? || RightSupport::Platform.darwin?
         '/etc/rightscale.d'
       elsif RightSupport::Platform.windows?
