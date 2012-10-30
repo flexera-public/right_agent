@@ -502,7 +502,7 @@ module RightScale
     # (doesn't get rewritten frequently) and applies to the whole platform, not to any
     # specific component.
     def self.right_scale_static_state_dir
-      if RightSupport:Platform.linux? || RightSupport::Platform.darwin?
+      if RightSupport::Platform.linux? || RightSupport::Platform.darwin?
         '/etc/rightscale.d'
       elsif RightSupport::Platform.windows?
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d'))
