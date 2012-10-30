@@ -535,7 +535,7 @@ module RightScale
         "name"            => @agent_name,
         "identity"        => @identity,
         "hostname"        => Socket.gethostname,
-        "memory"          => Platform.process.resident_set_size,
+        "memory"          => RightSupport::Platform.process.resident_set_size,
         "version"         => AgentConfig.protocol_version,
         "brokers"         => @broker.stats(reset),
         "agent stats"     => agent_stats(reset),

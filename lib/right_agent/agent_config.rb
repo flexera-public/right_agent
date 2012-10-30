@@ -21,16 +21,6 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 module RightScale
-  if Platform.linux?
-    require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'linux'))
-  elsif Platform.darwin?
-    require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'darwin'))
-  elsif Platform.windows?
-    require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'windows'))
-  else
-    raise PlatformError.new('Unknown platform')
-  end
-
   # Helper methods for accessing RightAgent files, directories, and processes.
   # Values returned are driven by root_dir, cfg_dir, and pid_dir, which may be set
   # but have defaults, and secondarily by the contents of the associated agent
@@ -481,6 +471,44 @@ module RightScale
         end
       end
       file
+    end
+
+    # Directory containing generated agent configuration files
+    # @deprecated
+    def cfg_dir
+      warn "cfg_dir is deprecated; please use right_agent_cfg_dir"
+      right_agent_cfg_dir
+    end
+
+    # RightScale state directory for the current platform
+    # @deprecated
+    def right_scale_state_dir
+      warn "right_scale_state_dir is deprecated; please use either right_scale_static_state_dir or right_agent_dynamic_state_dir"
+      right_scale_static_state_dir
+    end
+
+    # Platform-specific base directory for RightAgent configuration files.
+    def self.right_agent_cfg_dir
+      if RightSupport:Platform.linux? || RightSupport::Platform.darwin?
+        '/var/lib/rightscale/right_agent'
+      elsif RightSupport::Platform.windows?
+        return RightSupport::Platform.filesystem.pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'right_agent'))
+      else
+        raise NotImplementedError, "Unsupported platform"
+      end
+    end
+
+    # Platform-specific base directory for RightScale state that is static in nature
+    # (doesn't get rewritten frequently) and applies to the whole platform, not to any
+    # specific component.
+    def right_scale_static_state_dir
+      if RightSupport:Platform.linux? || RightSupport::Platform.darwin?
+        '/etc/rightscale.d'
+      elsif RightSupport::Platform.windows?
+        return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'rightscale.d'))
+      else
+        raise NotImplementedError, "Unsupported platform"
+      end
     end
 
   end # AgentConfig
