@@ -85,289 +85,239 @@ describe "RightScale::Dispatcher" do
     @log.should_receive(:info).by_default
     @now = Time.at(1000000)
     flexmock(Time).should_receive(:now).and_return(@now).by_default
-    @broker = flexmock("Broker", :subscribe => true, :publish => true).by_default
     @actor = Foo.new
     @registry = RightScale::ActorRegistry.new
     @registry.register(@actor, nil)
     @agent_id = "rs-agent-1-1"
-    @agent = flexmock("Agent", :identity => @agent_id, :broker => @broker, :registry => @registry, :options => {}).by_default
+    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry).by_default
     @cache = RightScale::DispatchedCache.new(@agent_id)
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    @response_queue = RightScale::Dispatcher::RESPONSE_QUEUE
-    @header = flexmock("amqp header")
-    @header.should_receive(:ack).by_default
   end
 
-  it "should dispatch a request" do
-    req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == 'token'
-    res.results.should == ['hello', 'you']
+  context "routable?" do
+
+    it "should return false if actor is not available for routing" do
+      @dispatcher.routable?("foo").should be_true
+    end
+
+    it "should return true if actor is available for routing" do
+      @dispatcher.routable?("bar").should be_false
+    end
+
   end
 
-  it "should dispatch a request with required arity" do
-    req = RightScale::Request.new('/foo/bar2', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == 'token'
-    res.results.should == ['hello', 'you', req]
-  end
+  context "dispatch" do
 
-  it "should dispatch a request to the default action" do
-    req = RightScale::Request.new('/foo', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == req.token
-    res.results.should == ['hello', 'you']
-  end
+    it "should dispatch a request" do
+      req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == 'token'
+      res.results.should == ['hello', 'you']
+    end
 
-  it "should log request if there is no header" do
-    @log.should_receive(:info).with(/RECV bx/).once
-    req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
-    @dispatcher.dispatch(req)
-  end
+    it "should dispatch a request with required arity" do
+      req = RightScale::Request.new('/foo/bar2', 'you', :token => 'token')
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == 'token'
+      res.results.should == ['hello', 'you', req]
+    end
 
-  it "should publish result of request to response queue" do
-    req = RightScale::Request.new('/foo', 'you', :token => 'token')
-    req.reply_to = "rs-mapper-1-1"
-    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
-                                          on {|arg| arg.class == RightScale::Result &&
-                                                    arg.to == "rs-mapper-1-1" &&
-                                                    arg.results == ['hello', 'you']},
-                                          hsh(:persistent => true, :mandatory => true)).once
-    @dispatcher.dispatch(req, @header)
-  end
+    it "should dispatch a request to the default action" do
+      req = RightScale::Request.new('/foo', 'you', :token => 'token')
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == req.token
+      res.results.should == ['hello', 'you']
+    end
 
-  it "should not publish result unless there is a header" do
-    req = RightScale::Request.new('/foo', 'you', :token => 'token')
-    @broker.should_receive(:publish).never
-    @dispatcher.dispatch(req, nil)
-  end
+    it "should return nil for successful push" do
+      req = RightScale::Push.new('/foo', 'you', :token => 'token')
+      res = @dispatcher.dispatch(req)
+      res.should be_nil
+    end
 
-  it "should not publish result for a push" do
-    req = RightScale::Push.new('/foo', 'you', :token => 'token')
-    @broker.should_receive(:publish).never
-    @dispatcher.dispatch(req, @header)
-  end
+    it "should handle custom prefixes" do
+      @registry.register(Foo.new, 'umbongo')
+      req = RightScale::Request.new('/umbongo/bar', 'you')
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == req.token
+      res.results.should == ['hello', 'you']
+    end
 
-  it "should return success result for successful push" do
-    req = RightScale::Push.new('/foo', 'you', :token => 'token')
-    res = @dispatcher.dispatch(req, @header)
-    res.results.success?.should be_true
-  end
+    it "should raise exception if actor is unknown" do
+      req = RightScale::Request.new('/bad', 'you', :token => 'token')
+      lambda { @dispatcher.dispatch(req) }.should raise_error(RightScale::Dispatcher::InvalidRequestType)
+    end
 
-  it "should handle custom prefixes" do
-    @registry.register(Foo.new, 'umbongo')
-    req = RightScale::Request.new('/umbongo/bar', 'you')
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == req.token
-    res.results.should == ['hello', 'you']
-  end
+    it "should raise exception if actor method is unknown" do
+      req = RightScale::Request.new('/foo/bar-none', 'you', :token => 'token')
+      lambda { @dispatcher.dispatch(req) }.should raise_error(RightScale::Dispatcher::InvalidRequestType)
+    end
 
-  it "should log an error if actor is unknown" do
-    @log.should_receive(:error).with(/No actor for dispatching request/).once
-    req = RightScale::Request.new('/bad', 'you', :token => 'token')
-    @dispatcher.dispatch(req, @header).should be_nil
-  end
+    it "should call the on_exception callback if something goes wrong" do
+      @log.should_receive(:error).once
+      req = RightScale::Request.new('/foo/i_kill_you', nil)
+      flexmock(@actor).should_receive(:handle_exception).with(:i_kill_you, req, Exception).once
+      res = @dispatcher.dispatch(req)
+      res.results.error?.should be_true
+      (res.results.content =~ /Could not handle \/foo\/i_kill_you request/).should be_true
+    end
 
-  it "should call the on_exception callback if something goes wrong" do
-    @log.should_receive(:error).once
-    req = RightScale::Request.new('/foo/i_kill_you', nil)
-    flexmock(@actor).should_receive(:handle_exception).with(:i_kill_you, req, Exception).once
-    res = @dispatcher.dispatch(req, @header)
-    res.results.error?.should be_true
-    (res.results.content =~ /Could not handle \/foo\/i_kill_you request/).should be_true
-  end
+    it "should call on_exception Procs defined in a subclass with the correct arguments" do
+      @log.should_receive(:error).once
+      actor = Bar.new
+      @registry.register(actor, nil)
+      req = RightScale::Request.new('/bar/i_kill_you', nil)
+      @dispatcher.dispatch(req)
+      called_with = actor.instance_variable_get("@called_with")
+      called_with[0].should == :i_kill_you
+      called_with[1].should == req
+      called_with[2].should be_kind_of(RuntimeError)
+      called_with[2].message.should == 'I kill you!'
+    end
 
-  it "should call on_exception Procs defined in a subclass with the correct arguments" do
-    @log.should_receive(:error).once
-    actor = Bar.new
-    @registry.register(actor, nil)
-    req = RightScale::Request.new('/bar/i_kill_you', nil)
-    @dispatcher.dispatch(req, @header)
-    called_with = actor.instance_variable_get("@called_with")
-    called_with[0].should == :i_kill_you
-    called_with[1].should == req
-    called_with[2].should be_kind_of(RuntimeError)
-    called_with[2].message.should == 'I kill you!'
-  end
+    it "should call on_exception Procs defined in a subclass in the scope of the actor" do
+      @log.should_receive(:error).once
+      actor = Bar.new
+      @registry.register(actor, nil)
+      req = RightScale::Request.new('/bar/i_kill_you', nil)
+      @dispatcher.dispatch(req)
+      actor.instance_variable_get("@scope").should == actor
+    end
 
-  it "should call on_exception Procs defined in a subclass in the scope of the actor" do
-    @log.should_receive(:error).once
-    actor = Bar.new
-    @registry.register(actor, nil)
-    req = RightScale::Request.new('/bar/i_kill_you', nil)
-    @dispatcher.dispatch(req, @header)
-    actor.instance_variable_get("@scope").should == actor
-  end
+    it "should log error if dispatch fails" do
+      RightScale::Log.should_receive(:error).once
+      req = RightScale::Request.new('/foo/i_kill_you', nil)
+      @dispatcher.dispatch(req)
+    end
 
-  it "should log error if dispatch fails" do
-    RightScale::Log.should_receive(:error).once
-    req = RightScale::Request.new('/foo/i_kill_you', nil)
-    @dispatcher.dispatch(req, @header)
-  end
-
-  it "should reject requests whose time-to-live has expired" do
-    flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED.*TTL 2 sec ago/})
-    @broker.should_receive(:publish).never
-    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    req = RightScale::Push.new('/foo/bar', 'you', :expires_at => @now.to_i + 8)
-    flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req, @header).should be_nil
-  end
-
-  it "should send non-delivery result if Request is rejected because its time-to-live has expired" do
-    flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
-    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
-                                          on {|arg| arg.class == RightScale::Result &&
-                                                    arg.to == @response_queue &&
-                                                    arg.results.non_delivery? &&
-                                                    arg.results.content == RightScale::OperationResult::TTL_EXPIRATION},
-                                          hsh(:persistent => true, :mandatory => true)).once
-    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => @response_queue, :expires_at => @now.to_i + 8})
-    flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req, @header).should be_nil
-  end
-
-  it "should send error result instead of non-delivery if agent does not know about non-delivery" do
-    flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
-    @broker.should_receive(:publish).with(hsh(:name => @response_queue),
-                                          on {|arg| arg.class == RightScale::Result &&
-                                                    arg.to == "rs-mapper-1-1" &&
-                                                    arg.results.error? &&
-                                                    arg.results.content =~ /Could not deliver/},
-                                          hsh(:persistent => true, :mandatory => true)).once
-    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
-    flexmock(Time).should_receive(:now).and_return(@now += 10)
-    @dispatcher.dispatch(req, @header).should be_nil
-  end
-
-  it "should not reject requests whose time-to-live has not expired" do
-    flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
-    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    req = RightScale::Request.new('/foo/bar', 'you', :expires_at => @now.to_i + 11)
-    flexmock(Time).should_receive(:now).and_return(@now += 10)
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == req.token
-    res.results.should == ['hello', 'you']
-  end
-
-  it "should not check age of requests with time-to-live check disabled" do
-    @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-    req = RightScale::Request.new('/foo/bar', 'you', :expires_at => 0)
-    res = @dispatcher.dispatch(req, @header)
-    res.should(be_kind_of(RightScale::Result))
-    res.token.should == req.token
-    res.results.should == ['hello', 'you']
-  end
-
-  it "should reject duplicate requests" do
-    @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT DUP/})
-    EM.run do
+    it "should reject requests whose time-to-live has expired" do
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED.*TTL 2 sec ago/})
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
-      @cache.store(req.token, nil)
-      @dispatcher.dispatch(req, @header).should be_nil
-      EM.stop
+      req = RightScale::Push.new('/foo/bar', 'you', :expires_at => @now.to_i + 8)
+      flexmock(Time).should_receive(:now).and_return(@now += 10)
+      @dispatcher.dispatch(req).should be_nil
     end
-  end
 
-  it "should reject duplicate retry requests" do
-    @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT RETRY DUP/})
-    EM.run do
+    it "should return non-delivery result if Request is rejected because its time-to-live has expired" do
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
-      req.tries.concat(["try1", "try2"])
-      @cache.store("try2", nil)
-      @dispatcher.dispatch(req, @header).should be_nil
-      EM.stop
+      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => @response_queue, :expires_at => @now.to_i + 8})
+      flexmock(Time).should_receive(:now).and_return(@now += 10)
+      res = @dispatcher.dispatch(req)
+      res.results.non_delivery?.should be_true
+      res.results.content.should == RightScale::OperationResult::TTL_EXPIRATION
     end
-  end
 
-  it "should not reject non-duplicate requests" do
-    EM.run do
+    it "should return error result instead of non-delivery if agent does not know about non-delivery" do
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
+      @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
-      req.tries.concat(["try1", "try2"])
-      @cache.store("try3", nil)
-      @dispatcher.dispatch(req, @header).should_not be_nil
-      EM.stop
+      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
+      flexmock(Time).should_receive(:now).and_return(@now += 10)
+      res = @dispatcher.dispatch(req)
+      res.results.error?.should be_true
+      res.results.content.should =~ /Could not deliver/
     end
-  end
 
-  it "should not reject duplicate idempotent requests" do
-    EM.run do
+    it "should not reject requests whose time-to-live has not expired" do
+      flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
-      @cache.store(req.token, nil)
-      @dispatcher.dispatch(req, @header).should_not be_nil
-      EM.stop
+      req = RightScale::Request.new('/foo/bar', 'you', :expires_at => @now.to_i + 11)
+      flexmock(Time).should_receive(:now).and_return(@now += 10)
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == req.token
+      res.results.should == ['hello', 'you']
     end
-  end
 
-  it "should not check for duplicates if duplicate checking is disabled" do
-    EM.run do
-      @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
-      req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
-      req.tries.concat(["try1", "try2"])
-      @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
-      @dispatcher.dispatch(req, @header).should_not be_nil
-      EM.stop
+    it "should not check age of requests with time-to-live check disabled" do
+      @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+      req = RightScale::Request.new('/foo/bar', 'you', :expires_at => 0)
+      res = @dispatcher.dispatch(req)
+      res.should(be_kind_of(RightScale::Result))
+      res.token.should == req.token
+      res.results.should == ['hello', 'you']
     end
-  end
 
-  it "should not check for duplicates if actor method is idempotent" do
-    EM.run do
-      @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
-      req = RightScale::Request.new('/foo/bar', 1, :token => "try")
-      req.tries.concat(["try1", "try2"])
-      @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
-      @dispatcher.dispatch(req, @header).should_not be_nil
-      EM.stop
+    it "should reject duplicate request by raising exception" do
+      @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT DUP/})
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+        req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
+        @cache.store(req.token)
+        lambda { @dispatcher.dispatch(req) }.should raise_error(RightScale::Dispatcher::DuplicateRequest)
+        EM.stop
+      end
     end
-  end
 
-  it "should return error result if dispatch fails" do
-    @log.should_receive(:error).with(/Could not handle/, Exception, :trace).once
-    req = RightScale::Request.new('/foo/i_kill_you', nil)
-    res = @dispatcher.dispatch(req, @header)
-    res.results.error?.should be_true
-  end
+    it "should reject duplicate request from a retry by raising exception" do
+      @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT RETRY DUP/})
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+        req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
+        req.tries.concat(["try1", "try2"])
+        @cache.store("try2")
+        lambda { @dispatcher.dispatch(req) }.should raise_error(RightScale::Dispatcher::DuplicateRequest)
+        EM.stop
+      end
+    end
 
-  it "should ack request even if fail while dispatching" do
-    @header.should_receive(:ack).once
-    @log.should_receive(:error).with(/Could not handle/, Exception, :trace).once
-    req = RightScale::Request.new('/foo/i_kill_you', nil)
-    @dispatcher.dispatch(req, @header)
-  end
+    it "should not reject non-duplicate requests" do
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+        req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
+        req.tries.concat(["try1", "try2"])
+        @cache.store("try3")
+        @dispatcher.dispatch(req).should_not be_nil
+        EM.stop
+      end
+    end
 
-  it "should ack request even if fail while sending response" do
-    @header.should_receive(:ack).once
-    @log.should_receive(:error).with(/Failed to publish result/, Exception, :trace).once
-    @broker.should_receive(:publish).and_raise(Exception.new("test"))
-    req = RightScale::Request.new('/foo/bar', 1, :token => "try")
-    @dispatcher.dispatch(req, @header)
-  end
+    it "should not reject duplicate idempotent requests" do
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
+        req = RightScale::Request.new('/foo/bar', 'you', :token => "try")
+        @cache.store(req.token)
+        @dispatcher.dispatch(req).should_not be_nil
+        EM.stop
+      end
+    end
 
-  it "should not attempt to ack request if fail while dispatching and there is no header" do
-    @header.should_receive(:ack).never
-    @log.should_receive(:error).and_raise(Exception.new("test")).once
-    req = RightScale::Request.new('/foo/i_kill_you', nil)
-    lambda { @dispatcher.dispatch(req, nil) }.should raise_error(Exception, "test")
-  end
+    it "should not check for duplicates if duplicate checking is disabled" do
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
+        req = RightScale::Request.new('/foo/bar_non', 1, :token => "try")
+        req.tries.concat(["try1", "try2"])
+        @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
+        @dispatcher.dispatch(req).should_not be_nil
+        EM.stop
+      end
+    end
 
-  it "should not attempt to ack request if dispatch a request and there is no header" do
-    @header.should_receive(:ack).never
-    req = RightScale::Request.new('/foo/bar', 'you', :token => 'token')
-    @dispatcher.dispatch(req, nil)
+    it "should not check for duplicates if actor method is idempotent" do
+      EM.run do
+        @dispatcher = RightScale::Dispatcher.new(@agent, dispatched_cache = nil)
+        req = RightScale::Request.new('/foo/bar', 1, :token => "try")
+        req.tries.concat(["try1", "try2"])
+        @dispatcher.instance_variable_get(:@dispatched_cache).should be_nil
+        @dispatcher.dispatch(req).should_not be_nil
+        EM.stop
+      end
+    end
+
+    it "should return error result if dispatch fails" do
+      @log.should_receive(:error).with(/Could not handle/, Exception, :trace).once
+      req = RightScale::Request.new('/foo/i_kill_you', nil)
+      res = @dispatcher.dispatch(req)
+      res.results.error?.should be_true
+    end
+
   end
 
 end # RightScale::Dispatcher

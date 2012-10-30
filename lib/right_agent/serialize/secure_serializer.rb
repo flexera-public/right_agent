@@ -88,7 +88,7 @@ module RightScale
       raise "Missing certificate" unless @cert
       raise "Missing certificate key" unless @key
       raise "Missing certificate store" unless @store || !@encrypt
-      must_encrypt = encrypt.nil? ? @encrypt : encrypt
+      must_encrypt = encrypt || @encrypt
       serialize_format = if obj.respond_to?(:send_version) && obj.send_version >= 12
         @serializer.format
       else
@@ -136,7 +136,7 @@ module RightScale
       raise InvalidSignature.new("Failed signature check for signer #{msg['id']}") unless certs.any? { |c| sig.match?(c) }
 
       data = msg['data']
-      if data && @encrypt && msg['encrypted']
+      if data && msg['encrypted']
         data = EncryptedDocument.from_data(data).decrypted_data(@key, @cert)
       end
       @serializer.load(data) if data

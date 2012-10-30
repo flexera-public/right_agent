@@ -54,43 +54,37 @@ describe "RightScale::DispatchedCache" do
   context "store" do
 
     it "should store request token" do
-      @cache.store(@token1, nil)
+      @cache.store(@token1)
       @cache.instance_variable_get(:@cache)[@token1].should == @now.to_i
       @cache.instance_variable_get(:@lru).should == [@token1]
     end
 
     it "should update lru list when store to existing entry" do
-      @cache.store(@token1, nil)
+      @cache.store(@token1)
       @cache.instance_variable_get(:@cache)[@token1].should == @now.to_i
       @cache.instance_variable_get(:@lru).should == [@token1]
-      @cache.store(@token2, nil)
+      @cache.store(@token2)
       @cache.instance_variable_get(:@cache)[@token2].should == @now.to_i
       @cache.instance_variable_get(:@lru).should == [@token1, @token2]
       flexmock(Time).should_receive(:now).and_return(@now += 10)
-      @cache.store(@token1, nil)
+      @cache.store(@token1)
       @cache.instance_variable_get(:@cache)[@token1].should == @now.to_i
       @cache.instance_variable_get(:@lru).should == [@token2, @token1]
     end
 
     it "should remove old cache entries when store new one" do
-      @cache.store(@token1, nil)
-      @cache.store(@token2, nil)
+      @cache.store(@token1)
+      @cache.store(@token2)
       @cache.instance_variable_get(:@cache).keys.should =~ [@token1, @token2]
       @cache.instance_variable_get(:@lru).should == [@token1, @token2]
       flexmock(Time).should_receive(:now).and_return(@now += RightScale::DispatchedCache::MAX_AGE + 1)
-      @cache.store(@token3, nil)
+      @cache.store(@token3)
       @cache.instance_variable_get(:@cache).keys.should == [@token3]
       @cache.instance_variable_get(:@lru).should == [@token3]
     end
 
-    it "should not store anything if this is a shared queue request" do
-      @cache.store(@token1, "shared")
-      @cache.instance_variable_get(:@cache)[@token1].should be_nil
-      @cache.instance_variable_get(:@lru).should be_empty
-    end
-
     it "should not store anything if token is nil" do
-      @cache.store(nil, nil)
+      @cache.store(nil)
       @cache.instance_variable_get(:@cache).should be_empty
       @cache.instance_variable_get(:@lru).should be_empty
     end
@@ -100,8 +94,8 @@ describe "RightScale::DispatchedCache" do
   context "serviced_by" do
 
     it "should return who request was serviced by and make it the most recently used" do
-      @cache.store(@token1, nil)
-      @cache.store(@token2, nil)
+      @cache.store(@token1)
+      @cache.store(@token2)
       @cache.instance_variable_get(:@lru).should == [@token1, @token2]
       @cache.serviced_by(@token1).should == @agent_id
       @cache.instance_variable_get(:@lru).should == [@token2, @token1]
@@ -109,7 +103,7 @@ describe "RightScale::DispatchedCache" do
 
     it "should return nil if request was not previously serviced" do
       @cache.serviced_by(@token1).should be_nil
-      @cache.store(@token1, nil)
+      @cache.store(@token1)
       @cache.serviced_by(@token1).should == @agent_id
       @cache.serviced_by(@token2).should be_nil
     end
@@ -123,9 +117,9 @@ describe "RightScale::DispatchedCache" do
     end
 
     it "should return total and max age" do
-      @cache.store(@token1, nil)
+      @cache.store(@token1)
       flexmock(Time).should_receive(:now).and_return(@now += 10)
-      @cache.store(@token2, nil)
+      @cache.store(@token2)
       @cache.stats.should == {
         "local total" => 2,
         "local max age" => "10 sec"

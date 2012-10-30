@@ -736,8 +736,7 @@ module RightScale
     # or if there is a non-delivery response indicating the target is not currently available
     # Timeout the request if a response is not received in time, typically configured to 2 minutes
     # Because of retries there is the possibility of duplicated requests, and these are detected and
-    # discarded automatically unless the receiving agent is using a shared queue, in which case this
-    # method should not be used for actions that are non-idempotent
+    # discarded automatically for non-idempotent actions
     # Allow the request to expire per the agent's configured time-to-live, typically 1 minute
     # Note that receiving a response does not guarantee that the request activity has actually
     # completed since the request processing may involve other asynchronous requests
@@ -853,46 +852,40 @@ module RightScale
     end
 
     # Handle response to a request
-    # Acknowledge response after delivering it
     #
     # === Parameters
     # response(Result):: Packet received as result of request
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
     # true:: Always return true
-    def handle_response(response, header = nil)
-      begin
-        token = response.token
-        if response.is_a?(Result)
-          if result = OperationResult.from_results(response)
-            if result.non_delivery?
-              @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
-            elsif result.error?
-              @result_error_stats.update(result.content.nil? ? "nil" : result.content.inspect)
-            end
-            @result_stats.update(result.status)
-          else
-            @result_stats.update(response.results.nil? ? "nil" : response.results)
+    def handle_response(response)
+      token = response.token
+      if response.is_a?(Result)
+        if result = OperationResult.from_results(response)
+          if result.non_delivery?
+            @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+          elsif result.error?
+            @result_error_stats.update(result.content.nil? ? "nil" : result.content.inspect)
           end
+          @result_stats.update(result.status)
+        else
+          @result_stats.update(response.results.nil? ? "nil" : response.results)
+        end
 
-          if handler = @pending_requests[token]
-            if result && result.non_delivery? && handler.kind == :send_retryable_request &&
-               [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
-              # Log and ignore so that timeout retry mechanism continues
-              # Leave purging of associated request until final response, i.e., success response or retry timeout
-              Log.info("Non-delivery of <#{token}> because #{result.content}")
-            else
-              deliver(response, handler)
-            end
-          elsif result && result.non_delivery?
+        if handler = @pending_requests[token]
+          if result && result.non_delivery? && handler.kind == :send_retryable_request &&
+             [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
+            # Log and ignore so that timeout retry mechanism continues
+            # Leave purging of associated request until final response, i.e., success response or retry timeout
             Log.info("Non-delivery of <#{token}> because #{result.content}")
           else
-            Log.debug("No pending request for response #{response.to_s([])}")
+            deliver(response, handler)
           end
+        elsif result && result.non_delivery?
+          Log.info("Non-delivery of <#{token}> because #{result.content}")
+        else
+          Log.debug("No pending request for response #{response.to_s([])}")
         end
-      ensure
-        header.ack if header
       end
       true
     end

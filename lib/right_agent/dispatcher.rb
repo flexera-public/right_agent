@@ -25,17 +25,14 @@ module RightScale
   # Dispatching of payload to specified actor
   class Dispatcher
 
-    # Response queue name
-    RESPONSE_QUEUE = "response"
+    class InvalidRequestType < Exception; end
+    class DuplicateRequest < Exception; end
 
     # (ActorRegistry) Registry for actors
     attr_reader :registry
 
     # (String) Identity of associated agent
     attr_reader :identity
-
-    # (RightAMQP::HABrokerClient) High availability AMQP broker client
-    attr_reader :broker
 
     # For direct access to current dispatcher
     #
@@ -48,143 +45,55 @@ module RightScale
     # Initialize dispatcher
     #
     # === Parameters
-    # agent(Agent):: Agent using this dispatcher; uses its identity, broker, registry, and following options:
-    #   :secure(Boolean):: true indicates to use Security features of RabbitMQ to restrict agents to themselves
+    # agent(Agent):: Agent using this dispatcher; uses its identity and registry
     # dispatched_cache(DispatchedCache|nil):: Cache for dispatched requests that is used for detecting
     #   duplicate requests, or nil if duplicate checking is disabled
     def initialize(agent, dispatched_cache = nil)
       @agent = agent
-      @broker = @agent.broker
       @registry = @agent.registry
       @identity = @agent.identity
-      @secure = @agent.options[:secure]
       @dispatched_cache = dispatched_cache
       reset_stats
       @@instance = self
     end
 
-    # Determine whether an actor is registered
+    # Determine whether able to route requests to specified actor
     #
     # === Parameters
-    # actor(String):: Name of actor
+    # actor(String):: Actor name
     #
     # === Return
-    # (Boolean):: true if registered, otherwise false
-    def registered?(actor)
-      @registry.actor_for(actor)
+    # (Boolean):: true if can route to actor, otherwise false
+    def routable?(actor)
+      !!@registry.actor_for(actor)
     end
 
     # Route request to appropriate actor for servicing
-    # Handle returning of result to requester including logging any exceptions
     # Reject requests whose TTL has expired or that are duplicates of work already dispatched
-    # Acknowledge request after actor has responded
     #
     # === Parameters
     # request(Request|Push):: Packet containing request
-    # header(AMQP::Frame::Header|nil):: Request header containing ack control; result is not
-    #   published if header is nil
-    # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
+    # header(AMQP::Frame::Header|nil):: Request header containing ack control
     #
     # === Return
-    # (Result|nil):: Result from dispatched request or nil if request is not dispatched
-    #   because its type is unknown, it is a duplicate, or its TTL has expired
-    def dispatch(request, header = nil, shared_queue = nil)
-      begin
-        # Log request if it did not come from a broker queue using broker client log format
-        Log.info("RECV bx #{request.to_s([:from, :tags, :tries, :persistent], :recv_version)}") unless header
-
-        # Determine which actor this request is for
-        ack_deferred = false
-        prefix, method = request.type.split('/')[1..-1]
-        method ||= :index
-        method = method.to_sym
-        actor = @registry.actor_for(prefix)
-        token = request.token
-        received_at = @request_stats.update(method, (token if request.kind_of?(Request)))
-        if actor.nil?
-          Log.error("No actor for dispatching request <#{token}> of type #{request.type}")
-          @dispatch_failure_stats.update("unknown #{request.type}")
-          return nil
-        end
-        method_idempotent = actor.class.idempotent?(method)
-
-        # Reject this request if its TTL has expired
-        if (expires_at = request.expires_at) && expires_at > 0 && received_at.to_i >= expires_at
-          @reject_stats.update("expired (#{method})")
-          Log.info("REJECT EXPIRED <#{token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(received_at.to_i - expires_at)} ago")
-          if request.is_a?(Request)
-            # For agents that do not know about non-delivery, use error result
-            non_delivery = if request.recv_version < 13
-              OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
-            else
-              OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
-            end
-            result = Result.new(token, request.reply_to, non_delivery, @identity, request.from, request.tries, request.persistent)
-            exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
-            @broker.publish(exchange, result, :persistent => true, :mandatory => true)
-          end
-          return nil
-        end
-
-        # Reject this request if it is a duplicate
-        if !method_idempotent && @dispatched_cache
-          if by = @dispatched_cache.serviced_by(token)
-            @reject_stats.update("duplicate (#{method})")
-            Log.info("REJECT DUP <#{token}> serviced by #{by == @identity ? 'self' : by}")
-            return nil
-          end
-          request.tries.each do |t|
-            if by = @dispatched_cache.serviced_by(t)
-              @reject_stats.update("retry duplicate (#{method})")
-              Log.info("REJECT RETRY DUP <#{token}> of <#{t}> serviced by #{by == @identity ? 'self' : by}")
-              return nil
-            end
-          end
-        end
-
-        # Proc for performing request in actor
-        operation = lambda do
-          begin
-            @last_request_dispatch_time = received_at.to_i
-            @dispatched_cache.store(token, shared_queue) if !method_idempotent && @dispatched_cache
-            if actor.method(method).arity.abs == 1
-              actor.__send__(method, request.payload)
-            else
-              actor.__send__(method, request.payload, request)
-            end
-          rescue Exception => e
-            @dispatch_failure_stats.update("#{request.type}->#{e.class.name}")
-            OperationResult.error(handle_exception(actor, method, request, e))
-          end
-        end
-
-        # Proc for creating response and optionally publishing it
-        callback = lambda do |r|
-          begin
-            if request.kind_of?(Request)
-              duration = @request_stats.finish(received_at, token)
-              result = Result.new(token, request.reply_to, r, @identity, request.from, request.tries, request.persistent, duration)
-              if header
-                exchange = {:type => :queue, :name => RESPONSE_QUEUE, :options => {:durable => true, :no_declare => @secure}}
-                @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
-              end
-              result
-            else
-              Result.new(request.token, request.from, OperationResult.success(:targets => shared_queue || @identity), @identity)
-            end
-          rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-            Log.error("Failed to publish result of dispatched request #{request.trace}", e)
-            @response_failure_stats.update("NoConnectedBrokers")
-          rescue Exception => e
-            Log.error("Failed to publish result of dispatched request #{request.trace}", e, :trace)
-            @response_failure_stats.update(e.class.name)
-            @exception_stats.track("publish response", e)
-          end
-        end
-
-        callback.call(operation.call)
-      ensure
-        header.ack if header
+    # (Result|nil):: Result of request, or nil if there is no result because request is a Push
+    #
+    # === Raise
+    # InvalidRequestType:: If the request cannot be routed to an actor
+    # DuplicateRequest:: If request rejected because it has already been processed
+    def dispatch(request)
+      token = request.token
+      actor, method, idempotent = route(request)
+      received_at = @request_stats.update(method, (token if request.is_a?(Request)))
+      if dup = duplicate?(request, method, idempotent)
+        raise DuplicateRequest.new(dup)
+      end
+      unless result = expired?(request, method)
+        result = perform(request, actor, method, idempotent)
+      end
+      if request.is_a?(Request)
+        duration = @request_stats.finish(received_at, token)
+        Result.new(token, request.reply_to, result, @identity, request.from, request.tries, request.persistent, duration)
       end
     end
 
@@ -207,8 +116,6 @@ module RightScale
     #     "stale (<method>)"), or nil if none
     #   "requests"(Hash|nil):: Request activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per request type, or nil if none
-    #   "response failures"(Hash|nil):: Response failure activity stats with keys "total", "percent", "last", and "rate"
-    #     with percentage breakdown per failure type, or nil if none
     #   "response time"(Float):: Average number of seconds to respond to a request recently
     def stats(reset = false)
       stats = {
@@ -217,7 +124,6 @@ module RightScale
         "exceptions"        => @exception_stats.stats,
         "rejects"           => @reject_stats.all,
         "requests"          => @request_stats.all,
-        "response failures" => @response_failure_stats.all,
         "response time"     => @request_stats.avg_duration
       }
       reset_stats if reset
@@ -234,9 +140,98 @@ module RightScale
       @reject_stats = RightSupport::Stats::Activity.new
       @request_stats = RightSupport::Stats::Activity.new
       @dispatch_failure_stats = RightSupport::Stats::Activity.new
-      @response_failure_stats = RightSupport::Stats::Activity.new
       @exception_stats = RightSupport::Stats::Exceptions.new(@agent)
       true
+    end
+
+    # Determine if request TTL has expired
+    #
+    # === Parameters
+    # request(Push|Request):: Request to be checked
+    # method(String):: Actor method requested to be performed
+    #
+    # === Return
+    # (OperationResult|nil):: Error result if expired, otherwise nil
+    def expired?(request, method)
+      if (expires_at = request.expires_at) && expires_at > 0 && (now = Time.now.to_i) >= expires_at
+        @reject_stats.update("expired (#{method})")
+        Log.info("REJECT EXPIRED <#{request.token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(now - expires_at)} ago")
+        # For agents that do not know about non-delivery, use error result
+        if request.recv_version < 13
+          OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
+        else
+          OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
+        end
+      end
+    end
+
+    # Determine whether this request is a duplicate
+    #
+    # === Parameters
+    # request(Request|Push):: Packet containing request
+    # method(String):: Actor method requested to be performed
+    # idempotent(Boolean):: Whether this method is idempotent
+    #
+    # === Return
+    # (String|nil):: Messaging describing who already serviced request if it is a duplicate, otherwise nil
+    def duplicate?(request, method, idempotent)
+      if !idempotent && @dispatched_cache
+        if serviced_by = @dispatched_cache.serviced_by(request.token)
+          from_retry = ""
+        else
+          from_retry = "retry "
+          request.tries.each { |t| break if serviced_by = @dispatched_cache.serviced_by(t) }
+        end
+        if serviced_by
+          @reject_stats.update("#{from_retry}duplicate (#{method})")
+          msg = "<#{request.token}> already serviced by #{serviced_by == @identity ? 'self' : serviced_by}"
+          Log.info("REJECT #{from_retry.upcase}DUP #{msg}")
+          msg
+        end
+      end
+    end
+
+    # Use request type to route request to actor and an associated method
+    #
+    # === Parameters
+    # request(Push|Request):: Packet containing request
+    #
+    # === Return
+    # (Array):: Actor name, method name, and whether method is idempotent
+    #
+    # === Raise
+    # InvalidRequestType:: If the request cannot be routed to an actor
+    def route(request)
+      prefix, method = request.type.split('/')[1..-1]
+      method ||= :index
+      method = method.to_sym
+      actor = @registry.actor_for(prefix)
+      if actor.nil? || !actor.respond_to?(method)
+        raise InvalidRequestType.new("Unknown actor or method for dispatching request <#{request.token}> of type #{request.type}")
+      end
+      [actor, method, actor.class.idempotent?(method)]
+    end
+
+    # Perform requested action
+    #
+    # === Parameters
+    # request(Push|Request):: Packet containing request
+    # token(String):: Unique identity token for request
+    # method(String):: Actor method requested to be performed
+    # idempotent(Boolean):: Whether this method is idempotent
+    #
+    # === Return
+    # (OperationResult):: Result from performing a request
+    def perform(request, actor, method, idempotent)
+      @dispatched_cache.store(request.token) if @dispatched_cache && !idempotent
+      if actor.method(method).arity.abs == 1
+        actor.__send__(method, request.payload)
+      else
+        actor.__send__(method, request.payload, request)
+      end
+    rescue Exception => e
+      @dispatch_failure_stats.update("#{request.type}->#{e.class.name}")
+      OperationResult.error(handle_exception(actor, method, request, e))
     end
 
     # Handle exception by logging it, calling the actors exception callback method,

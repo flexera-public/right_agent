@@ -24,7 +24,7 @@ module RightScale
 
   # Cache for requests that have been dispatched recently
   # This cache is intended for use in checking for duplicate requests
-  # Since this is a local cache, it is not usable for requests received from a shared queue
+  # when there is only one server servicing a queue
   class DispatchedCache
 
     # Maximum number of seconds to retain a dispatched request in cache
@@ -43,16 +43,15 @@ module RightScale
       @max_age = MAX_AGE
     end
 
-    # Store dispatched request token in cache unless from shared queue
+    # Store dispatched request token in cache
     #
     # === Parameters
     # token(String):: Generated message identifier
-    # shared_queue(String|nil):: Name of shared queue if being dispatched from a shared queue
     #
     # === Return
     # true:: Always return true
-    def store(token, shared_queue)
-      if token && shared_queue.nil?
+    def store(token)
+      if token
         now = Time.now.to_i
         if @cache.has_key?(token)
           @cache[token] = now

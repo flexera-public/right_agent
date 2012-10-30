@@ -56,7 +56,7 @@ module RightScale
         if process_running?(pid)
           raise AlreadyRunning.new("#{@pid_file} already exists and process is running (pid: #{pid})")
         else
-          Log.info "removing stale pid file: #{@pid_file}"
+          Log.info("Removing stale pid file: #{@pid_file}")
           remove
         end
       end

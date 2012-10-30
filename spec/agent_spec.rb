@@ -305,7 +305,7 @@ describe RightScale::Agent do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
           @agent.run
-          @agent.instance_variable_get(:@remaining_setup).should == {:setup_identity_queue => @broker_ids.last(1)}
+          @agent.instance_variable_get(:@remaining_queue_setup).should == {@identity => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
           @agent.__send__(:check_status)
@@ -415,13 +415,47 @@ describe RightScale::Agent do
     end
 
     describe "Handling messages" do
-  
+
       it "should use dispatcher to handle requests" do
         run_in_em do
           request = RightScale::Request.new("/foo/bar", "payload")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request, @header).once
-          @dispatcher.should_receive(:dispatch).with(request, @header).once
+          @dispatcher.should_receive(:dispatch).with(request).once
+          @agent.run
+        end
+      end
+
+      it "should publish result from dispatched request to response queue" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          result = flexmock("result")
+          @dispatcher.should_receive(:dispatch).with(request).and_return(result).once
+          @broker.should_receive(:publish).with(hsh(:name => "response"), result,
+                                                hsh(:persistent => true, :mandatory => true)).once
+          @agent.run
+        end
+      end
+
+      it "should not publish result from dispatched request if there is none" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).with(request).and_return(nil).once
+          @broker.should_receive(:publish).never
+          @agent.run
+        end
+      end
+
+      it "should ignore dispatcher duplicate request errors" do
+        run_in_em do
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).and_raise(RightScale::Dispatcher::DuplicateRequest).once
           @agent.run
         end
       end
@@ -431,7 +465,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @sender.should_receive(:handle_response).with(result, @header).once
+          @sender.should_receive(:handle_response).with(result).once
           @agent.run
         end
       end
@@ -441,7 +475,7 @@ describe RightScale::Agent do
           result = RightScale::Result.new("token", "to", "results", "from")
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @sender.should_receive(:handle_response).with(result, @header).once
+          @sender.should_receive(:handle_response).with(result).once
           @sender.should_receive(:message_received).once
           @agent.run
         end
@@ -458,145 +492,27 @@ describe RightScale::Agent do
         end
       end
 
-      it "should ignore unrecognized messages and not attempt to ack if there is no header" do
+      it "should ack if request dispatch fails" do
         run_in_em do
-          request = RightScale::Stats.new(nil, nil)
+          request = RightScale::Request.new("/foo/bar", "payload")
+          @log.should_receive(:error).with(/Failed to dispatch request/, Exception, :trace).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
-                                             and_return(@broker_ids).and_yield(@broker_id, request, nil).once
-          @dispatcher.should_receive(:dispatch).never
+                                             and_return(@broker_ids).and_yield(@broker_id, request, @header).once
+          @dispatcher.should_receive(:dispatch).and_raise(Exception)
+          @header.should_receive(:ack).once
           @agent.run
         end
       end
 
-    end
-
-    describe "Tuning heartbeat" do
-
-      it "should tune heartbeat for all broker connections" do
+      it "should ack if response delivery fails" do
         run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
-          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
+          result = RightScale::Result.new("token", "to", "results", "from")
+          @log.should_receive(:error).with(/Failed to deliver response/, Exception, :trace).once
+          @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
+                                             and_return(@broker_ids).and_yield(@broker_id, result, @header).once
+          @sender.should_receive(:handle_response).and_raise(Exception)
+          @header.should_receive(:ack).once
           @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          @agent.tune_heartbeat(45).should be_nil
-        end
-      end
-
-      it "should tune heartbeat for all broker connections as deferred task" do
-        run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
-          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker/).twice
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          flexmock(@agent).should_receive(:finish_setup)
-          @agent.defer_task { @agent.tune_heartbeat(45).should be_nil }
-          @agent.__send__(:check_status)
-          @agent.instance_variable_get(:@deferred_tasks).should == []
-        end
-      end
-
-      it "should disable heartbeat for all broker connections" do
-        run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 0/).once
-          @log.should_receive(:info).with(/Disabled heartbeat for broker/).twice
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 0).and_return(true).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(0).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          @agent.tune_heartbeat(0).should be_nil
-        end
-      end
-
-      it "should log error if any broker connect attempts fail" do
-        run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
-          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
-          @log.should_receive(:error).with("Failed to reconnect to broker #{@broker_id} to tune heartbeat", Exception, :trace).once
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_raise(Exception).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          @agent.tune_heartbeat(45).should == "Failed to tune heartbeat for brokers [\"#{@broker_id}\"]"
-        end
-      end
-
-      it "should log error if any brokers do not connect" do
-        run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
-          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
-          @log.should_receive(:error).with(/Failed to reconnect to broker #{@broker_id} to tune heartbeat, status/).once
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id]}, Proc).and_yield(:failed)
-          @broker.should_receive(:connection_status).with({:one_off => 60, :brokers => [@broker_id2]}, Proc).and_yield(:connected)
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).never
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          @agent.tune_heartbeat(45).should be_nil
-        end
-      end
-
-      it "should log error if any broker queue setup fails" do
-        run_in_em do
-          @log.should_receive(:info).with(/\[start\] Agent #{@identity} starting; time: .*$/).once
-          @log.should_receive(:info).with(/Reconnecting each broker to tune heartbeat to 45/).once
-          @log.should_receive(:info).with(/Tuned heartbeat to 45 seconds for broker #{@broker_id2}/).once
-          @log.should_receive(:error).with(/Failed to setup queues for broker #{@broker_id} when tuning heartbeat/, Exception, :trace).once
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_return(true).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @broker.should_receive(:connect).with("123", 1, 0, 0, true, Proc).and_yield(@broker_id).once
-          @broker.should_receive(:connect).with("123", 2, 1, 1, true, Proc).and_yield(@broker_id2).once
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id]).and_raise(Exception)
-          flexmock(@agent).should_receive(:setup_queues).with([@broker_id2]).once
-          @agent.tune_heartbeat(45).should be_nil
-        end
-      end
-
-      it "should log error if an exception is raised" do
-        run_in_em do
-          @log.should_receive(:error).with(/Failed tuning broker connection heartbeat/, Exception, :trace).once
-          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
-          flexmock(@agent).should_receive(:load_actors).and_return(true)
-          flexmock(@agent).should_receive(:update_configuration).with(:heartbeat => 45).and_raise(Exception).once
-          @agent.run
-          @broker.should_receive(:heartbeat=).with(45).once
-          @agent.tune_heartbeat(45).should =~ /Failed tuning broker connection heartbeat/
         end
       end
 
