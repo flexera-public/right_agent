@@ -11,7 +11,7 @@ PATH
   remote: .
   specs:
     right_agent (0.14.0)
-      eventmachine (~> 0.12.10)
+      eventmachine (>= 0.12.10, < 2.0)
       json (~> 1.4)
       msgpack (= 0.4.4)
       net-ssh (~> 2.0)
@@ -28,7 +28,6 @@ GEM
     eventmachine (0.12.10)
     eventmachine (0.12.10-x86-mswin32)
     flexmock (0.9.0)
-    jruby-pageant (1.1.1)
     json (1.4.6)
     json (1.4.6-x86-mswin32)
     linecache (0.46)
@@ -41,8 +40,7 @@ GEM
     mime-types (1.18)
     msgpack (0.4.4)
     msgpack (0.4.4-x86-mswin32)
-    net-ssh (2.6.0)
-      jruby-pageant (>= 1.1.1)
+    net-ssh (2.6.1)
     rake (0.9.2.2)
     rbx-require-relative (0.0.9)
     rest-client (1.6.7)
