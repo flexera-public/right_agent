@@ -1,4 +1,6 @@
-source :rubygems
+source :gemcutter
+source 'http://gems.github.com'
+source 'http://s3.amazonaws.com/rightscale_rightlink_gems_dev'
 
 gemspec
 
@@ -12,7 +14,7 @@ gem 'json', '1.4.6'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '0.12.10'
+gem 'eventmachine', '1.0.0.2'
 
 # Windows gems; we must call out for a very specific
 # set of versions since we rely on the prebuilt mswin
