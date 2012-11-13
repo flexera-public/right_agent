@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2012 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -19,6 +19,8 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+require 'fileutils'
 
 module RightScale
 
@@ -44,6 +46,7 @@ module RightScale
     # true:: Always return true
     def update(event)
       @last_update = {:time => Time.now.to_i, :pid => @pid, :event => event}
+      FileUtils.mkdir_p(File.dirname(@history)) unless File.exists?(File.dirname(@history))
       File.open(@history, "a") { |f| f.puts @last_update.to_json }
       true
     end
