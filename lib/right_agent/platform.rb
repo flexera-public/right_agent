@@ -55,6 +55,7 @@ module RightScale
   #  - .release
   #  - .linux?
   #  - .darwin?
+  #  - .freebsd?
   #  - .windows?
   #  - .ec2?
   #  - .rackspace?
@@ -80,6 +81,7 @@ module RightScale
                   when /mswin|win32|dos|mingw|cygwin/i then :windows
                   when /darwin/i then :darwin
                   when /linux/i then :linux
+                  when /freebsd/i then :freebsd
                   end
     end
 
@@ -100,6 +102,16 @@ module RightScale
     def darwin?
       return family == :darwin
     end
+
+    # Is current platform freebsd?
+    #
+    # === Return
+    # true:: If current platform is freebsd
+    # false:: Otherwise
+    def freebsd?
+      return family == :freebsd
+    end
+
     # Is current platform windows?
     #
     # === Return
@@ -149,6 +161,8 @@ module RightScale
         require_linux
       elsif darwin?
         require_darwin
+      elsif freebsd?
+        require_freebsd
       elsif windows?
         require_windows
       else
@@ -295,6 +309,10 @@ module RightScale
       require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'darwin'))
     end
 
+    def require_freebsd
+      require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'freebsd'))
+    end
+
     def require_windows
       require File.expand_path(File.join(File.dirname(__FILE__), 'platform', 'windows'))
     end
@@ -323,6 +341,8 @@ module RightScale
         if linux?
           res = Platform.const_get(const_name).new
         elsif darwin?
+          res = Platform.const_get(const_name).new
+        elsif freebsd?
           res = Platform.const_get(const_name).new
         elsif windows?
           res = Platform.const_get(const_name).new
