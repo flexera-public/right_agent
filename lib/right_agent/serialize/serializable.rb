@@ -70,7 +70,7 @@ module RightScale
         {
           'msgpack_class' => self.class.name,
           'data'          => serialized_members
-        }.to_msgpack(*a)
+        }.to_msgpack(*a).to_s
       end
 
       # Called by JSON serializer to serialise object's members

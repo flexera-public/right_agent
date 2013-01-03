@@ -104,7 +104,8 @@ module RightScale
       @size = msg.size
       # For ruby 1.9 size attribute moves from front to back of packet
       re = RUBY_VERSION < "1.9.0" ? /size\xC0/ : /size\xC0$/
-      msg.sub!(re) { |m| "size" + @size.to_msgpack }
+      # For msgpack 0.5.1 the to_msgpack result is a MessagePack::Packer so need to convert to string
+      msg = msg.to_s.sub!(re) { |m| "size" + @size.to_msgpack }
       msg
     end
 
