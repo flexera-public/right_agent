@@ -24,8 +24,8 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '0.14.0'
-  spec.date      = '2012-10-01'
+  spec.version   = '0.14.1'
+  spec.date      = '2013-01-03'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -42,7 +42,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('json', ['~> 1.4'])
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('right_popen', '~> 1.0.11')
-  spec.add_dependency('msgpack', '0.4.4')
+  spec.add_dependency('msgpack', '~> 0.5')
   spec.add_dependency('net-ssh', '~> 2.0')
 
   if spec.platform.to_s =~ /mswin|mingw/
