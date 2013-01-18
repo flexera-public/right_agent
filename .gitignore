@@ -2,11 +2,9 @@
 tags
 .DS_Store
 *.swp
-.rvmrc
-.rvmrc*
-.bundle
 pkg/*
 doc/rdocs/*
 nbproject/*
 .loadpath
 .project
+.ruby-version
