@@ -22,66 +22,39 @@
 
 module RightScale
 
-  # Linux specific implementation
+  # FreeBSD specific implementation
   class Platform
-
-    FEDORA_REL = '/etc/fedora-release'
-    FEDORA_SIG = /Fedora release ([0-9]+) \(.*\)/
-
     attr_reader :flavor, :release, :codename
 
     # Initialize flavor, release and codename
     def init
-      system('lsb_release --help > /dev/null 2>&1')
-      if $?.success?
-        # Use the lsb_release utility if it's available
-        @flavor   = `lsb_release -is`.strip.downcase
-        @release  = `lsb_release -rs`.strip
-        @codename = `lsb_release -cs`.strip
-      elsif File.exist?(FEDORA_REL) && (match = FEDORA_SIG.match(File.read(FEDORA_REL)))
-        # Parse the fedora-release file if it exists
-        @flavor   = 'fedora'
-        @release  = match[1]
-        @codename = match[2]
-      else
-        @distro = @release = @codename = 'unknown'
-      end
+      @flavor   = "FreeBSD"
+      @release  = `uname -r`.strip.split(/-/).first
+      @codename = "" # For compatibility with linux interface
     end
 
-    # Is this machine running Ubuntu?
-    #
     # === Return
-    # true:: If Linux flavor is Ubuntu
-    # false:: Otherwise
+    # false:: Here for compatibility
     def ubuntu?
-      @flavor =~ /ubuntu/
+      false
     end
 
-    # Is this machine running CentOS?
-    #
     # === Return
-    # true:: If Linux flavor is CentOS
-    # false:: Otherwise
+    # false:: Here for compatibility
     def centos?
-      @flavor =~ /centos/
+      false
     end
 
-    # Is this machine running Suse
-    #
     # === Return
-    # true:: If Linux flavor is Suse
-    # false:: Otherwise
+    # false:: Here for compatibility
     def suse?
-      @flavor =~ /suse/
+      false
     end
 
-    # Is this machine running rhel?
-    #
     # === Return
-    # true:: If Linux flavor is rhel
-    # false:: Otherwise
+    # false:: Here for compatibility
     def rhel?
-      @flavor =~ /redhatenterpriseserver/
+      false
     end
 
     class Filesystem
