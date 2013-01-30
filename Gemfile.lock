@@ -1,9 +1,9 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: e34b6aa4cfdc0013df736bacd27d84f756338108
-  branch: master
+  revision: 84fd7546ea350a1ad72913ff1badb717769ad402
+  branch: release4.7
   specs:
-    right_amqp (0.5.3)
+    right_amqp (0.6.0)
       eventmachine (>= 0.12.10, < 2.0)
       right_support (>= 1.2, < 3.0)
 
@@ -48,6 +48,9 @@ GEM
       mime-types (>= 1.16)
     right_popen (1.0.21)
       eventmachine (>= 0.12.11)
+    right_popen (1.0.21-x86-mswin32)
+      eventmachine (>= 0.12.11)
+      win32-process (>= 0.6.1)
     right_support (2.5.5)
     rspec (2.10.0)
       rspec-core (~> 2.10.0)
