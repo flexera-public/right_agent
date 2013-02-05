@@ -808,7 +808,7 @@ module RightScale
       build_and_send_packet(:send_persistent_request, type, payload, target, callback)
     end
 
-    # Build packet
+    # Build packet or queue it if offline
     #
     # === Parameters
     # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
@@ -825,30 +825,69 @@ module RightScale
     # callback(Boolean):: Whether this request has an associated response callback
     #
     # === Return
-    # (Push|Request):: Packet created
+    # (Push|Request|NilClass):: Packet created, or nil if queued instead
+    #
+    # === Raise
+    # ArgumentError:: If target is invalid
     def build_packet(kind, type, payload, target, callback = false)
-      kind_str = kind.to_s
-      persistent = !!(kind_str =~ /persistent/)
-      if kind_str =~ /push/
-        packet = Push.new(type, payload)
-        packet.selector = target[:selector] || :any if target.is_a?(Hash)
-        packet.confirm = true if callback
+      validate_target(target, !!(kind.to_s =~ /push/))
+      if should_queue?
+        @offline_handler.queue_request(kind, type, payload, target, callback)
+        nil
       else
-        packet = Request.new(type, payload)
-        ttl = @options[:time_to_live]
-        packet.expires_at = Time.now.to_i + ttl if !persistent && ttl && ttl != 0
-        packet.selector = :any
+        kind_str = kind.to_s
+        persistent = !!(kind_str =~ /persistent/)
+        if kind_str =~ /push/
+          packet = Push.new(type, payload)
+          packet.selector = target[:selector] || :any if target.is_a?(Hash)
+          packet.confirm = true if callback
+        else
+          packet = Request.new(type, payload)
+          ttl = @options[:time_to_live]
+          packet.expires_at = Time.now.to_i + ttl if !persistent && ttl && ttl != 0
+          packet.selector = :any
+        end
+        packet.from = @identity
+        packet.token = AgentIdentity.generate
+        packet.persistent = persistent
+        if target.is_a?(Hash)
+          packet.tags = target[:tags] || []
+          packet.scope = target[:scope]
+        else
+          packet.target = target
+        end
+        packet
       end
-      packet.from = @identity
-      packet.token = AgentIdentity.generate
-      packet.persistent = persistent
-      if target.is_a?(Hash)
-        packet.tags = target[:tags] || []
-        packet.scope = target[:scope]
-      else
-        packet.target = target
+    end
+
+    # Send packet
+    #
+    # === Parameters
+    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
+    #   or :send_persistent_request
+    # packet(Push|Request|NilClass):: Packet to send; nothing sent if nil
+    # callback(Proc|nil):: Block used to process routing response
+    #
+    # === Return
+    # true:: Always return true
+    #
+    # === Raise
+    # SendFailure:: If publishing of request fails unexpectedly
+    # TemporarilyOffline:: If cannot publish request because currently not connected
+    #    to any brokers and offline queueing is disabled
+    def send_packet(kind, packet, callback)
+      if packet
+        method = packet.type.split('/').last
+        received_at = @request_stats.update(method, packet.token)
+        @request_kind_stats.update((packet.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
+        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
+        if !packet.persistent && kind.to_s =~ /request/
+          publish_with_timeout_retry(packet, packet.token)
+        else
+          publish(packet)
+        end
       end
-      packet
+      true
     end
 
     # Handle response to a request
@@ -1085,21 +1124,8 @@ module RightScale
     # TemporarilyOffline:: If cannot publish request because currently not connected
     #    to any brokers and offline queueing is disabled
     def build_and_send_packet(kind, type, payload, target, callback)
-      validate_target(target, allow_selector = !!(kind.to_s =~ /push/))
-      if should_queue?
-        @offline_handler.queue_request(kind, type, payload, target, callback)
-      else
-        packet = build_packet(kind, type, payload, target, callback)
-        method = type.split('/').last
-        received_at = @request_stats.update(method, packet.token)
-        @request_kind_stats.update((packet.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
-        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
-        if !packet.persistent && kind.to_s =~ /request/
-          publish_with_timeout_retry(packet, packet.token)
-        else
-          publish(packet)
-        end
-      end
+      packet = build_packet(kind, type, payload, target, callback)
+      send_packet(kind, packet, callback)
       true
     end
 
