@@ -1130,7 +1130,13 @@ module RightScale
     def publish_with_timeout_retry(request, parent, count = 0, multiplier = 1, elapsed = 0, broker_ids = nil)
       published_broker_ids = publish(request, broker_ids)
 
-      if @retry_interval && @retry_timeout && parent && !published_broker_ids.empty?
+      if published_broker_ids.empty?
+        # Could not publish request to any brokers, so respond with non-delivery
+        # to allow requester, e.g., IdempotentRequest, to retry
+        result = OperationResult.non_delivery("request send failed")
+        @non_delivery_stats.update(result.content)
+        handle_response(Result.new(request.token, request.reply_to, result, @identity))
+      elsif @retry_interval && @retry_timeout && parent
         interval = [(@retry_interval * multiplier) + (@request_stats.avg_duration || 0), @retry_timeout - elapsed].min
         EM.add_timer(interval) do
           begin

@@ -381,6 +381,7 @@ describe RightScale::Sender do
       @timer = flexmock("timer")
       flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
       flexmock(EM).should_receive(:next_tick).and_yield.by_default
+      flexmock(EM).should_receive(:defer).and_yield.by_default
       @broker_id = "broker"
       @broker_ids = [@broker_id]
       @broker = flexmock("Broker", :subscribe => true, :publish => @broker_ids, :connected? => true,
@@ -414,7 +415,7 @@ describe RightScale::Sender do
     it "should create a Request object" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.class.should == RightScale::Request
-      end, hsh(:persistent => false, :mandatory => true)).once
+      end, hsh(:persistent => false, :mandatory => true)).and_return(["rs-broker-host-123"]).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
     end
 
@@ -432,7 +433,7 @@ describe RightScale::Sender do
         request.from.should == 'agent'
         request.target.should be_nil
         request.expires_at.should == 1000100
-      end, hsh(:persistent => false, :mandatory => true)).once
+      end, hsh(:persistent => false, :mandatory => true)).and_return(["rs-broker-host-123"]).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
     end
 
@@ -444,14 +445,14 @@ describe RightScale::Sender do
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000))
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.expires_at.should == 0
-      end, hsh(:persistent => false, :mandatory => true)).once
+      end, hsh(:persistent => false, :mandatory => true)).and_return(["rs-broker-host-123"]).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
     end
 
     it "should set the correct target if specified" do
       @broker.should_receive(:publish).with(hsh(:name => "request"), on do |request|
         request.target.should == 'my-target'
-      end, hsh(:persistent => false, :mandatory => true)).once
+      end, hsh(:persistent => false, :mandatory => true)).and_return(["rs-broker-host-123"]).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac', 'my-target') {|response|}
     end
 
@@ -460,7 +461,7 @@ describe RightScale::Sender do
         request.tags.should == ['tag']
         request.selector.should == :any
         request.scope.should == {:account => 123}
-      end, hsh(:persistent => false, :mandatory => true)).once
+      end, hsh(:persistent => false, :mandatory => true)).and_return(["rs-broker-host-123"]).once
       @instance.send_retryable_request('/welcome/aboard', 'iZac', :tags => ['tag'], :scope => {:account => 123})
     end
 
@@ -511,7 +512,7 @@ describe RightScale::Sender do
         @agent.should_receive(:options).and_return({:retry_timeout => nil})
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
-        @broker.should_receive(:publish).once
+        @broker.should_receive(:publish).and_return(["rs-broker-host-123"]).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
 
@@ -520,7 +521,7 @@ describe RightScale::Sender do
         @agent.should_receive(:options).and_return({:retry_interval => nil})
         RightScale::Sender.new(@agent)
         @instance = RightScale::Sender.instance
-        @broker.should_receive(:publish).once
+        @broker.should_receive(:publish).and_return(["rs-broker-host-123"]).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
       end
 
@@ -531,6 +532,20 @@ describe RightScale::Sender do
         @instance = RightScale::Sender.instance
         @broker.should_receive(:publish).and_return([]).once
         @instance.send_retryable_request('/welcome/aboard', 'iZac') {|response|}
+      end
+
+      it "should respond with non-delivery if publish failed" do
+        flexmock(EM).should_receive(:add_timer).never
+        @agent.should_receive(:options).and_return({:retry_timeout => 60, :retry_interval => 60})
+        RightScale::Sender.new(@agent)
+        @instance = RightScale::Sender.instance
+        @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+        @broker.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers).once
+        @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
+          result = RightScale::OperationResult.from_results(response)
+          result.non_delivery?.should be_true
+          result.content.should == "request send failed"
+        end
       end
 
       it "should setup for retry if retry_timeout and retry_interval not nil and publish successful" do
