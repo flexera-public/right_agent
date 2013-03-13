@@ -20,6 +20,8 @@ documentation.
 Also use the built-in issues tracker (https://github.com/rightscale/right_agent/issues)
 to report issues.
 
+Maintained by the RightScale Teal Team
+
 == Interface
 
 A RightAgent exposes its services via actors and methods that are invoked by requests
