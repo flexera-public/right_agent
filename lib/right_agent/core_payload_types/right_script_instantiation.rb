@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -41,7 +41,7 @@ module RightScale
     # (Array) RightScript attachments URLs, array of RightScriptAttachment
     attr_accessor :attachments
     
-    # (Array) RightScripts required packages
+    # (String) RightScripts required packages as a space-delimited list of package names or empty
     attr_accessor :packages
 
     # (Integer) RightScript id
@@ -50,13 +50,16 @@ module RightScale
     # (Boolean) Whether script inputs are ready
     attr_accessor :ready
 
-    # (Array of SecureDocumentLocation) attributes that must be resolved by the instance
+    # (Hash) a map of input names to CredentialLocations which must be retrieved by the instance or nil or empty
     attr_accessor :external_inputs
 
     # (Hash) nil or Hash of input name to flags (array of string tokens) indicating additional
     # boolean properties of the input which are useful to the instance. the presence of the
     # flag means true, absense means false.
     attr_accessor :input_flags
+
+    # (String) Displayable version for RightScript (revision, etc.) or nil
+    attr_accessor :display_version
 
     def initialize(*args)
       @nickname        = args[0] if args.size > 0
@@ -68,11 +71,12 @@ module RightScale
       @ready           = args[6] if args.size > 6
       @external_inputs = args[7] if args.size > 7
       @input_flags     = args[8] if args.size > 8
+      @display_version = args[9] if args.size > 9
     end
     
     # Array of serialized fields given to constructor
     def serialized_members
-      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @input_flags ]
+      [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @input_flags, @display_version ]
     end
     
   end

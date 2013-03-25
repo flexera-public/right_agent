@@ -10,7 +10,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (0.14.2)
+    right_agent (0.14.3)
       eventmachine (>= 0.12.10, < 2.0)
       json (~> 1.4)
       msgpack (~> 0.5)
