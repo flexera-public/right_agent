@@ -13,7 +13,7 @@ PATH
     right_agent (0.14.3)
       eventmachine (>= 0.12.10, < 2.0)
       json (~> 1.4)
-      msgpack (~> 0.5)
+      msgpack (>= 0.4.4, < 0.6)
       net-ssh (~> 2.0)
       right_amqp (~> 0.4)
       right_popen (~> 1.0.11)

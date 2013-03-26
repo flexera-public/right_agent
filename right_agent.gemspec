@@ -42,7 +42,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('json', ['~> 1.4'])
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('right_popen', '~> 1.0.11')
-  spec.add_dependency('msgpack', '~> 0.5')
+  spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
   spec.add_dependency('net-ssh', '~> 2.0')
 
   if spec.platform.to_s =~ /mswin|mingw/
