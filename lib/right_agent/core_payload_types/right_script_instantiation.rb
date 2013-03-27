@@ -78,6 +78,17 @@ module RightScale
     def serialized_members
       [ @nickname, @source, @parameters, @attachments, @packages, @id, @ready, @external_inputs, @input_flags, @display_version ]
     end
-    
+
+    # Human readable title
+    #
+    # === Return
+    # @return [String] title for display
+    def title
+      if @display_version
+        "'#{nickname}' #{@display_version}"
+      else
+        nickname
+      end
+    end
   end
 end

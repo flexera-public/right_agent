@@ -123,7 +123,7 @@ module RightScale
     # === Return
     # desc(String):: Auditable description
     def to_s
-      desc = @executables.collect { |e| e.nickname }.join(', ') if @executables
+      desc = @executables.collect { |e| e.title }.join(', ') if @executables
       desc ||= 'empty bundle'
     end
   end

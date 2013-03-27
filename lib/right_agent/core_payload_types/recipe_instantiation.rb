@@ -62,5 +62,12 @@ module RightScale
       [ @nickname, @attributes, @id, @ready, @external_inputs, @input_flags ]
     end
 
+    # Human readable title
+    #
+    # === Return
+    # @return [String] title for display
+    def title
+      nickname
+    end
   end
 end
