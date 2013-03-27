@@ -656,7 +656,7 @@ EOF
         line_regex = nil
         header_regex = /  --------  (-+)  -------  -------  ---  ---/
         header_match = nil
-        output_text.each do |line|
+        output_text.lines.each do |line|
           line = line.chomp
           if line_regex
             if line.strip.empty?
@@ -722,7 +722,7 @@ EOF
         header_regex = /  ----------  ---  (-+)  (-+)  (-+)  -------  (-+)  (-+)/
         header_match = nil
         line_regex = nil
-        output_text.each do |line|
+        output_text.lines.each do |line|
           line = line.chomp
           if line_regex
             if line.strip.empty?
@@ -805,7 +805,7 @@ EOF
         header_regex = /  -------------  (-+)  -------  -------/
         header_match = nil
         line_regex = nil
-        output_text.each do |line|
+        output_text.lines.each do |line|
           line = line.chomp
           if line_regex
             if line.strip.empty?
