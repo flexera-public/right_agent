@@ -60,5 +60,14 @@ module RightScale
         super(message)
       end
     end
+
+    # Database query failed
+    class QueryFailure < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
   end
 end
