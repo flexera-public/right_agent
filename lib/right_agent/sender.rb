@@ -1204,7 +1204,7 @@ module RightScale
                 @non_delivery_stats.update(result.content)
                 handle_response(Result.new(request.token, request.reply_to, result, @identity))
               end
-              @connectivity_checker.check(published_broker_ids.first) if count == 1
+              @connectivity_checker.check(published_broker_ids.first) if count == 1 && !published_broker_ids.empty?
             end
           rescue TemporarilyOffline => e
             # Send retry response so that requester, e.g., IdempotentRequest, can retry
