@@ -373,7 +373,7 @@ module RightScale
     def terminate(reason = nil, exception = nil, &block)
       block ||= DEFAULT_TERMINATE_BLOCK
       begin
-        @history.update("stop")
+        @history.update("stop") if @history
         Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
         if @terminating || @broker.nil?
           @terminating = true
@@ -381,7 +381,7 @@ module RightScale
           @termination_timer = nil
           Log.info("[stop] Terminating immediately")
           block.call
-          @history.update("graceful exit") if @broker.nil?
+          @history.update("graceful exit") if @history && @broker.nil?
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
