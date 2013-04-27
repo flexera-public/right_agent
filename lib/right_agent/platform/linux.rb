@@ -153,6 +153,10 @@ module RightScale
         '/var/spool'
       end
 
+      def ssh_cfg_dir
+        '/etc/ssh'
+      end
+
       # Cached data from applications. Such data is locally generated as a
       # result of time-consuming I/O or calculation. The application must
       # be able to regenerate or restore the data.
