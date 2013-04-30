@@ -102,6 +102,12 @@ module RightScale
         '/var/spool'
       end
 
+      def ssh_cfg_dir
+        # TODO This is a guess, but since we don't have Darwin instances
+        # it may need to be corrected later.
+        '/etc/ssh'
+      end
+
       # Cached data from applications. Such data is locally generated as a
       # result of time-consuming I/O or calculation. The application must
       # be able to regenerate or restore the data.
