@@ -81,7 +81,7 @@ class AgentManager
   # === Return
   # (OperationResult):: Empty success result or error result with message
   def profile(options)
-    require 'memprof'
+    return error_result("The memprof gem is not available for profiling.  Please install memprof 0.3 manually") unless require_succeeds?('memprof')
 
     options = RightScale::SerializationHelper.symbolize_keys(options || {})
     if options[:start]
