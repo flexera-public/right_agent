@@ -14,7 +14,7 @@ gem 'json', '1.4.6'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '1.0.0.2'
+gem 'eventmachine', '1.0.0.3'
 
 # Windows gems; we must call out for a very specific
 # set of versions since we rely on the prebuilt mswin
@@ -33,6 +33,4 @@ group :development, :test do
       :platforms => :mri_18
   gem "ruby-debug19",
       :platforms => :mri_19
-  gem "memprof",     "~> 0.3",
-      :platforms => :mri_18
 end
