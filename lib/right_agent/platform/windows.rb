@@ -175,6 +175,10 @@ module RightScale
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'spool'))
       end
 
+      def ssh_cfg_dir
+        raise ::RightScale::PlatformNotSupported, "Cannot determine SSH config path on this platform"
+      end
+
       # Cache directory for the current platform
       def cache_dir
         return pretty_path(File.join(Dir::COMMON_APPDATA, 'RightScale', 'cache'))
