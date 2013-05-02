@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -19,7 +19,6 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 
 module RightScale
 
@@ -43,7 +42,7 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def tags(options={})
+    def tags(options = {})
       do_query(nil, @agent.identity, options) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
@@ -57,7 +56,7 @@ module RightScale
     # of the given tags.
     #
     # === Parameters
-    # tags(Array):: tags to query or empty
+    # tags(String, Array):: Tag or tags to query or empty
     # options(Hash):: Request options
     #   :raw(Boolean):: true to yield raw tag response instead of deserialized tags
     #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
@@ -68,14 +67,8 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def query_tags(*tags)
-      if tags.last.respond_to?(:keys)
-        tags = tags[0..-2]
-        options = tags.last
-      else
-        options = {}
-      end
-
+    def query_tags(tags, options = {})
+      tags = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       do_query(tags, nil, options) { |result| yield result }
     end
 
@@ -83,7 +76,7 @@ module RightScale
     # of the given tags. Yields the raw response (for responding locally).
     #
     # === Parameters
-    # tags(Array):: tags to query or empty
+    # tags(String, Array):: Tag or tags to query or empty
     # agent_ids(Array):: agent IDs to query or empty or nil
     # options(Hash):: Request options
     #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
@@ -93,15 +86,16 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def query_tags_raw(tags, agent_ids = nil, options={})
-      options = options.merge(:raw=>true)
+    def query_tags_raw(tags, agent_ids = nil, options = {})
+      tags = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
+      options = options.merge(:raw => true)
       do_query(tags, agent_ids, options) { |raw_response| yield raw_response }
     end
 
     # Add given tags to agent
     #
     # === Parameters
-    # new_tags(Array):: Tags to be added
+    # new_tags(String, Array):: Tag or tags to be added
     #
     # === Block
     # A block is optional. If provided, should take one argument which will be set with the
@@ -109,14 +103,15 @@ module RightScale
     #
     # === Return
     # true always return true
-    def add_tags(*new_tags)
+    def add_tags(new_tags)
+      new_tags = ensure_flat_array_value(new_tags) unless new_tags.nil? || new_tags.empty?
       update_tags(new_tags, []) { |raw_response| yield raw_response if block_given? }
     end
 
     # Remove given tags from agent
     #
     # === Parameters
-    # old_tags(Array):: Tags to be removed
+    # old_tags(String, Array):: Tag or tags to be removed
     #
     # === Block
     # A block is optional. If provided, should take one argument which will be set with the
@@ -124,7 +119,8 @@ module RightScale
     #
     # === Return
     # true always return true
-    def remove_tags(*old_tags)
+    def remove_tags(old_tags)
+      old_tags = ensure_flat_array_value(old_tags) unless old_tags.nil? || old_tags.empty?
       update_tags([], old_tags) { |raw_response| yield raw_response if block_given? }
     end
 
@@ -171,7 +167,7 @@ module RightScale
     # === Return
     # true::Always return true
     def clear
-      update_tags([], tags) { |raw_response| yield raw_response }
+      update_tags([], @agent.tags) { |raw_response| yield raw_response }
     end
 
     private
@@ -183,10 +179,10 @@ module RightScale
     # Runs a tag query with an optional list of tags.
     #
     # === Parameters
-    # tags(Array):: tags to query or empty or nil
-    # agent_ids(Array):: agent IDs to query or empty or nil
+    # tags(Array):: Tags to query or empty or nil
+    # agent_ids(Array):: IDs of agents to query with empty or nil meaning all agents in deployment
     # options(Hash):: Request options
-    #   :raw(Boolean):: true to yield raw tag response instead of deserialized tags
+    #   :raw(Boolean):: true to yield raw tag response instead of unserialized tags
     #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
@@ -195,7 +191,7 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def do_query(tags = nil, agent_ids = nil, options={})
+    def do_query(tags = nil, agent_ids = nil, options = {})
       raw = options[:raw] || false
       timeout = options[:timeout]
 
@@ -241,4 +237,5 @@ module RightScale
   # to the old typename
   # TODO remove this alias for RightAgent 1.0
   AgentTagsManager = AgentTagManager
+
 end # RightScale
