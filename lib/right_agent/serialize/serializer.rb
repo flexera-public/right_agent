@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -90,11 +90,13 @@ module RightScale
     #
     # === Parameters
     # packet(String):: Data representing serialized object
+    # id(String|nil):: Optional identifier of source of data for use
+    #   in determining who is the receiver
     #
     # === Return
     # (Object):: Unserialized object
-    def load(packet)
-      cascade_serializers(:load, packet, @secure ? [SecureSerializer] : order_serializers(packet))
+    def load(packet, id = nil)
+      cascade_serializers(:load, packet, @secure ? [SecureSerializer] : order_serializers(packet), id)
     end
 
     private
@@ -112,18 +114,21 @@ module RightScale
     # action(Symbol):: Serialization action: :dump or :load
     # packet(Object|String):: Object or serialized data on which action is to be performed
     # serializers(Array):: Serializers to apply in order
+    # id(String
+    # ):: Optional identifier of source of data for use
+    #   in determining who is the receiver
     #
     # === Return
     # (String|Object):: Result of serialization action
     #
     # === Raises
     # SerializationError:: If none of the serializers can perform the requested action
-    def cascade_serializers(action, packet, serializers)
+    def cascade_serializers(action, packet, serializers, id = nil)
       errors = []
       serializers.map do |serializer|
         obj = nil
         begin
-          obj = serializer.__send__(action, packet)
+          obj = id ? serializer.send(action, packet, id) :  serializer.send(action, packet)
         rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
           errors << Log.format("Failed to #{action} with #{serializer.name}", e)
         rescue Exception => e

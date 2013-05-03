@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,34 +28,48 @@ module RightScale
     # Initialize cache proxy with given certificate store
     #
     # === Parameters
-    # store(Object):: Certificate store responding to get_recipients and
-    #   get_signer
+    # store(Object):: Certificate store responding to get_signer, get_target,
+    # and get_receiver
     def initialize(store)
       @signer_cache = CertificateCache.new
       @store = store
     end
 
-    # Retrieve recipient certificates
-    # Results are not cached
-    #
-    # === Parameters
-    # packet(RightScale::Packet):: Packet containing recipient identity, ignored
-    #
-    # === Return
-    # (Array):: Recipient certificates
-    def get_recipients(obj)
-      @store.get_recipients(obj)
-    end
-
-    # Check cache for signer certificate
+    # Retrieve signer certificates for use in verifying a signature
+    # Check cache first and cache results
     #
     # === Parameters
     # id(String):: Serialized identity of signer
     #
     # === Return
-    # (Array):: Signer certificates
+    # (Array|Certificate):: Signer certificate(s)
     def get_signer(id)
       @signer_cache.get(id) { @store.get_signer(id) }
+    end
+
+    # Retrieve certificates of target for encryption
+    # Results are not cached
+    #
+    # === Parameters
+    # packet(RightScale::Packet):: Packet containing target identity
+    #
+    # === Return
+    # (Array|Certificate):: Target certificate(s)
+    def get_target(obj)
+      @store.get_target(obj)
+    end
+
+    # Retrieve receiver's certificate and key for decryption
+    # Results are not cached
+    #
+    # === Parameters
+    # id(String|nil):: Optional identifier of source of data for use
+    #   in determining who is the receiver
+    #
+    # === Return
+    # (Array):: Certificate and key
+    def get_receiver(id)
+      @store.get_receiver(id)
     end
 
   end # CachedCertificateStoreProxy
