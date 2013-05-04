@@ -426,9 +426,9 @@ describe RightScale::Agent do
         end
       end
 
-      it "should publish result from dispatched request to response queue" do
+      it "should publish result from dispatched request to request reply_to" do
         run_in_em do
-          request = RightScale::Request.new("/foo/bar", "payload")
+          request = RightScale::Request.new("/foo/bar", "payload", {:reply_to => "response"})
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request, @header).once
           result = flexmock("result")
