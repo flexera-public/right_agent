@@ -721,7 +721,7 @@ module RightScale
     def dispatch_request(request, queue)
       begin
         if result = @dispatcher.dispatch(request)
-          exchange = {:type => :queue, :name => "response", :options => {:durable => true, :no_declare => @options[:secure]}}
+          exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @options[:secure]}}
           @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
         end
       rescue Dispatcher::DuplicateRequest
