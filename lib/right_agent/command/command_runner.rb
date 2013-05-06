@@ -58,6 +58,7 @@ module RightScale
     # (RightScale::Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
     def self.start(socket_port, identity, commands, fiber_pool = nil)
       cmd_options = nil
+      backup_ports = (49152..65535).to_a.shuffle
       @listen_port = socket_port
 
       begin
@@ -97,7 +98,8 @@ module RightScale
         Log.info("[setup] Command server started listening on port #{@listen_port}")
       rescue Exceptions::IO
         # Port already taken, increment and retry
-        cmd_options = start(socket_port + 1, identity, commands)
+        socket_port =  backup_ports.pop
+        cmd_options = start(socket_port, identity, commands)
       end
 
       cmd_options
