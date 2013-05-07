@@ -35,6 +35,10 @@ module RightScale
       attr_reader :cookie
     end
 
+    def rand_in_range(low, high)
+      low + rand(high - low)
+    end
+
     # Start a command runner listening on a local TCP port.
     #
     # === Parameters
@@ -58,7 +62,6 @@ module RightScale
     # (RightScale::Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
     def self.start(socket_port, identity, commands, fiber_pool = nil)
       cmd_options = nil
-      backup_ports = (49152..65535).to_a.shuffle
       @listen_port = socket_port
 
       begin
@@ -98,8 +101,8 @@ module RightScale
         Log.info("[setup] Command server started listening on port #{@listen_port}")
       rescue Exceptions::IO
         # Port already taken, increment and retry
-        socket_port =  backup_ports.pop
-        cmd_options = start(socket_port, identity, commands)
+        next_port_to_try = rand_in_range(49152, 65535)
+        cmd_options = start(next_port_to_try, identity, commands)
       end
 
       cmd_options
