@@ -39,7 +39,7 @@ unless defined?(RUBY_PATCH_BASE_DIR)
 case (family = RbConfig::CONFIG['host_os'])
 when /mswin|win32|dos|mingw|cygwin/i
   require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'windows_patch'))
-when /linux/i
+when /linux|freebsd/i
   require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'linux_patch'))
 when /darwin/i
   require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'darwin_patch'))
