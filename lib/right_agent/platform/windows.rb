@@ -1117,7 +1117,7 @@ EOF
           # the $Error list if necessary), so this is a catch-all for any
           # script which does not handle errors "properly".
           lines_after_script << "if ($NULL -eq $LastExitCode) { $LastExitCode = 0 }"
-          lines_after_script << "if ((0 -eq $LastExitCode) -and ($Error.Count -gt 0)) { $RS_message = 'Script exited successfully but $Error contained '+($Error.Count)+' error(s).'; Write-warning $RS_message; $LastExitCode = 1 }"
+          lines_after_script << "if ((0 -eq $LastExitCode) -and ($Error.Count -gt 0)) { $RS_message = 'Script exited successfully but $Error contained '+($Error.Count)+' error(s):'; write-output $RS_message; write-output $Error; $LastExitCode = 1 }"
         end
 
         # ensure last exit code gets marshalled.
