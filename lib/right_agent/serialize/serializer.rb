@@ -142,7 +142,13 @@ module RightScale
     # === Return
     # (Array):: Ordered serializers
     def order_serializers(packet)
-      packet.getbyte(0) > 127 ? MSGPACK_FIRST_SERIALIZERS : JSON_FIRST_SERIALIZERS
+      # note the following code for getting the ascii value of the first byte is
+      # efficient for a large packet because it returns an enumerator for the
+      # internal byte array. it is actually more efficient than extracting the
+      # first character as a string and converting it to bytes.
+      # also, the following line works for both ruby 1.8 and ruby 1.9 since the
+      # definition of the bracket operator has changed.
+      packet.bytes.first > 127 ? MSGPACK_FIRST_SERIALIZERS : JSON_FIRST_SERIALIZERS
     end
 
   end # Serializer
