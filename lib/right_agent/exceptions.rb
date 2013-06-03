@@ -22,9 +22,52 @@
 
 module RightScale
   class Exceptions
-    class Application < RuntimeError; end
+    # Capability not currently supported
+    class NotSupported < Exception; end
+
+    # Internal application error
+    class Application < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
+    # Invalid command or method argument
     class Argument < RuntimeError; end
+
+    # Agent command IO error
     class IO < RuntimeError; end
+
+    # Agent compute platform error
     class PlatformError < StandardError; end
+
+    # Cannot connect or lost connection to external resource
+    class ConnectivityFailure < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
+    # Request failed but potentially will succeed if retried
+    class RetryableError < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
+    # Database query failed
+    class QueryFailure < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
   end
 end

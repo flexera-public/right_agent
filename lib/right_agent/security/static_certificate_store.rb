@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -22,46 +22,62 @@
 
 module RightScale
 
-  # Simple certificate store, serves a static set of certificates
+  # Simple certificate store that serves a static set of certificates and one key
   class StaticCertificateStore
     
     # Initialize store
     #
     # === Parameters
+    # receiver_cert(Certificate):: Certificate for decrypting serialized data being received
+    # receiver_key(RsaKeyPair):: Key corresponding to specified cert
     # signer_certs(Array|Certificate):: Signer certificate(s) used when loading data to
     #   check the digital signature. The signature associated with the serialized data
     #   needs to match with one of the signer certificates for loading to succeed.
-    # recipients_certs(Array|Certificate):: Recipient certificate(s) used when serializing
+    # target_certs(Array|Certificate):: Target certificate(s) used when serializing
     #   data for encryption. Loading the data can only be done through serializers that
-    #   have been initialized with a certificate that's in the recipient certificates
+    #   have been initialized with a certificate that's in the target certificates
     #   if encryption is enabled.
-    def initialize(signer_certs, recipients_certs)
+    def initialize(receiver_cert, receiver_key, signer_certs, target_certs)
+      @receiver_cert = receiver_cert
+      @receiver_key = receiver_key
       signer_certs = [ signer_certs ] unless signer_certs.respond_to?(:each)
       @signer_certs = signer_certs 
-      recipients_certs = [ recipients_certs ] unless recipients_certs.respond_to?(:each)
-      @recipients_certs = recipients_certs
+      target_certs = [ target_certs ] unless target_certs.respond_to?(:each)
+      @target_certs = target_certs
     end
     
-    # Retrieve signer certificates
+    # Retrieve signer certificates for use in verifying a signature
     #
     # === Parameters
     # id(String):: Serialized identity of signer, ignored
     #
     # === Return
-    # (Array):: Signer certificates
+    # (Array|Certificate):: Signer certificates
     def get_signer(id)
       @signer_certs
     end
 
-    # Retrieve recipient certificates that will be able to decrypt the serialized data
+    # Retrieve certificates of target for encryption
     #
     # === Parameters
-    # packet(RightScale::Packet):: Packet containing recipient identity, ignored
+    # packet(RightScale::Packet):: Packet containing target identity, ignored
     #
     # === Return
-    # (Array):: Recipient certificates
-    def get_recipients(packet)
-      @recipients_certs
+    # (Array|Certificate):: Target certificates
+    def get_target(packet)
+      @target_certs
+    end
+
+    # Retrieve receiver's certificate and key for decryption
+    #
+    # === Parameters
+    # id(String|nil):: Optional identifier of source of data for use
+    #   in determining who is the receiver, ignored
+    #
+    # === Return
+    # (Array):: Certificate and key
+    def get_receiver(id)
+      [@receiver_cert, @receiver_key]
     end
     
   end # StaticCertificateStore

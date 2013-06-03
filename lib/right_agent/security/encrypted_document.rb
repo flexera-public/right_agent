@@ -33,8 +33,7 @@ module RightScale
     #
     # === Parameters
     # data(String):: Data to be encrypted
-    # certs(Array):: Recipient certificates (certificates corresponding to private
-    #   keys that may be used to decrypt data)
+    # certs(Array|Certificate):: Target recipient certificates used to encrypt data
     # cipher(Cipher):: Cipher used for encryption, AES 256 CBC by default
     def initialize(data, certs, cipher = 'AES-256-CBC')
       cipher = OpenSSL::Cipher::Cipher.new(cipher)

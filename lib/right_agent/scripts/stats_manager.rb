@@ -162,7 +162,7 @@ module RightScale
         client = CommandClient.new(listen_port, config_options[:cookie])
         command = {:name => :stats, :reset => options[:reset]}
         begin
-          client.send_command(command, options[:verbose], options[:timeout]) { |r| display(agent_name, r, options) }
+          client.send_command(command, verbose = false, options[:timeout]) { |r| display(agent_name, r, options) }
           res = true
         rescue Exception => e
           msg = "Could not retrieve #{agent_name} agent stats: #{e}"

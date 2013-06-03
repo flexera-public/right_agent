@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -26,12 +26,13 @@ module RightScale
   # X.509 certificate signing
   class SecureSerializer
 
+    class MissingPrivateKey < Exception; end
     class MissingCertificate < Exception; end
     class InvalidSignature < Exception; end
 
-    # create the one and only SecureSerializer
-    def self.init(serializer, identity, cert, key, store, encrypt = true)
-      @serializer = SecureSerializer.new(serializer, identity, cert, key, store, encrypt)
+    # Create the one and only SecureSerializer
+    def self.init(serializer, identity, store, encrypt = true)
+      @serializer = SecureSerializer.new(serializer, identity, store, encrypt)
       true
     end
 
@@ -40,14 +41,16 @@ module RightScale
       !@serializer.nil?
     end
 
-    # see SecureSerializer::dump
+    # See SecureSerializer#dump
     def self.dump(obj, encrypt = nil)
+      raise "Secure serializer not initialized" unless initialized?
       @serializer.dump(obj, encrypt)
     end
 
-    # see SecureSerializer::load
-    def self.load(msg)
-      @serializer.load(msg)
+    # See SecureSerializer#load
+    def self.load(msg, id = nil)
+      raise "Secure serializer not initialized" unless initialized?
+      @serializer.load(msg, id)
     end
 
     # Initialize serializer, must be called prior to using it
@@ -55,17 +58,19 @@ module RightScale
     # === Parameters
     # serializer(Serializer):: Object serializer
     # identity(String):: Serialized identity associated with serialized messages
-    # cert(String):: Certificate used to sign and decrypt serialized messages
-    # key(RsaKeyPair):: Private key corresponding to specified cert
-    # store(Object):: Certificate store exposing certificates used for
-    #   encryption (get_recipients) and signature validation (get_signer)
+    # store(Object):: Credentials store exposing certificates used for
+    #   encryption (:get_target), signature validation (:get_signer), and
+    #   certificate(s)/key(s) used for decryption (:get_receiver)
     # encrypt(Boolean):: true if data should be signed and encrypted, otherwise
     #   just signed, true by default
-    def initialize(serializer, identity, cert, key, store, encrypt = true)
+    def initialize(serializer, identity, store, encrypt = true)
       @identity = identity
-      @cert = cert
-      @key = key
+      raise "Missing local agent identity" unless @identity
       @store = store
+      raise "Missing credentials store" unless @store
+      @cert, @key = @store.get_receiver(@identity)
+      raise "Missing local agent public certificate" unless @cert
+      raise "Missing local agent private key" unless @key
       @encrypt = encrypt
       @serializer = serializer
     end
@@ -84,10 +89,6 @@ module RightScale
     # === Raise
     # Exception:: If certificate identity, certificate store, certificate, or private key missing
     def dump(obj, encrypt = nil)
-      raise "Missing certificate identity" unless @identity
-      raise "Missing certificate" unless @cert
-      raise "Missing certificate key" unless @key
-      raise "Missing certificate store" unless @store || !@encrypt
       must_encrypt = encrypt || @encrypt
       serialize_format = if obj.respond_to?(:send_version) && obj.send_version >= 12
         @serializer.format
@@ -97,12 +98,12 @@ module RightScale
       encode_format = serialize_format == :json ? :pem : :der
       msg = @serializer.dump(obj, serialize_format)
       if must_encrypt
-        certs = @store.get_recipients(obj)
+        certs = @store.get_target(obj)
         if certs
           msg = EncryptedDocument.new(msg, certs).encrypted_data(encode_format)
         else
           target = obj.target_for_encryption if obj.respond_to?(:target_for_encryption)
-          Log.warning("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
+          Log.error("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
         end
       end
       sig = Signature.new(msg, @cert, @key).data(encode_format)
@@ -114,6 +115,8 @@ module RightScale
     #
     # === Parameters
     # msg(String):: Serialized and optionally encrypted object using MessagePack or JSON
+    # id(String|nil):: Optional identifier of source of data for use
+    #   in determining who is the receiver
     #
     # === Return
     # (Object):: Unserialized object
@@ -122,11 +125,7 @@ module RightScale
     # Exception:: If certificate store, certificate, or private key missing
     # MissingCertificate:: If could not find certificate for message signer
     # InvalidSignature:: If message signature check failed for message
-    def load(msg)
-      raise "Missing certificate store" unless @store
-      raise "Missing certificate" unless @cert || !@encrypt
-      raise "Missing certificate key" unless @key || !@encrypt
-
+    def load(msg, id = nil)
       msg = @serializer.load(msg)
       sig = Signature.from_data(msg['signature'])
       certs = @store.get_signer(msg['id'])
@@ -137,7 +136,10 @@ module RightScale
 
       data = msg['data']
       if data && msg['encrypted']
-        data = EncryptedDocument.from_data(data).decrypted_data(@key, @cert)
+        cert, key = @store.get_receiver(id)
+        raise MissingCertificate.new("Could not find a certificate for #{id.inspect}") unless cert
+        raise MissingPrivateKey.new("Could not find a private key for #{id.inspect}") unless key
+        data = EncryptedDocument.from_data(data).decrypted_data(key, cert)
       end
       @serializer.load(data) if data
     end

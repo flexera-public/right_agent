@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -37,8 +37,8 @@ module RightScale
       cert = Certificate.load(AgentConfig.certs_file("#{agent_type}.cert"))
       key = RsaKeyPair.load(AgentConfig.certs_file("#{agent_type}.key"))
       mapper_cert = Certificate.load(AgentConfig.certs_file("mapper.cert"))
-      store = StaticCertificateStore.new(mapper_cert, mapper_cert)
-      SecureSerializer.init(Serializer.new, agent_id, cert, key, store)
+      store = StaticCertificateStore.new(cert, key, mapper_cert, mapper_cert)
+      SecureSerializer.init(Serializer.new, agent_id, store)
       true
     end
 

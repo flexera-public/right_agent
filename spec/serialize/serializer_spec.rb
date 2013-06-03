@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -133,7 +133,7 @@ describe RightScale::Serializer do
 
     it "should cascade through available serializers" do
       serializer = RightScale::Serializer.new
-      flexmock(serializer).should_receive(:cascade_serializers).with(:load, "olleh", [JSON, MessagePack]).once
+      flexmock(serializer).should_receive(:cascade_serializers).with(:load, "olleh", [JSON, MessagePack], nil).once
       serializer.load("olleh")
     end
 
@@ -157,6 +157,13 @@ describe RightScale::Serializer do
       flexmock(JSON).should_receive(:load).with(serialized).never
       flexmock(MessagePack).should_receive(:load).with(serialized).and_return(object).once
       RightScale::Serializer.new(:json).load(serialized)
+    end
+
+    it "should pass along optional id to serializer" do
+      object = [1, 2, 3]
+      serialized = object.to_msgpack
+      flexmock(MessagePack).should_receive(:load).with(serialized, "id").and_return(object).once
+      RightScale::Serializer.new.load(serialized, "id")
     end
 
     it "should raise SerializationError if packet could not be unserialized" do

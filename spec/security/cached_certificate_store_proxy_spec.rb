@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -27,30 +27,36 @@ describe RightScale::CachedCertificateStoreProxy do
   include RightScale::SpecHelper
 
   before(:all) do
+    @cert, @key = issue_cert
     @signer, key = issue_cert
-    @recipient, key = issue_cert
+    @target, key = issue_cert
     @store = flexmock("Store")
     @proxy = RightScale::CachedCertificateStoreProxy.new(@store)
   end
 
   it 'should not raise and return nil for non existent certificates' do
     res = nil
-    @store.should_receive(:get_recipients).with(nil).and_return(nil)
-    lambda { res = @proxy.get_recipients(nil) }.should_not raise_error
+    @store.should_receive(:get_target).with(nil).and_return(nil)
+    lambda { res = @proxy.get_target(nil) }.should_not raise_error
     res.should == nil
     @store.should_receive(:get_signer).with(nil).and_return(nil)
     lambda { res = @proxy.get_signer(nil) }.should_not raise_error
     res.should == nil
   end
 
-  it 'should return recipient certificates' do
-    @store.should_receive(:get_recipients).with('anything').and_return(@recipient)
-    @proxy.get_recipients('anything').should == @recipient
+  it 'should return target certificates' do
+    @store.should_receive(:get_target).with('anything').and_return(@target)
+    @proxy.get_target('anything').should == @target
   end
   
   it 'should return signer certificates' do
     @store.should_receive(:get_signer).with('anything').and_return(@signer)
     @proxy.get_signer('anything').should == @signer
   end
-  
+
+  it 'should return receiver certificate and key' do
+    @store.should_receive(:get_receiver).with('anything').and_return([@cert, @key])
+    @proxy.get_receiver('anything').should == [@cert, @key]
+  end
+
 end
