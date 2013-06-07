@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,25 +28,31 @@ describe RightScale::StaticCertificateStore do
 
   before(:all) do
     @signer, key = issue_cert
-    @recipient, key = issue_cert
+    @target, key = issue_cert
     @cert, @key = issue_cert
-    @store = RightScale::StaticCertificateStore.new(@signer, @recipient)
+    @store = RightScale::StaticCertificateStore.new(@cert, @key, @signer, @target)
   end
 
   it 'should not raise when passed nil objects' do
     res = nil
     lambda { res = @store.get_signer(nil) }.should_not raise_error
     res.should == [ @signer ]
-    lambda { res = @store.get_recipients(nil) }.should_not raise_error
-    res.should == [ @recipient ]
+    lambda { res = @store.get_target(nil) }.should_not raise_error
+    res.should == [ @target ]
+    lambda { res = @store.get_receiver(nil) }.should_not raise_error
+    res.should == [ @cert, @key ]
   end
 
   it 'should return signer certificates' do
     @store.get_signer('anything').should == [ @signer ]
   end
 
-  it 'should return recipient certificates' do
-    @store.get_recipients('anything').should == [ @recipient ]
+  it 'should return target certificates' do
+    @store.get_target('anything').should == [ @target ]
+  end
+
+  it 'should return certificate and key for decrypting' do
+    @store.get_receiver('anything').should == [ @cert, @key ]
   end
   
 end

@@ -38,8 +38,8 @@ module RightScale
     # (Hash) Configuration options applied to the agent
     attr_reader :options
 
-    # (Dispatcher) Dispatcher for messages received
-    attr_reader :dispatcher
+    # (Hash) Dispatcher for each queue for messages received
+    attr_reader :dispatchers
 
     # (ActorRegistry) Registry for this agents actors
     attr_reader :registry
@@ -373,7 +373,7 @@ module RightScale
     def terminate(reason = nil, exception = nil, &block)
       block ||= DEFAULT_TERMINATE_BLOCK
       begin
-        @history.update("stop")
+        @history.update("stop") if @history
         Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
         if @terminating || @broker.nil?
           @terminating = true
@@ -381,7 +381,7 @@ module RightScale
           @termination_timer = nil
           Log.info("[stop] Terminating immediately")
           block.call
-          @history.update("graceful exit") if @broker.nil?
+          @history.update("graceful exit") if @history && @broker.nil?
         else
           @terminating = true
           @check_status_timer.cancel if @check_status_timer
@@ -417,7 +417,7 @@ module RightScale
         "version"         => AgentConfig.protocol_version,
         "brokers"         => @broker.stats(reset),
         "agent stats"     => agent_stats(reset),
-        "receive stats"   => @dispatcher.stats(reset),
+        "receive stats"   => dispatcher_stats(reset),
         "send stats"      => @sender.stats(reset),
         "last reset time" => @last_stat_reset_time.to_i,
         "stat time"       => now.to_i,
@@ -463,7 +463,7 @@ module RightScale
       stats
     end
 
-    # Reset cache statistics
+    # Reset agent statistics
     #
     # === Return
     # true:: Always return true
@@ -474,6 +474,14 @@ module RightScale
       @response_failure_stats = RightSupport::Stats::Activity.new
       @exception_stats = RightSupport::Stats::Exceptions.new(self, @options[:exception_callback])
       true
+    end
+
+    # Get dispatcher statistics
+    #
+    # === Return
+    # (Hash):: Current statistics
+    def dispatcher_stats(reset)
+      @dispatchers[@identity].stats(reset)
     end
 
     # Set the agent's configuration using the supplied options
@@ -539,7 +547,7 @@ module RightScale
     def start_service(&terminate_callback)
       begin
         @registry = ActorRegistry.new
-        @dispatcher = create_dispatcher
+        @dispatchers = create_dispatchers
         @sender = create_sender
         load_actors
         setup_traps
@@ -562,13 +570,14 @@ module RightScale
       true
     end
 
-    # Create dispatcher for handling incoming requests
+    # Create dispatcher per queue for use in handling incoming requests
     #
     # === Return
-    # (Dispatcher):: New dispatcher
-    def create_dispatcher
+    # [Hash]:: Dispatchers with queue name as key
+    def create_dispatchers
       cache = DispatchedCache.new(@identity) if @options[:dup_check]
-      Dispatcher.new(self, cache)
+      dispatcher = Dispatcher.new(self, cache)
+      @queues.inject({}) { |dispatchers, queue| dispatchers[queue] = dispatcher; dispatchers }
     end
 
     # Create manager for outgoing requests
@@ -720,9 +729,14 @@ module RightScale
     # true:: Always return true
     def dispatch_request(request, queue)
       begin
-        if result = @dispatcher.dispatch(request)
-          exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @options[:secure]}}
-          @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:tries, :persistent, :duration])
+        if (dispatcher = @dispatchers[queue])
+          if (result = dispatcher.dispatch(request))
+            exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @options[:secure]}}
+            @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:request_from, :tries, :persistent, :duration])
+          end
+        else
+          Log.error("Failed to dispatch request #{request.trace} from queue #{queue} because no dispatcher configured")
+          @request_failure_stats.update("NoConfiguredDispatcher")
         end
       rescue Dispatcher::DuplicateRequest
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
