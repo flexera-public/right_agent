@@ -159,11 +159,23 @@ describe RightScale::Serializer do
       RightScale::Serializer.new(:json).load(serialized)
     end
 
-    it "should pass along optional id to serializer" do
+    it "should pass optional id to SecureSerializer" do
+      object = [1, 2, 3]
+      serialized = "securely serialized"
+      flexmock(RightScale::SecureSerializer).should_receive(:load).with(serialized, "id").and_return(object).once
+      RightScale::Serializer.new(:secure).load(serialized, "id")
+    end
+
+    it "should not pass optional id to MessagePack serializer" do
       object = [1, 2, 3]
       serialized = object.to_msgpack
-      flexmock(MessagePack).should_receive(:load).with(serialized, "id").and_return(object).once
-      RightScale::Serializer.new.load(serialized, "id")
+      RightScale::Serializer.new(:msgpack).load(serialized, "id").should == object
+    end
+
+    it "should not pass optional id to JSON serializer" do
+      object = [1, 2, 3]
+      serialized = object.to_json
+      RightScale::Serializer.new(:json).load(serialized, "id").should == object
     end
 
     it "should raise SerializationError if packet could not be unserialized" do
