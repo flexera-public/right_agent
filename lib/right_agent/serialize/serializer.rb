@@ -114,9 +114,7 @@ module RightScale
     # action(Symbol):: Serialization action: :dump or :load
     # packet(Object|String):: Object or serialized data on which action is to be performed
     # serializers(Array):: Serializers to apply in order
-    # id(String
-    # ):: Optional identifier of source of data for use
-    #   in determining who is the receiver
+    # id(String):: Optional identifier of source of data for use in determining who is the receiver
     #
     # === Return
     # (String|Object):: Result of serialization action
@@ -128,7 +126,7 @@ module RightScale
       serializers.map do |serializer|
         obj = nil
         begin
-          obj = id ? serializer.send(action, packet, id) :  serializer.send(action, packet)
+          obj = serializer == SecureSerializer ? serializer.send(action, packet, id) :  serializer.send(action, packet)
         rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
           errors << Log.format("Failed to #{action} with #{serializer.name}", e)
         rescue Exception => e
