@@ -46,11 +46,15 @@ module RightScale
       # (String) Token for parent request in a retry situation
       attr_accessor :retry_parent
 
+      # (String) Non-delivery reason if any
+      attr_accessor :non_delivery
+
       def initialize(kind, receive_time, response_handler)
         @kind = kind
         @receive_time = receive_time
         @response_handler = response_handler
         @retry_parent = nil
+        @non_delivery = nil
       end
 
     end # PendingRequest
@@ -912,11 +916,23 @@ module RightScale
         end
 
         if handler = @pending_requests[token]
-          if result && result.non_delivery? && handler.kind == :send_retryable_request &&
-             [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
-            # Log and ignore so that timeout retry mechanism continues
-            # Leave purging of associated request until final response, i.e., success response or retry timeout
-            Log.info("Non-delivery of <#{token}> because #{result.content}")
+          if result && result.non_delivery? && handler.kind == :send_retryable_request
+            if [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
+              # Log and temporarily ignore so that timeout retry mechanism continues, but save reason for use below if timeout
+              # Leave purging of associated request until final response, i.e., success response or retry timeout
+              if parent = handler.retry_parent
+                @pending_requests[parent].non_delivery = result.content
+              else
+                handler.non_delivery = result.content
+              end
+              Log.info("Non-delivery of <#{token}> because #{result.content}")
+            elsif result.content == OperationResult::RETRY_TIMEOUT && handler.non_delivery
+              # Request timed out but due to another non-delivery reason, so use that reason since more germane
+              response.results = OperationResult.non_delivery(handler.non_delivery)
+              deliver(response, handler)
+            else
+              deliver(response, handler)
+            end
           else
             deliver(response, handler)
           end
