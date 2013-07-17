@@ -48,3 +48,4 @@
 # 18: Added respond field to Push to indicate routing feedback is desired by sender
 # 19: Allow array of targets for Push or Request
 # 20: Add CANCEL status to OperationResult
+# 21: Infrastructure agents gained HTTP transport in lieu of AMQP. Bumped version to distinguish RightLink v5.9 from v5.8 due to app-level behavioral differences.
