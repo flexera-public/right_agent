@@ -798,6 +798,32 @@ describe RightScale::Sender do
         end
       end
 
+      it "should return non-delivery after timeout if any attempt failed due to non-delivery" do
+        pending 'Too difficult to get timing right for Windows' if RightScale::Platform.windows?
+        EM.run do
+          result = RightScale::OperationResult.success
+          @log.should_receive(:warning).once
+          @agent.should_receive(:options).and_return({:retry_timeout => 0.6, :retry_interval => 0.1})
+          RightScale::Sender.new(@agent)
+          @instance = RightScale::Sender.instance
+          flexmock(@instance.connectivity_checker).should_receive(:check).once
+          @broker.should_receive(:publish).and_return(@broker_ids).times(3)
+          @instance.send_retryable_request('/welcome/aboard', 'iZac') do |response|
+            result = RightScale::OperationResult.from_results(response)
+          end
+          @instance.pending_requests.empty?.should be_false
+          token = @instance.pending_requests.keys.last
+          non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TTL_EXPIRATION)
+          @instance.handle_response(RightScale::Result.new(token, 'iZac', non_delivery, "from"))
+          EM.add_timer(1) do
+            EM.stop
+            result.non_delivery?.should be_true
+            result.content.should == non_delivery.content
+            @instance.pending_requests.empty?.should be_true
+          end
+        end
+      end
+
       it "should retry with same request expires_at value" do
         EM.run do
           token = 'abc'
