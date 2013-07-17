@@ -22,7 +22,7 @@
 #
 #    Options:
 #      --reset, -r        As part of gathering the stats from an agent also reset the stats
-#      --timeout, -t SEC  Override default timeout in seconds to wait for a response from an agent
+#      --timeout, -T SEC  Override default timeout in seconds to wait for a response from an agent
 #      --json, -j         Display the stats data in JSON format
 #      --verbose, -v      Log debug information
 #      --cfg-dir, -c DIR  Set directory containing configuration for all agents
@@ -86,7 +86,7 @@ module RightScale
           options[:reset] = true
         end
 
-        opts.on('-t', '--timeout SEC') do |sec|
+        opts.on('-T', '--timeout SEC') do |sec|
           options[:timeout] = sec
         end
 
