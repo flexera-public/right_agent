@@ -795,8 +795,10 @@ module RightScale
       true
     end
 
-    # Check status of agent by gathering current operation statistics and publishing them
-    # and finishing any queue setup
+    # Check status of agent by finishing any queue setup, checking the status of the queues,
+    # and gathering/publishing current operation statistics
+    # Checking the status of a queue will cause the broker connection to fail if the
+    # queue does not exist, but a reconnect should then get initiated on the next check loop
     # Although agent termination cancels the check_status_timer, this method could induce
     # termination, therefore the termination status needs to be checked before each step
     #
@@ -807,6 +809,13 @@ module RightScale
         finish_setup unless @terminating
       rescue Exception => e
         Log.error("Failed finishing setup", e)
+        @exception_stats.track("check status", e)
+      end
+
+      begin
+        @broker.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating
+      rescue Exception => e
+        Log.error("Failed checking queue status", e)
         @exception_stats.track("check status", e)
       end
 
