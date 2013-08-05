@@ -140,12 +140,14 @@ describe RightScale::Sender do
         EM.run do
           EM.add_timer(1) { EM.stop }
           RightScale::Sender.new(@agent)
-          instance = RightScale::Sender.instance
-          flexmock(instance).should_receive(:publish).and_return([]).once
-          instance.connectivity_checker.check(id = nil)
+          @instance = RightScale::Sender.instance
+          flexmock(@instance).should_receive(:publish).and_return([]).once
+          @instance.connectivity_checker.check(id = nil)
         end
       ensure
         RightScale::Sender::ConnectivityChecker.const_set(:PING_TIMEOUT, old_ping_timeout)
+        @instance.connectivity_checker.instance_variable_get(:@ping_timer).should be_nil
+        @instance.connectivity_checker.instance_variable_get(:@ping_id).should be_nil
       end
     end
 

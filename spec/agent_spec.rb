@@ -304,6 +304,7 @@ describe RightScale::Agent do
         run_in_em do
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, hsh(:brokers => nil), Proc).
                                              and_return(@broker_ids.first(1)).once
+          @broker.should_receive(:queue_status).with([@identity], 30).once
           @agent.run
           @agent.instance_variable_get(:@remaining_queue_setup).should == {@identity => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
