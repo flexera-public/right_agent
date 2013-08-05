@@ -148,7 +148,7 @@ module RightScale
       MAX_QUEUE_FLUSH_DELAY = 2 * 60
 
       # Maximum number of offline queued requests before triggering restart vote
-      MAX_QUEUED_REQUESTS = 1000
+      MAX_QUEUED_REQUESTS = 100
 
       # Number of seconds that should be spent in offline mode before triggering a restart vote
       RESTART_VOTE_DELAY = 15 * 60
@@ -470,6 +470,8 @@ module RightScale
                 Log.error("Failed to reconnect to broker #{@ping_id}", e, :trace)
                 @exception_stats.track("ping timeout", e)
               end
+            else
+              @ping_timer = nil
             end
           end
 
