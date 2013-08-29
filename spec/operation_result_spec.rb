@@ -57,11 +57,27 @@ describe RightScale::OperationResult do
       result.content.should == "Error"
     end
 
-    it "should return error OperationResult if results is nil" do
+    it "should convert unexpected string result into an error result" do
       result = RightScale::OperationResult.from_results(nil)
       result.kind_of?(RightScale::OperationResult).should be_true
       result.status_code.should == RightScale::OperationResult::ERROR
       result.content.should == "No results"
+    end
+
+    it "should return error OperationResult if results is nil" do
+      string_result = RightScale::Result.new("token", "to", "Unexpected exception", "from")
+      result = RightScale::OperationResult.from_results(string_result)
+      result.kind_of?(RightScale::OperationResult).should be_true
+      result.status_code.should == RightScale::OperationResult::ERROR
+      result.content.should == "Unexpected exception"
+    end
+
+    it "should return error OperationResult including Result results if the results value is not recognized" do
+      array_result = RightScale::Result.new("token", "to", ["some data"], "from")
+      result = RightScale::OperationResult.from_results(array_result)
+      result.kind_of?(RightScale::OperationResult).should be_true
+      result.status_code.should == RightScale::OperationResult::ERROR
+      result.content.should == 'Invalid results in Result from from: ["some data"]'
     end
 
     it "should return error OperationResult if the results value is not recognized" do

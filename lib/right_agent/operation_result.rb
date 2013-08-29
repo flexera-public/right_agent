@@ -99,29 +99,36 @@ module RightScale
       e
     end
 
-    # Instantiate from request results
-    # Ignore all but first result if results is a hash
+    # Instantiate from request result
+    # Ignore all but first result if result is a hash
     #
     # === Parameters
-    # results(Result|Hash|OperationResult|nil):: Result or the Result "results" field
+    # result(Result|Hash|OperationResult|nil):: Result or the Result "results" field
     #
     # === Return
     # (RightScale::OperationResult):: Converted operation result
-    def self.from_results(results)
-      r = results.kind_of?(Result) ? results.results : results
+    def self.from_results(result)
+      r = result.is_a?(Result) ? result.results : result
       if r && r.respond_to?(:status_code) && r.respond_to?(:content)
         new(r.status_code, r.content)
-      elsif r && r.kind_of?(Hash) && r.values.size > 0
+      elsif r && r.is_a?(Hash) && r.values.size > 0
         r = r.values[0]
         if r.respond_to?(:status_code) && r.respond_to?(:content)
           new(r.status_code, r.content)
         else
           error("Invalid operation result content: #{r.inspect}")
         end
+      elsif r && r.is_a?(String)
+        # This is not a supported return value but older RightLink versions can incorrectly
+        # return a String rather than an OperationResult#error in situations where the actor
+        # raises an exception when processing a request
+        error(r)
       elsif r.nil?
         error("No results")
+      elsif result.is_a?(Result)
+        error("Invalid results in Result from #{result.from}: #{result.results.inspect}")
       else
-        error("Invalid operation result type: #{results.inspect}")
+        error("Invalid operation result type: #{result.inspect}")
       end
     end
     
