@@ -813,7 +813,7 @@ describe RightScale::Sender do
           end
           @instance.pending_requests.empty?.should be_false
           token = @instance.pending_requests.keys.last
-          non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TTL_EXPIRATION)
+          non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TARGET_NOT_CONNECTED)
           @instance.handle_response(RightScale::Result.new(token, 'iZac', non_delivery, "from"))
           EM.add_timer(1) do
             EM.stop
@@ -988,13 +988,10 @@ describe RightScale::Sender do
       @instance.handle_response(response)
     end
 
-    it "should not deliver TARGET_NOT_CONNECTED and TTL_EXPIRATION responses for send_retryable_request" do
+    it "should not deliver TARGET_NOT_CONNECTED response for send_retryable_request" do
       @instance.send_retryable_request('/welcome/aboard', 'iZac') {|_|}
       flexmock(@instance).should_receive(:deliver).never
       non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TARGET_NOT_CONNECTED)
-      response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
-      @instance.handle_response(response)
-      non_delivery = RightScale::OperationResult.non_delivery(RightScale::OperationResult::TTL_EXPIRATION)
       response = RightScale::Result.new('token1', 'to', non_delivery, 'target1')
       @instance.handle_response(response)
     end

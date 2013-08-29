@@ -917,7 +917,7 @@ module RightScale
 
         if handler = @pending_requests[token]
           if result && result.non_delivery? && handler.kind == :send_retryable_request
-            if [OperationResult::TARGET_NOT_CONNECTED, OperationResult::TTL_EXPIRATION].include?(result.content)
+            if result.content == OperationResult::TARGET_NOT_CONNECTED
               # Log and temporarily ignore so that timeout retry mechanism continues, but save reason for use below if timeout
               # Leave purging of associated request until final response, i.e., success response or retry timeout
               if parent = handler.retry_parent
