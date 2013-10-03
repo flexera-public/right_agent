@@ -26,7 +26,18 @@ module RightScale
   # MessagePack and JSON serializable types that are sent to and from agents
   module Serializable
 
+    @check_active_support = true
+
     def self.included(base)
+      if @check_active_support
+        if require_succeeds?("active_support") && (v = Gem.loaded_specs['activesupport'].version.to_s) != "2.3.5"
+          raise Exception.new("Some versions of the activesupport gem modify json in ways that are incompatible with this " +
+                              "RightScale::Serializable module. Version #{v} used here is not allowed, use 2.3.5 instead.")
+        else
+          @check_active_support = false
+        end
+      end
+
       base.extend ClassMethods
       base.send(:include, InstanceMethods)
     end
