@@ -32,10 +32,10 @@ module RightScale
 
     # Note that profile_data is DEPRECATED and should not be used; it belonged to a half-implemented
     # profile customization feature built into RightLink 5.8 that we never made use of. RightLink
-    # 6.0 has a different feature that makes use of profile_hook.
+    # 6.0 has a different feature that makes use of linux_login_script.
     attr_accessor :uuid, :username, :public_key, :public_keys, :common_name,
                   :superuser, :expires_at, :profile_data, :public_key_fingerprints,
-                  :profile_hook
+                  :linux_login_script
 
     # Initialize fields from given arguments
     def initialize(*args)
@@ -48,7 +48,7 @@ module RightScale
       @public_keys  = args[6]
       @profile_data = args[7]
       @public_key_fingerprints = args[8]
-      @profile_hook = args[9]
+      @linux_login_script = args[9]
 
       # We now expect an array of public_keys to be passed while supporting the
       # singular public_key as a legacy member. When serialized back from a
@@ -72,7 +72,7 @@ module RightScale
     # Array of serialized fields given to constructor
     def serialized_members
       [ @uuid, @username, @public_key, @common_name, @superuser, @expires_at.to_i, @public_keys, @profile_data,
-        @public_key_fingerprints, @profile_hook ]
+        @public_key_fingerprints, @linux_login_script ]
     end
 
     # Create fingerprint for public key
