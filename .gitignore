@@ -8,3 +8,4 @@ nbproject/*
 .loadpath
 .project
 .ruby-version
+.rvmrc
