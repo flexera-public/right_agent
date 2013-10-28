@@ -24,6 +24,8 @@
 module JSON
   class << self
     def parse(source, opts = {})
+      # Have forced to true for ruby 1.9.3 native json library
+      opts[:create_additions] = true
       if source =~ /(.*)json_class":"Nanite::(.*)/
         JSON.parser.new( Regexp.last_match(1) + 'json_class":"RightScale::' + Regexp.last_match(2), opts).parse
       else
@@ -248,7 +250,7 @@ module RightScale
     def trace
       audit_id = self.respond_to?(:payload) && payload.is_a?(Hash) && (payload['audit_id'] || payload[:audit_id])
       tok = self.respond_to?(:token) && token
-      tr = "<#{audit_id || nil}> <#{tok}>" 
+      tr = "<#{audit_id || nil}> <#{tok}>"
     end
 
     # Retrieve protocol version of original creator of packet
