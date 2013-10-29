@@ -10,7 +10,7 @@ gem 'right_amqp',
 
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # use that version so we can run right_agent specs under both Windows and Linux.
-gem 'json', '1.4.6'
+gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
