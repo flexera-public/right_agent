@@ -31,8 +31,9 @@ module RightScale
     #
     # === Parameters
     # identity(String):: Serialized agent identity
-    def initialize(identity)
-      @pid = Process.pid
+    # pid(Integer):: Process ID of agent, defaults to ID if current process
+    def initialize(identity, pid = nil)
+      @pid = pid || Process.pid
       @history = File.join(AgentConfig.pid_dir, identity + ".history")
     end
 

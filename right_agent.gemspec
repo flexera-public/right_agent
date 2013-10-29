@@ -24,9 +24,9 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '1.0.0'
-  spec.date      = '2013-10-07'
-  spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
+  spec.version   = '1.0.1'
+  spec.date      = '2013-10-29'
+  spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
   spec.platform  = Gem::Platform::RUBY
