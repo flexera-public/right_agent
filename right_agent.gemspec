@@ -43,7 +43,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency('net-ssh', '~> 2.0')
 
   msgpack_constraint = ['>= 0.4.4', '< 0.6']
-  json_constraint = ['>= 1.4', '<= 1.7.6'] # json_create behavior change in 1.7.7
+  # json_create behavior change in 1.7.7 but chef 11 requires 1.7.7 so consumers
+  # of right_agent must constrain this themselves based on usage.
+  json_constraint = '~> 1.4'
   case RUBY_PLATFORM
   when /mswin/i
     msgpack_constraint = '0.4.4'  # last tested native mswin prebuilt gem

@@ -7,6 +7,10 @@ gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
     :branch => 'master'
 
+# RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
+# Going forward to ruby 1.9 we can relax the constraint on the json gem.
+gem 'json', '~> 1.4'
+
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
 gem 'eventmachine', '~> 1.0.0.4'

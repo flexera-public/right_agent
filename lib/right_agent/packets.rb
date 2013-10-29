@@ -24,6 +24,10 @@
 module JSON
   class << self
     def parse(source, opts = {})
+      # In gem version this options is set to true by default
+      # but in ruby native json library is set to false by default
+      # Explicitly set it to true so both json libraries act the same
+      opts[:create_additions] = true
       if source =~ /(.*)json_class":"Nanite::(.*)/
         JSON.parser.new( Regexp.last_match(1) + 'json_class":"RightScale::' + Regexp.last_match(2), opts).parse
       else
@@ -248,7 +252,7 @@ module RightScale
     def trace
       audit_id = self.respond_to?(:payload) && payload.is_a?(Hash) && (payload['audit_id'] || payload[:audit_id])
       tok = self.respond_to?(:token) && token
-      tr = "<#{audit_id || nil}> <#{tok}>" 
+      tr = "<#{audit_id || nil}> <#{tok}>"
     end
 
     # Retrieve protocol version of original creator of packet
