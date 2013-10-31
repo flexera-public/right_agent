@@ -22,13 +22,11 @@
 
 require ::File.expand_path('../../../../platform', __FILE__)
 
-begin
+# ignore unless Windows as a concession to spec testing from non-Windows.
+# any windows-only gems must be fully mocked under test.
+if RUBY_PLATFORM =~ /mswin/
   # legacy API gem for ruby 1.8, superceded by FFI in ruby 1.9
   require 'win32/api'
-rescue LoadError
-  # ignore unless Windows as a concession to spec testing from non-Windows.
-  # any windows-only gems must be fully mocked under test.
-  raise if RUBY_PLATFORM =~ /mswin/
 end
 
 module RightScale

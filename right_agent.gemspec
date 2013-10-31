@@ -42,27 +42,17 @@ Gem::Specification.new do |spec|
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('net-ssh', '~> 2.0')
 
-  msgpack_constraint = ['>= 0.4.4', '< 0.6']
-  # json_create behavior change in 1.7.7 but chef 11 requires 1.7.7 so consumers
-  # of right_agent must constrain this themselves based on usage.
-  json_constraint = '~> 1.4'
+  # not currently needed by Linux but it does no harm to have it.
+  spec.add_dependency('ffi')
   case RUBY_PLATFORM
-  when /mswin/i
-    msgpack_constraint = '0.4.4'  # last tested native mswin prebuilt gem
-    json_constraint = '1.4.6'     # end-of-life native mswin prebuilt gem
-    spec.add_dependency('win32-api', '1.4.5')
-    spec.add_dependency('win32-dir', '0.3.7')
-    spec.add_dependency('win32-process', '0.6.5')
-    spec.add_dependency('windows-pr', '1.2.1')
-  when /mingw/i
-    spec.add_dependency('ffi', '~> 1.9.0')
+  when /mswin|mingw/i
     spec.add_dependency('win32-dir', '~> 0.4.6')
     spec.add_dependency('win32-process', '~> 0.7.3')
   when /win32|dos|cygwin/i
     raise ::NotImplementedError, 'Unsupported Ruby-on-Windows variant'
   end
-  spec.add_dependency('msgpack', msgpack_constraint)
-  spec.add_dependency('json', json_constraint)
+  spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+  spec.add_dependency('json', '~> 1.4')
 
   spec.description = <<-EOF
 RightAgent provides a foundation for running an agent on a server to interface
