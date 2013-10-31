@@ -23,13 +23,14 @@
 require 'rubygems'
 require 'eventmachine'
 require 'fileutils'
+require 'right_support'
 require 'yaml'
 
 # load definition for File.normalize_path, etc.
-require File.expand_path(File.join(File.dirname(__FILE__), 'platform'))
+require ::File.expand_path('../monkey_patches', __FILE__)
 
 unless defined?(RIGHT_AGENT_BASE_DIR)
-  RIGHT_AGENT_BASE_DIR = File.normalize_path(File.dirname(__FILE__))
+  RIGHT_AGENT_BASE_DIR = ::File.normalize_path('..', __FILE__)
 end
 
 # require minimal gems needed to create a CommandClient and send a command.
@@ -37,8 +38,8 @@ end
 # FIX: agent_controller is currently the only minimal-load use case so these
 # requires are oriented toward that. any additional use cases may require a
 # rethink of minimal loading.
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'agent_config'))
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'command'))
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'log'))
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'pid_file'))
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'serialize', 'serializable'))
+require ::File.normalize_path('agent_config', RIGHT_AGENT_BASE_DIR)
+require ::File.normalize_path('command', RIGHT_AGENT_BASE_DIR)
+require ::File.normalize_path('log', RIGHT_AGENT_BASE_DIR)
+require ::File.normalize_path('pid_file', RIGHT_AGENT_BASE_DIR)
+require ::File.normalize_path('serialize/serializable', RIGHT_AGENT_BASE_DIR)

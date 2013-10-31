@@ -23,6 +23,8 @@
 require 'rubygems'
 require 'rbconfig'
 
-MONKEY_PATCHES_BASE_DIR = File.join(File.dirname(__FILE__), 'monkey_patches')
+unless defined?(RIGHT_AGENT_MONKEY_PATCHES_BASE_DIR)
+  require ::File.expand_path('../monkey_patches/ruby_patch', __FILE__)
 
-require File.normalize_path(File.join(MONKEY_PATCHES_BASE_DIR, 'ruby_patch'))
+  RIGHT_AGENT_MONKEY_PATCHES_BASE_DIR = ::File.normalize_path('../monkey_patches', __FILE__)
+end

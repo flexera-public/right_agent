@@ -26,7 +26,6 @@ require File.expand_path(File.join(File.dirname(__FILE__), 'right_agent', 'minim
 require 'json'
 require 'openssl'
 require 'right_amqp'
-require 'right_support'
 
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'monkey_patches'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'payload_formatter'))

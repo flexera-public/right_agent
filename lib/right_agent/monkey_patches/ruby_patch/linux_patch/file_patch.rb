@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2011 RightScale Inc
+# Copyright (c) 2011-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -24,7 +24,7 @@ class File
 
   # On *nix systems, resolves to File.expand_path
   def self.normalize_path(file_name, *dir_string)
-    File.expand_path(file_name, *dir_string)
+    self.expand_path(file_name, *dir_string)
   end
 
 end

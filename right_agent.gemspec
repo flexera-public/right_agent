@@ -24,9 +24,9 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '0.17.2'
-  spec.date      = '2013-10-28'
-  spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro']
+  spec.version   = '1.0.1'
+  spec.date      = '2013-10-29'
+  spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
   spec.platform  = Gem::Platform::RUBY
@@ -39,15 +39,20 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency('right_support', ['>= 2.4.1', '< 3.0'])
   spec.add_dependency('right_amqp', '~> 0.7')
-  spec.add_dependency('json', ['>= 1.4', '<= 1.7.6']) # json_create behavior change in 1.7.7
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
-  spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
   spec.add_dependency('net-ssh', '~> 2.0')
 
-  if spec.platform.to_s =~ /mswin|mingw/
-    spec.add_dependency('win32-dir', '~> 0.3.5')
-    spec.add_dependency('win32-process', '~> 0.6.1')
+  # not currently needed by Linux but it does no harm to have it.
+  spec.add_dependency('ffi')
+  case RUBY_PLATFORM
+  when /mswin|mingw/i
+    spec.add_dependency('win32-dir', '~> 0.4.6')
+    spec.add_dependency('win32-process', '~> 0.7.3')
+  when /win32|dos|cygwin/i
+    raise ::NotImplementedError, 'Unsupported Ruby-on-Windows variant'
   end
+  spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+  spec.add_dependency('json', '~> 1.4')
 
   spec.description = <<-EOF
 RightAgent provides a foundation for running an agent on a server to interface

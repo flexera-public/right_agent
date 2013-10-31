@@ -32,24 +32,24 @@ require 'socket'
 # using short path. Since this is where we define the File.normalize_path
 # method to alleviate this issue, we have a chicken & egg problem. So detect if
 # we already required this file and skip the rest if that was the case.
-unless defined?(RUBY_PATCH_BASE_DIR)
+unless defined?(RIGHT_AGENT_RUBY_PATCH_BASE_DIR)
 
 # Load platform-specific patches before any other patches (in order to define
 # File.normalize_path, etc.)
-case (family = RbConfig::CONFIG['host_os'])
+case ::RbConfig::CONFIG['host_os']
 when /mswin|win32|dos|mingw|cygwin/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'windows_patch'))
+  require ::File.expand_path('../ruby_patch/windows_patch', __FILE__)
 when /linux/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'linux_patch'))
+  require ::File.expand_path('../ruby_patch/linux_patch', __FILE__)
 when /darwin/i
-  require File.expand_path(File.join(File.dirname(__FILE__), 'ruby_patch', 'darwin_patch'))
+  require ::File.expand_path('../ruby_patch/darwin_patch', __FILE__)
 else
-  raise LoadError, "Unsupported platform: #{family}"
+  raise LoadError, "Unsupported platform: #{::RbConfig::CONFIG['host_os']}"
 end
 
-RUBY_PATCH_BASE_DIR = File.join(File.dirname(__FILE__), 'ruby_patch')
+RIGHT_AGENT_RUBY_PATCH_BASE_DIR = ::File.normalize_path('../ruby_patch', __FILE__)
 
-require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'array_patch'))
-require File.normalize_path(File.join(RUBY_PATCH_BASE_DIR, 'object_patch'))
+require File.join(RIGHT_AGENT_RUBY_PATCH_BASE_DIR, 'array_patch')
+require File.join(RIGHT_AGENT_RUBY_PATCH_BASE_DIR, 'object_patch')
 
 end # Unless already defined

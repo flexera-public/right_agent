@@ -1,4 +1,4 @@
-.idea
+.idea/
 tags
 .DS_Store
 *.swp
@@ -8,3 +8,4 @@ nbproject/*
 .loadpath
 .project
 .ruby-version
+.rvmrc
