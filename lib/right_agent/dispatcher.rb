@@ -140,7 +140,7 @@ module RightScale
       @reject_stats = RightSupport::Stats::Activity.new
       @request_stats = RightSupport::Stats::Activity.new
       @dispatch_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(@agent)
+      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @agent.exception_callback)
       true
     end
 

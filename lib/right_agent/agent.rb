@@ -556,6 +556,7 @@ module RightScale
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
         EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
+        EM.defer { receive_events }
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next
@@ -570,14 +571,57 @@ module RightScale
       true
     end
 
+    # Receive events via HTTP
+    #
+    # === Return
+    # true:: Always return true
+    def receive_events
+      HttpRouter.init("instance", "http://localhost:8080", nil)
+      count = 0
+      loop do
+        count += 1
+        begin
+          if (request = HttpRouter.wait_for_event(@identity))
+            Log.info("LEE Received request #{request.inspect}")
+            if request.is_a?(Request) || request.is_a?(Push)
+              EM.next_tick do
+                begin
+                  Log.info("LEE Dispatching request #{request.inspect}")
+                  if (result = @dispatcher.dispatch(request))
+                    Log.info("LEE Sending response to #{request.reply_to} RESULT #{result.inspect}")
+                    exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @options[:secure]}}
+                    @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:request_from, :tries, :persistent, :duration])
+                  else
+                    Log.info("LEE No response for #{request.trace}")
+                  end
+                rescue Exception => e
+                  Log.error("LEE Dispatch error for loop #{count}", e, :trace)
+                end
+              end
+            else
+              Log.info("LEE Non-request for loop #{count}: #{request.inspect}")
+            end
+          else
+            Log.info("LEE No event for loop #{count}")
+          end
+        rescue Exception => e
+          Log.error("LEE Error for loop #{count}", e, e.is_a?(RightScale::Exceptions::ConnectivityFailure) ? :no_trace : :trace)
+          sleep(5)
+        end
+      end
+      true
+    rescue Exception => e
+      Log.error("LEE Receive event error", e, :trace)
+    end
+
     # Create dispatcher per queue for use in handling incoming requests
     #
     # === Return
     # [Hash]:: Dispatchers with queue name as key
     def create_dispatchers
       cache = DispatchedCache.new(@identity) if @options[:dup_check]
-      dispatcher = Dispatcher.new(self, cache)
-      @queues.inject({}) { |dispatchers, queue| dispatchers[queue] = dispatcher; dispatchers }
+      @dispatcher = Dispatcher.new(self, cache)
+      @queues.inject({}) { |dispatchers, queue| dispatchers[queue] = @dispatcher; dispatchers }
     end
 
     # Create manager for outgoing requests
@@ -704,7 +748,8 @@ module RightScale
         # Continue to dispatch/ack requests even when terminating otherwise will block results
         # Ideally would reject requests when terminating but broker client does not yet support that
         case packet
-        when Push, Request then dispatch_request(packet, queue)
+        # TODO hack to defer request receipt to HTTP
+        when Push, Request then nil #dispatch_request(packet, queue)
         when Result        then deliver_response(packet)
         end
         @sender.message_received
@@ -714,7 +759,13 @@ module RightScale
       ensure
         # Relying on fact that all dispatches/deliveries are synchronous and therefore
         # need to have completed or failed by now, thus allowing packet acknowledgement
-        header.ack
+        if packet.is_a?(Push) || packet.is_a?(Request)
+          # TODO hack to defer request receipt to HTTP
+          header.reject(:requeue => true)
+          @broker.unsubscribe(@identity)
+        else
+          header.ack
+        end
       end
       true
     end
