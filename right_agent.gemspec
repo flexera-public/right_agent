@@ -24,8 +24,8 @@ require 'rubygems'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '1.0.1'
-  spec.date      = '2013-10-29'
+  spec.version   = '1.0.2'
+  spec.date      = '2013-11-18'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -46,7 +46,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('ffi')
   case RUBY_PLATFORM
   when /mswin|mingw/i
-    spec.add_dependency('win32-dir', '~> 0.4.6')
+    spec.add_dependency('win32-dir', '~> 0.4.5')
     spec.add_dependency('win32-process', '~> 0.7.3')
   when /win32|dos|cygwin/i
     raise ::NotImplementedError, 'Unsupported Ruby-on-Windows variant'
