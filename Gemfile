@@ -17,7 +17,7 @@ gem 'eventmachine', '~> 1.0.0.4'
 
 group :windows do
   platform :mswin do
-    gem 'win32-dir',     '~> 0.4.6'
+    gem 'win32-dir',     '~> 0.4.5'
     gem 'win32-process', '~> 0.7.3'
   end
 end
