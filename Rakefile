@@ -33,12 +33,38 @@ require 'rake/clean'
 task :default => 'spec'
 
 # == Gem packaging == #
+module RightScale
+  class MultiPlatformGemTask
+    def self.gem_platform_override
+      @gem_platform_override
+    end
 
-desc "Package gem"
-gemtask = Rake::GemPackageTask.new(Gem::Specification.load("right_agent.gemspec")) do |package|
-  package.package_dir = ENV['PACKAGE_DIR'] || 'pkg'
-  package.need_zip = true
-  package.need_tar = true
+    def self.define(gem_platforms, spec_path, &callback)
+      gem_platforms.each do |gem_platform|
+        @gem_platform_override = gem_platform
+        callback.call(::Gem::Specification.load(spec_path))
+      end
+    ensure
+      @gem_platform_override = nil
+    end
+  end
+end
+
+# multiply define gem and package task(s) using a gemspec with overridden gem
+# platform value. this works because rake accumulates task actions instead of
+# redefining them, so accumulated gem tasks will gem up all platforms. we need
+# to produce multiple platform-specific .gem files because otherwise the gem
+# dependencies for non-Linux platforms (i.e. Windows) are lost from the default
+# .gem file produced on a Linux platform.
+gemtask = nil
+::RightScale::MultiPlatformGemTask.define(%w[linux mingw], 'right_agent.gemspec') do |spec|
+  gemtask = ::Rake::GemPackageTask.new(spec) do |gpt|
+    gpt.package_dir = ENV['PACKAGE_DIR'] || 'pkg'
+
+    # the following are used by 'package' task (but not by 'gem' task)
+    gpt.need_zip = !`which zip`.strip.empty? # not present on Windows by default
+    gpt.need_tar = true  # some form of tar is required on Windows and Linux
+  end
 end
 
 directory gemtask.package_dir
