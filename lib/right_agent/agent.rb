@@ -27,6 +27,7 @@ module RightScale
   # Agent for receiving messages from the mapper and acting upon them
   # by dispatching to a registered actor to perform
   # See load_actors for details on how the agent specific environment is loaded
+  # Operates in either AMQP or HTTP mode
   class Agent
 
     include ConsoleHelper
@@ -46,6 +47,9 @@ module RightScale
 
     # (RightAMQP::HABrokerClient) High availability AMQP broker client
     attr_reader :broker
+
+    # (HttpApi) RightApi interface
+    attr_reader :right_api
 
     # (Array) Tag strings published by agent
     attr_accessor :tags
@@ -101,21 +105,21 @@ module RightScale
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
     #     by the receiver, 0 means never expire, defaults to 0
-    #   :connect_timeout(Integer):: Number of seconds to wait for a broker connection to be established
-    #   :reconnect_interval(Integer):: Number of seconds between broker reconnect attempts
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers,
+    #   :connect_timeout(Integer):: Number of seconds to wait for an AMQP broker connection to be established
+    #   :reconnect_interval(Integer):: Number of seconds between AMQP broker reconnect attempts
+    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any AMQP brokers,
     #     also requires agent invocation of Sender initialize_offline_queue and start_offline_queue methods,
-    #     as well as enable_offline_mode and disable_offline_mode as broker connections status changes
+    #     as well as enable_offline_mode and disable_offline_mode as AMQP broker connections status changes
     #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
     #     to check connectivity, defaults to 0 meaning do not ping
-    #   :check_interval(Integer):: Number of seconds between publishing stats and checking for broker connections
-    #     that failed during agent launch and then attempting to reconnect via the mapper
+    #   :check_interval(Integer):: Number of seconds between publishing stats and checking for AMQP broker
+    #     connections that failed during agent launch and then attempting to reconnect via the mapper
     #   :heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
     #     connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
     #   :grace_timeout(Integer):: Maximum number of seconds to wait after last request received before
     #     terminating regardless of whether there are still unfinished requests
     #   :dup_check(Boolean):: Whether to check for and reject duplicate requests, e.g., due to retries
-    #     or redelivery by broker after server failure
+    #     or redelivery by AMQP broker after server failure
     #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for this agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
     #     if the agent crashes. Value 0 means unlimited prefetch.
@@ -123,12 +127,18 @@ module RightScale
     #     exception(Exception):: Exception
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
-    #   :ready_callback(Proc):: Called once agent is connected to broker and ready for service (no argument)
+    #   :ready_callback(Proc):: Called once agent is connected to AMQP broker and ready for service (no argument)
     #   :restart_callback(Proc):: Called on each restart vote with votes being initiated by offline queue
     #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online (no argument)
     #   :abnormal_terminate_callback(Proc):: Called at end of termination when terminate abnormally (no argument)
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
+    #   :right_net_urls(String):: Comma-separated list of URLs for making RightNet connection for receiving requests
+    #     via HTTP instead of AMQP; defaults to :right_api_urls
+    #   :right_api_urls(String):: Comma-separated list of URLs for making RightScale API requests using HTTP instead
+    #     of AMQP
+    #   :actor_api_map(Hash) Map of actor-based request types to RightScale API HTTP request verb and URI
+    #   :filter_params(Array) Names of parameters whose values are to be hidden when logging API requests
     #   :vhost(String):: AMQP broker virtual host
     #   :user(String):: AMQP broker user
     #   :pass(String):: AMQP broker password
@@ -192,24 +202,30 @@ module RightScale
         pid_file.write
         at_exit { pid_file.remove }
 
-        # Initiate AMQP broker connection, wait for connection before proceeding
-        # otherwise messages published on failed connection will be lost
-        @broker = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options)
-        @queues.each { |s| @remaining_queue_setup[s] = @broker.all }
-        @broker.connection_status(:one_off => @options[:connect_timeout]) do |status|
-          if status == :connected
-            # Need to give EM (on Windows) a chance to respond to the AMQP handshake
-            # before doing anything interesting to prevent AMQP handshake from
-            # timing-out; delay post-connected activity a second.
-            EM.add_timer(1) { start_service(&terminate_callback) }
-          elsif status == :failed
-            terminate("failed to connect to any brokers during startup", &terminate_callback)
-          elsif status == :timeout
-            terminate("failed to connect to any brokers after #{@options[:connect_timeout]} seconds during startup",
-                      &terminate_callback)
-          else
-            terminate("broker connect attempt failed unexpectedly with status #{status} during startup",
-                      &terminate_callback)
+        if @options[:right_api_urls]
+          # HTTP is being used for RightNet connectivity instead of AMQP
+          @right_api = RightApi.new(self, @options)
+          start_service(&terminate_callback)
+        else
+          # Initiate AMQP broker connection, wait for connection before proceeding
+          # otherwise messages published on failed connection will be lost
+          @broker = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options)
+          @queues.each { |s| @remaining_queue_setup[s] = @broker.all }
+          @broker.connection_status(:one_off => @options[:connect_timeout]) do |status|
+            if status == :connected
+              # Need to give EM (on Windows) a chance to respond to the AMQP handshake
+              # before doing anything interesting to prevent AMQP handshake from
+              # timing-out; delay post-connected activity a second
+              EM.add_timer(1) { start_service(&terminate_callback) }
+            elsif status == :failed
+              terminate("failed to connect to any brokers during startup", &terminate_callback)
+            elsif status == :timeout
+              terminate("failed to connect to any brokers after #{@options[:connect_timeout]} seconds during startup",
+                        &terminate_callback)
+            else
+              terminate("broker connect attempt failed unexpectedly with status #{status} during startup",
+                        &terminate_callback)
+            end
           end
         end
       rescue SystemExit
@@ -235,7 +251,7 @@ module RightScale
       @registry.register(actor, prefix)
     end
 
-    # Connect to an additional broker or reconnect it if connection has failed
+    # Connect to an additional AMQP broker or reconnect it if connection has failed
     # Subscribe to identity queue on this broker
     # Update config file if this is a new broker
     # Assumes already has credentials on this broker and identity queue exists
@@ -286,7 +302,7 @@ module RightScale
       res
     end
 
-    # Disconnect from a broker and optionally remove it from the configuration
+    # Disconnect from an AMQP broker and optionally remove it from the configuration
     # Refuse to do so if it is the last connected broker
     #
     # === Parameters
@@ -329,7 +345,7 @@ module RightScale
       res
     end
 
-    # There were problems while setting up service for this agent on the given brokers,
+    # There were problems while setting up service for this agent on the given AMQP brokers,
     # so mark these brokers as failed if not currently connected and later, during the
     # periodic status check, attempt to reconnect
     #
@@ -375,7 +391,7 @@ module RightScale
       begin
         @history.update("stop") if @history
         Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
-        if @terminating || @broker.nil?
+        if @terminating || (@broker.nil? && @urls.nil?)
           @terminating = true
           @termination_timer.cancel if @termination_timer
           @termination_timer = nil
@@ -415,7 +431,6 @@ module RightScale
         "hostname"        => Socket.gethostname,
         "memory"          => Platform.process.resident_set_size,
         "version"         => AgentConfig.protocol_version,
-        "brokers"         => @broker.stats(reset),
         "agent stats"     => agent_stats(reset),
         "receive stats"   => dispatcher_stats(reset),
         "send stats"      => @sender.stats(reset),
@@ -424,6 +439,8 @@ module RightScale
         "service uptime"  => @history.analyze_service,
         "machine uptime"  => Platform.shell.uptime
       }
+      stats["brokers"] = @broker.stats(reset) if @broker
+      stats["api stats"] = @right_api.stats(reset) if @right_api
       stats["revision"] = @revision if @revision
       result = OperationResult.success(stats)
       @last_stat_reset_time = now if reset
@@ -439,13 +456,13 @@ module RightScale
     #
     # === Return
     # stats(Hash):: Current statistics:
-    #   "connect requests"(Hash|nil):: Stats about requests to update connections with keys "total", "percent",
+    #   "connect requests"(Hash|nil):: Stats about requests to update AMQP broker connections with keys "total", "percent",
     #     and "last" with percentage breakdown by "connects: <alias>", "disconnects: <alias>", "enroll setup failed:
     #     <aliases>", or nil if none
     #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
     #     "total"(Integer):: Total exceptions for this category
     #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
-    #   "non-deliveries"(Hash):: Message non-delivery activity stats with keys "total", "percent", "last", and "rate"
+    #   "non-deliveries"(Hash):: AMQP message non-delivery activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown by request type, or nil if none
     #   "request failures"(Hash|nil):: Request dispatch failure activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per failure type, or nil if none
@@ -453,12 +470,14 @@ module RightScale
     #     with percentage breakdown per failure type, or nil if none
     def agent_stats(reset = false)
       stats = {
-        "connect requests"  => @connect_request_stats.all,
         "exceptions"        => @exception_stats.stats,
-        "non-deliveries"    => @non_delivery_stats.all,
         "request failures"  => @request_failure_stats.all,
         "response failures" => @response_failure_stats.all
       }
+      if @broker
+        stats["connect requests"] = @connect_request_stats.all
+        stats["non-deliveries"] = @non_delivery_stats.all
+      end
       reset_agent_stats if reset
       stats
     end
@@ -524,7 +543,7 @@ module RightScale
     # === Return
     # (Boolean):: true if successful, otherwise false
     def update_configuration(opts)
-      if cfg = AgentConfig.load_cfg(@agent_name)
+      if (cfg = AgentConfig.load_cfg(@agent_name))
         opts.each { |k, v| cfg[k] = v }
         AgentConfig.store_cfg(@agent_name, cfg)
         true
@@ -551,12 +570,14 @@ module RightScale
         @sender = create_sender
         load_actors
         setup_traps
-        setup_non_delivery
-        setup_queues
+        if @broker
+          setup_non_delivery
+          setup_queues
+        end
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
         EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-        EM.defer { receive_events }
+        EM.defer { @right_api.receive_requests { |r| handle_request(r) } } if @right_api
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next
@@ -571,47 +592,30 @@ module RightScale
       true
     end
 
-    # Receive events via HTTP
+    # Handle requests being presented to this agent
+    #
+    # === Parameters
+    # request(Push|Request):: Request received
     #
     # === Return
     # true:: Always return true
-    def receive_events
-      HttpRouter.init("instance", "http://localhost:8080", nil)
-      count = 0
-      loop do
-        count += 1
-        begin
-          if (request = HttpRouter.wait_for_event(@identity))
-            Log.info("LEE Received request #{request.inspect}")
-            if request.is_a?(Request) || request.is_a?(Push)
-              EM.next_tick do
-                begin
-                  Log.info("LEE Dispatching request #{request.inspect}")
-                  if (result = @dispatcher.dispatch(request))
-                    Log.info("LEE Sending response to #{request.reply_to} RESULT #{result.inspect}")
-                    exchange = {:type => :queue, :name => request.reply_to, :options => {:durable => true, :no_declare => @options[:secure]}}
-                    @broker.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:request_from, :tries, :persistent, :duration])
-                  else
-                    Log.info("LEE No response for #{request.trace}")
-                  end
-                rescue Exception => e
-                  Log.error("LEE Dispatch error for loop #{count}", e, :trace)
-                end
-              end
-            else
-              Log.info("LEE Non-request for loop #{count}: #{request.inspect}")
+    def handle_request(request)
+      if request.is_a?(Request) || request.is_a?(Push)
+        # Use next_tick to ensure that on main reactor thread
+        # so that any data access is thread safe
+        EM.next_tick do
+          begin
+            Log.info("Received #{request.inspect}")
+            if (result = @dispatcher.dispatch(request)) && request.is_a?(Request)
+              @right_api.respond(result)
             end
-          else
-            Log.info("LEE No event for loop #{count}")
+          rescue Exception => e
+            Log.error("Failed sending response for #{request.trace}", e, :trace)
           end
-        rescue Exception => e
-          Log.error("LEE Error for loop #{count}", e, e.is_a?(RightScale::Exceptions::ConnectivityFailure) ? :no_trace : :trace)
-          sleep(5)
         end
+      else
+        Log.error("Unrecognized request: #{request.class}")
       end
-      true
-    rescue Exception => e
-      Log.error("LEE Receive event error", e, :trace)
     end
 
     # Create dispatcher per queue for use in handling incoming requests
@@ -857,25 +861,21 @@ module RightScale
     # true:: Always return true
     def check_status
       begin
-        finish_setup unless @terminating
+        finish_setup unless @terminating || @broker.nil?
       rescue Exception => e
         Log.error("Failed finishing setup", e)
         @exception_stats.track("check status", e)
       end
 
       begin
-        @broker.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating
+        @broker.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating || @broker.nil?
       rescue Exception => e
         Log.error("Failed checking queue status", e)
         @exception_stats.track("check status", e)
       end
 
       begin
-        if @stats_routing_key && !@terminating
-          exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
-          @broker.publish(exchange, Stats.new(stats.content, @identity), :no_log => true,
-                          :routing_key => @stats_routing_key, :brokers => @check_status_brokers.rotate!)
-        end
+        publish_stats unless @terminating || @stats_routing_key.nil?
       rescue Exception => e
         Log.error("Failed publishing stats", e)
         @exception_stats.track("check status", e)
@@ -889,6 +889,22 @@ module RightScale
       end
 
       @check_status_count += 1
+      true
+    end
+
+    # Publish current stats
+    #
+    # === Return
+    # true:: Always return true
+    def publish_stats
+      stats = stats.content
+      if @broker
+        exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
+        @broker.publish(exchange, Stats.new(stats, @identity), :no_log => true,
+                        :routing_key => @stats_routing_key, :brokers => @check_status_brokers.rotate!)
+      else
+        @right_api.publish_stats(stats)
+      end
       true
     end
 
@@ -927,7 +943,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def stop_gracefully(timeout, &block)
-      @broker.unusable.each { |id| @broker.close_one(id, propagate = false) }
+      @broker.unusable.each { |id| @broker.close_one(id, propagate = false) } if @broker
       finish_terminating(timeout, &block)
     end
 

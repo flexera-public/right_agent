@@ -590,6 +590,7 @@ module RightScale
       @identity = @agent.identity
       @options = @agent.options || {}
       @broker = @agent.broker
+      @right_api = @agent.right_api
       @secure = @options[:secure]
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
       @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
@@ -906,7 +907,7 @@ module RightScale
     def handle_response(response)
       token = response.token
       if response.is_a?(Result)
-        if result = OperationResult.from_results(response)
+        if (result = OperationResult.from_results(response))
           if result.non_delivery?
             @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
           elsif result.error?
@@ -917,12 +918,12 @@ module RightScale
           @result_stats.update(response.results.nil? ? "nil" : response.results)
         end
 
-        if handler = @pending_requests[token]
+        if (handler = @pending_requests[token])
           if result && result.non_delivery? && handler.kind == :send_retryable_request
             if result.content == OperationResult::TARGET_NOT_CONNECTED
               # Log and temporarily ignore so that timeout retry mechanism continues, but save reason for use below if timeout
               # Leave purging of associated request until final response, i.e., success response or retry timeout
-              if parent = handler.retry_parent
+              if (parent = handler.retry_parent)
                 @pending_requests[parent].non_delivery = result.content
               else
                 handler.non_delivery = result.content
@@ -1163,9 +1164,14 @@ module RightScale
     #    to any brokers and offline queueing is disabled
     def publish(request, ids = nil)
       begin
-        exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
-        @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
-                        :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
+        if @right_api
+          response = @right_api.make_request(request)
+          handle_response(response) if response
+        else
+          exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
+          @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
+                          :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
+        end
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
         msg = "Failed to publish request #{request.trace} #{request.type}"
         Log.error(msg, e)
