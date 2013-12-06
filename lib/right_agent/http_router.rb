@@ -284,7 +284,7 @@ module RightScale
               "X-Request-Lineage-Uuid" => request_uuid,
               "X-API-Version" => API_VERSION,
               "Authorization" => "Bearer #{infrastructure_cookie}",
-              :content_type => "application/json" } }
+            :content_type => "application/json" } }
           options[:query][:target] = target if target
 
           response = @balancer.request do |host|

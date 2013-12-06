@@ -11,6 +11,7 @@
 # the licensee.
 #++
 
+require 'global_session'
 require File.join(File.dirname(__FILE__), 'core_payload_types')
 
 module RightScale
@@ -44,6 +45,7 @@ module RightScale
     # @option options [Array] :filter_params Symbols for payload parameters to be filtered when logging
     def initialize(agent, options)
       @agent = agent
+      @options = options
       @actor_api_map = options[:actor_api_map]
       @client = Client.new(options)
       HttpRouter.init("instance", options[:right_net_urls] || options[:right_api_urls], nil)
@@ -220,7 +222,11 @@ module RightScale
     #
     # @return [Hash] HTTP parameters
     def parameterize(request)
-      params = {:request_token => request.token}
+      params = {
+        :request_token => request.token,
+        :account_id    => @options[:account_id],
+        :instance_id   => @options[:instance_id],
+        :instance_href => @options[:instance_href] }
       params[:request_tries] = request.tries unless request.tries.empty?
       if (payload = request.payload) && payload.is_a?(Hash)
         payload.each { |k, v| params[PARAM_NAME_MAP[k.to_sym] || k.to_sym] = v }
@@ -234,7 +240,10 @@ module RightScale
     #
     # @return [Hash] Base parameters
     def base_params(params)
-      result = {}
+      result = {
+        :account_id    => @options[:account_id],
+        :instance_id   => @options[:instance_id],
+        :instance_href => @options[:instance_href] }
       result[:agent_id] = params[:agent_id] if params[:agent_id]
       result[:request_tries] = params[:request_tries] if params[:request_tries]
       result
@@ -252,7 +261,7 @@ module RightScale
     def make_tags_request(action, verb, uris, params, options)
       result = nil
       # TODO Need agent's href to interface to tags controller
-      hrefs = ["/api" + @agent.href]
+      hrefs = ["/api" + @options[:instance_href]]
       case action
       when "query_tags"
         result = @client.send(verb, uris[0], {:resource_hrefs => hrefs}, options)
@@ -418,6 +427,39 @@ module RightScale
           :policy => RightSupport::Net::LB::HealthCheck,
           :health_check => @health_check }
         @balancer = RightSupport::Net::RequestBalancer.new(@urls, balancer_options)
+
+        # TODO Initialize global session directory for now as workaround for instance authentication
+        config_dir = "/Users/leekirchhoff/Projects/right_net/config"
+        config = GlobalSession::Configuration.new(File.join(config_dir, "global_session.yml"), ENV["RAILS_ENV"])
+        @global_session_dir = constantize(config["directory"]).new(config, File.join(config_dir, "authorities"))
+        @global_session_timeout = (config["timeout"] * 8) / 10
+      end
+
+      # Copied from activesupport/lib/active_support/inflector/methods.rb
+      def constantize(camel_cased_word)
+        names = camel_cased_word.split('::')
+        names.shift if names.empty? || names.first.empty?
+
+        names.inject(Object) do |constant, name|
+          if constant == Object
+            constant.const_get(name)
+          else
+            candidate = constant.const_get(name)
+            next candidate if constant.const_defined?(name, false)
+            next candidate unless Object.const_defined?(name)
+
+            # Go down the ancestors to check it it's owned
+            # directly before we reach Object or the end of ancestors.
+            constant = constant.ancestors.inject do |const, ancestor|
+              break const    if ancestor == Object
+              break ancestor if ancestor.const_defined?(name, false)
+              const
+            end
+
+            # owner is in Object, so raise
+            constant.const_get(name, false)
+          end
+        end
       end
 
       def get(*args)
@@ -465,14 +507,15 @@ module RightScale
             :headers => {
               "X-Request-Lineage-Uuid" => request_uuid,
               "X-API-Version" => API_VERSION,
-              "Authorization" => "TODO" },
+              "Authorization" => "Bearer #{instance_cookie(params)}",
+              :accept => "application/json"},
             :query => {
               :request_token => request_uuid } }
           if [:get, :delete].include?(verb)
             request_options[:query].merge!(params)
           else
-            request_options[:payload] = JSON.dump({:payload => params})
-            request_options[:content_type] = "application/json"
+            request_options[:payload] = JSON.dump(params)
+            request_options[:headers][:content_type] = "application/json"
           end
 
           response = @balancer.request do |host|
@@ -496,11 +539,35 @@ module RightScale
         else
           "-"
         end
-        display = "Completed <#{original_request_uuid}> in #{duration} | #{status} [#{host_picked}#{uri}] | #{length} bytes"
+        display = "Completed <#{request_uuid}> in #{duration} | #{status} [#{host_picked}#{uri}] | #{length} bytes"
         display << " #{result.inspect}" if Log.level == Logger::DEBUG
         Log.info(display)
 
         result
+      end
+
+      # Retrieve or create global session cookie for instance agent
+      # Cache session and only recreate when times out
+      #
+      # @param [Hash] params for request params containing :instance_id and :account_id
+      #
+      # @return [String] instance cookie
+      def instance_cookie(params)
+        now = Time.now
+        if (session = @instance_session) && (now - session[:created_at]) < @global_session_timeout
+          session[:cookie]
+        else
+          # Create new global session
+          global_session = GlobalSession::Session.new(@global_session_dir)
+          global_session["instance"] = params[:instance_id]
+          global_session["account"] = params[:account_id]
+          cookie = global_session.to_s
+
+          # Cache session
+          @instance_session = { :cookie => cookie, :created_at => now }
+
+          cookie
+        end
       end
 
       # Report request failure to logs

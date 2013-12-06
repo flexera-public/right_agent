@@ -532,6 +532,20 @@ module RightScale
       @queues = [@identity]
       @remaining_queue_setup = {}
       @history = History.new(@identity)
+
+      # TODO This is a hack so that have enough data to authenticate with RightApi for now
+      if @options[:right_api_urls]
+        File.open("/var/spool/cloud/none/user-data.txt").each do |line|
+          line.chomp.split("&").each do |var|
+            k, v = var.split("=")
+            case k
+            when "RS_account_id" then @options[:account_id] = v.to_i
+            when "RS_instance_id" then @options[:instance_id] = v.to_i
+            when "RS_instance_href" then @options[:instance_href] = v
+            end
+          end
+        end
+      end
     end
 
     # Update agent's persisted configuration
@@ -845,7 +859,7 @@ module RightScale
     # true:: Always return true
     def setup_status_checks(interval)
       @check_status_count = 0
-      @check_status_brokers = @broker.all
+      @check_status_brokers = @broker.all if @broker
       @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
       true
     end
