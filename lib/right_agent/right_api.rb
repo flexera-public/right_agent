@@ -11,7 +11,6 @@
 # the licensee.
 #++
 
-require 'global_session'
 require File.join(File.dirname(__FILE__), 'core_payload_types')
 
 module RightScale
@@ -39,16 +38,18 @@ module RightScale
     #
     # @param [Agent] agent using API
     #
-    # @option options [Array, String] :right_api_urls of RightApi server as array or comma-separated list
-    # @option options [Array, String] :right_net_urls of RightNet router as array or comma-separated list
     # @option options [Hash] :actor_api_map from actor-based request types to API verb and URI
     # @option options [Array] :filter_params Symbols for payload parameters to be filtered when logging
     def initialize(agent, options)
       @agent = agent
       @options = options
       @actor_api_map = options[:actor_api_map]
-      @client = Client.new(options)
-      HttpRouter.init("instance", options[:right_net_urls] || options[:right_api_urls], nil)
+      HttpRouter.init("instance", [ENV["RS_RN_URL"]], nil)
+      @client = Client.new([ENV["RS_API_URL"]], options)
+      @account_id, api_token = ENV["RS_API_TOKEN"].split(":")
+      @client.post("/api/session/instance", {:account_href => "/api/accounts/#{@account_id}", :instance_token => api_token})
+      response = @client.get("/api/session/instance", {})
+      @instance_href = response["links"].select { |link| link["rel"] == "self" }.first["href"]
       reset_stats
     end
 
@@ -72,7 +73,7 @@ module RightScale
 
       begin
         params = parameterize(request)
-        verb, uri, uri2 = @actor_api_map[request.type]
+        verb, uri = @actor_api_map[request.type]
         raise ArgumentError, "Unknown request type #{request.type}" if verb.nil?
         options = {:request_token => [params[:audit_id], request.token]}
         if actor == "auditor"
@@ -80,7 +81,7 @@ module RightScale
           result = make_audit_request(action, verb, uri, params, options)
         elsif actor == "mapper" && action =~ /tags/
           # Need to translate tags payload to API parameters
-          result = make_tags_request(action, verb, [uri, uri2], params, options)
+          result = make_tags_request(action, verb, uri, params, options)
         elsif actor == "instance_scheduler"
           # Needs to go through router for mapping to multiple targets
           HttpRouter.push(request.type, request.payload, request.target)
@@ -224,9 +225,7 @@ module RightScale
     def parameterize(request)
       params = {
         :request_token => request.token,
-        :account_id    => @options[:account_id],
-        :instance_id   => @options[:instance_id],
-        :instance_href => @options[:instance_href] }
+        :account_id    => @account_id }
       params[:request_tries] = request.tries unless request.tries.empty?
       if (payload = request.payload) && payload.is_a?(Hash)
         payload.each { |k, v| params[PARAM_NAME_MAP[k.to_sym] || k.to_sym] = v }
@@ -240,10 +239,7 @@ module RightScale
     #
     # @return [Hash] Base parameters
     def base_params(params)
-      result = {
-        :account_id    => @options[:account_id],
-        :instance_id   => @options[:instance_id],
-        :instance_href => @options[:instance_href] }
+      result = {}
       result[:agent_id] = params[:agent_id] if params[:agent_id]
       result[:request_tries] = params[:request_tries] if params[:request_tries]
       result
@@ -251,24 +247,23 @@ module RightScale
 
     # Translate tags request to one or more RightApi requests
     #
-    # @param [String] action requested
+    # @param [String] action requested: query_tags or update_tags
     # @param [Symbol] verb for REST request
-    # @param [Array] uris to route request to at host URL
+    # @param [String] uri to route request to at host URL; in the case of an
+    #   update_tags request the uri is missing the "add" or "delete" suffix
     # @param [Hash] params from HTTP request
     # @param [Hash] options for HTTP request
     #
     # @return [Object] result of request
-    def make_tags_request(action, verb, uris, params, options)
+    def make_tags_request(action, verb, uri, params, options)
       result = nil
-      # TODO Need agent's href to interface to tags controller
-      hrefs = ["/api" + @options[:instance_href]]
       case action
       when "query_tags"
-        result = @client.send(verb, uris[0], {:resource_hrefs => hrefs}, options)
+        result = @client.send(verb, uri, {:resource_hrefs => [@instance_href]}, options)
       when "update_tags"
-        {:new_tags => uris[0], :obsolete_tags => uris[1]}.each do |param, uri|
+        {:new_tags => "add", :obsolete_tags => "delete"}.each do |param, operation|
           tags = Array(params[param]).flatten.compact
-          result = @client.send(verb, uri, {:resource_hrefs => hrefs, :tags => tags}, options) if tags.any?
+          result = @client.send(verb, uri + operation, {:resource_hrefs => [@instance_href], :tags => tags}, options) if tags.any?
         end
       end
       result
@@ -277,7 +272,7 @@ module RightScale
     # Translate audit request to one or more RightApi requests
     # Truncate audit summary to MAX_AUDIT_SUMMARY_LENGTH if sending to RightApi
     #
-    # @param [String] action requested
+    # @param [String] action requested: create_entry or update_entry
     # @param [Symbol] verb for REST request
     # @param [String] uri to route request at host URL
     # @param [Hash] params from HTTP request
@@ -293,7 +288,7 @@ module RightScale
       when "create_entry"
         create_params = base_params(params)
         create_params[:audit_entry] = {
-            :auditee_href => "/api#{params[:instance_href]}",
+            :auditee_href => @instance_href,
             :summary      => truncate(params[:summary], MAX_AUDIT_SUMMARY_LENGTH) }
         create_params[:audit_entry][:detail] = params[:detail] if params[:detail]
         create_params[:user_email] = params[:user_email] if params[:user_email]
@@ -407,11 +402,11 @@ module RightScale
 
       # Create balancer for making API requests
       #
-      # @option options [Array, String] :right_api_urls of server being accessed as array or comma-separated string
+      # @param [Array] urls of server being accessed as array or comma-separated string
+      #
       # @option options [Array] :filter_params Symbols for payload parameters to be filtered when logging
-      def initialize(options = {})
+      def initialize(urls, options = {})
         @filter_params = options[:filter_params] || []
-        @urls = options[:right_api_urls].is_a?(Array) ? options[:right_api_urls] : options[:right_api_urls].split(/,\s*/)
 
         # Create health check proc for use by request balancer
         @health_check = Proc.new do |host|
@@ -426,13 +421,7 @@ module RightScale
         balancer_options = {
           :policy => RightSupport::Net::LB::HealthCheck,
           :health_check => @health_check }
-        @balancer = RightSupport::Net::RequestBalancer.new(@urls, balancer_options)
-
-        # TODO Initialize global session directory for now as workaround for instance authentication
-        config_dir = "/Users/leekirchhoff/Projects/right_net/config"
-        config = GlobalSession::Configuration.new(File.join(config_dir, "global_session.yml"), ENV["RAILS_ENV"])
-        @global_session_dir = constantize(config["directory"]).new(config, File.join(config_dir, "authorities"))
-        @global_session_timeout = (config["timeout"] * 8) / 10
+        @balancer = RightSupport::Net::RequestBalancer.new(urls, balancer_options)
       end
 
       # Copied from activesupport/lib/active_support/inflector/methods.rb
@@ -492,25 +481,31 @@ module RightScale
       # @option options [String] :request_token uniquely identifying request; defaults to random generated UUID
       #
       # @return [Object] Result returned by receiver of request
-      def make_request(verb, uri, params, options)
+      def make_request(verb, uri, params, options = {})
         result = nil
         host_picked = nil
         started_at = Time.now
-        request_uuid = options[:request_token] || RightSupport::Data::UUID.generate
+        request_token = options[:request_token] || RightSupport::Data::UUID.generate
+        if request_token.is_a?(Array)
+          request_trace = request_token.map { |t| "<#{t}>" }.join(" ")
+          request_token = request_token.compact.join(":")
+        else
+          request_trace = "<#{request_token}>"
+        end
 
-        Log.info("Requesting #{verb.to_s.capitalize} <#{request_uuid}> " + log_text(uri, params))
+        Log.info("Requesting #{verb.to_s.upcase} #{request_trace} " + log_text(uri, params))
 
         begin
           request_options = {
             :open_timeout => options[:open_timeout] || DEFAULT_OPEN_TIMEOUT,
             :timeout => options[:timeout] || DEFAULT_REQUEST_TIMEOUT,
             :headers => {
-              "X-Request-Lineage-Uuid" => request_uuid,
+              "X-Request-Lineage-Uuid" => request_token,
               "X-API-Version" => API_VERSION,
-              "Authorization" => "Bearer #{instance_cookie(params)}",
               :accept => "application/json"},
             :query => {
-              :request_token => request_uuid } }
+              :request_token => request_token } }
+          request_options[:headers][:cookies] = @cookies if @cookies
           if [:get, :delete].include?(verb)
             request_options[:query].merge!(params)
           else
@@ -523,7 +518,7 @@ module RightScale
             RightSupport::Net::HTTPClient.new.send(verb, host + uri, request_options)
           end
         rescue Exception => e
-          report_failure(host_picked, uri, params, request_uuid, started_at, e)
+          report_failure(host_picked, uri, params, request_trace, started_at, e)
           raise
         end
 
@@ -535,39 +530,16 @@ module RightScale
         status = response ? response.code : "nil"
         duration = "%.0fms" % ((Time.now - started_at) * 1000)
         length =  if response
+          @cookies = response.cookies unless response.cookies.empty?
           response.headers[:content_length] ? response.headers[:content_length] : response.body.size
         else
           "-"
         end
-        display = "Completed <#{request_uuid}> in #{duration} | #{status} [#{host_picked}#{uri}] | #{length} bytes"
+        display = "Completed #{request_trace} in #{duration} | #{status} [#{host_picked}#{uri}] | #{length} bytes"
         display << " #{result.inspect}" if Log.level == Logger::DEBUG
         Log.info(display)
 
         result
-      end
-
-      # Retrieve or create global session cookie for instance agent
-      # Cache session and only recreate when times out
-      #
-      # @param [Hash] params for request params containing :instance_id and :account_id
-      #
-      # @return [String] instance cookie
-      def instance_cookie(params)
-        now = Time.now
-        if (session = @instance_session) && (now - session[:created_at]) < @global_session_timeout
-          session[:cookie]
-        else
-          # Create new global session
-          global_session = GlobalSession::Session.new(@global_session_dir)
-          global_session["instance"] = params[:instance_id]
-          global_session["account"] = params[:account_id]
-          cookie = global_session.to_s
-
-          # Cache session
-          @instance_session = { :cookie => cookie, :created_at => now }
-
-          cookie
-        end
       end
 
       # Report request failure to logs
@@ -575,15 +547,15 @@ module RightScale
       #
       # @param [String] host server URL where request was attempted if known
       # @param [String] uri to route request at host URL
-      # @param [String] request_uuid uniquely identifying request
+      # @param [String] request_trace uniquely identifying request
       # @param [Time] started_at time when request started
       # @param [Exception, String] exception or message that should be logged
       #
       # @return [TrueClass] Always return true
-      def report_failure(host, uri, params, request_uuid, started_at, exception)
+      def report_failure(host, uri, params, request_trace, started_at, exception)
         status = exception.respond_to?(:http_code) ? exception.http_code : "nil"
         duration = "%.0fms" % ((Time.now - started_at) * 1000)
-        Log.error("Failed <#{request_uuid}> in #{duration} | #{status} " +
+        Log.error("Failed <#{request_trace}> in #{duration} | #{status} " +
                      log_text(uri, params, host, exception))
         true
       end

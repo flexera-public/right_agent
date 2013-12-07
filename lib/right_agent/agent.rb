@@ -21,6 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 require 'socket'
+require File.join(RightScale::Platform.filesystem.spool_dir, 'cloud', 'none', 'user-data')
 
 module RightScale
 
@@ -133,10 +134,6 @@ module RightScale
     #   :abnormal_terminate_callback(Proc):: Called at end of termination when terminate abnormally (no argument)
     #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
-    #   :right_net_urls(String):: Comma-separated list of URLs for making RightNet connection for receiving requests
-    #     via HTTP instead of AMQP; defaults to :right_api_urls
-    #   :right_api_urls(String):: Comma-separated list of URLs for making RightScale API requests using HTTP instead
-    #     of AMQP
     #   :actor_api_map(Hash) Map of actor-based request types to RightScale API HTTP request verb and URI
     #   :filter_params(Array) Names of parameters whose values are to be hidden when logging API requests
     #   :vhost(String):: AMQP broker virtual host
@@ -202,7 +199,7 @@ module RightScale
         pid_file.write
         at_exit { pid_file.remove }
 
-        if @options[:right_api_urls]
+        if (url = ENV["RS_RN_URL"]) && URI.parse(url).scheme =~ /http/
           # HTTP is being used for RightNet connectivity instead of AMQP
           @right_api = RightApi.new(self, @options)
           start_service(&terminate_callback)
@@ -391,7 +388,7 @@ module RightScale
       begin
         @history.update("stop") if @history
         Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
-        if @terminating || (@broker.nil? && @urls.nil?)
+        if @terminating || (@broker.nil? && @right_api.nil?)
           @terminating = true
           @termination_timer.cancel if @termination_timer
           @termination_timer = nil
@@ -532,20 +529,6 @@ module RightScale
       @queues = [@identity]
       @remaining_queue_setup = {}
       @history = History.new(@identity)
-
-      # TODO This is a hack so that have enough data to authenticate with RightApi for now
-      if @options[:right_api_urls]
-        File.open("/var/spool/cloud/none/user-data.txt").each do |line|
-          line.chomp.split("&").each do |var|
-            k, v = var.split("=")
-            case k
-            when "RS_account_id" then @options[:account_id] = v.to_i
-            when "RS_instance_id" then @options[:instance_id] = v.to_i
-            when "RS_instance_href" then @options[:instance_href] = v
-            end
-          end
-        end
-      end
     end
 
     # Update agent's persisted configuration
@@ -766,8 +749,7 @@ module RightScale
         # Continue to dispatch/ack requests even when terminating otherwise will block results
         # Ideally would reject requests when terminating but broker client does not yet support that
         case packet
-        # TODO hack to defer request receipt to HTTP
-        when Push, Request then nil #dispatch_request(packet, queue)
+        when Push, Request then dispatch_request(packet, queue)
         when Result        then deliver_response(packet)
         end
         @sender.message_received
@@ -777,13 +759,7 @@ module RightScale
       ensure
         # Relying on fact that all dispatches/deliveries are synchronous and therefore
         # need to have completed or failed by now, thus allowing packet acknowledgement
-        if packet.is_a?(Push) || packet.is_a?(Request)
-          # TODO hack to defer request receipt to HTTP
-          header.reject(:requeue => true)
-          @broker.unsubscribe(@identity)
-        else
-          header.ack
-        end
+        header.ack
       end
       true
     end
@@ -980,7 +956,7 @@ module RightScale
           request_count, request_age = @sender.terminate
           Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                    "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-          @broker.close { block.call }
+          @broker.close { block.call } if @broker
         end
 
         if (wait_time = [timeout - (request_age || timeout), 0].max) > 0
