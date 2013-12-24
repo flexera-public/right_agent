@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2012 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -22,534 +22,34 @@
 
 module RightScale
 
-  # This class allows sending requests to agents without having to run a local mapper
+  # This class allows sending requests to agents via RightNet
   # It is used by Actor.request which is used by actors that need to send requests to remote agents
-  # If requested, it will queue requests when there are no broker connections
-  # All requests go through the mapper for security purposes
+  # If requested, it will queue requests when there are is no RightNet connection
   class Sender
 
-    class SendFailure < Exception; end
-    class TemporarilyOffline < Exception; end
+    include RightSupport::Ruby::EasySingleton
+    include OperationResultHelper
 
-    # Request that is waiting for a response
-    class PendingRequest
-
-      # (Symbol) Kind of send request
-      attr_reader :kind
-
-      # (Time) Time when request message was received
-      attr_reader :receive_time
-
-      # (Proc) Block to be activated when response is received
-      attr_reader :response_handler
-
-      # (String) Token for parent request in a retry situation
-      attr_accessor :retry_parent
-
-      # (String) Non-delivery reason if any
-      attr_accessor :non_delivery
-
-      def initialize(kind, receive_time, response_handler)
-        @kind = kind
-        @receive_time = receive_time
-        @response_handler = response_handler
-        @retry_parent = nil
-        @non_delivery = nil
-      end
-
-    end # PendingRequest
-
-    # Cache for requests that are waiting for a response
-    # Automatically deletes push requests when get too old
-    # Retains non-push requests until explicitly deleted
-    class PendingRequests < Hash
-
-      # Kinds of send requests
-      REQUEST_KINDS = [:send_retryable_request, :send_persistent_request]
-
-      # Kinds of send pushes
-      PUSH_KINDS = [:send_push, :send_persistent_push]
-
-      # Maximum number of seconds to retain send pushes in cache
-      MAX_PUSH_AGE = 2 * 60
-
-      # Minimum number of seconds between push cleanups
-      MIN_CLEANUP_INTERVAL = 15
-
-      # Create cache
-      def initialize
-        @last_cleanup = Time.now
-        super
-      end
-
-      # Store pending request
-      #
-      # === Parameters
-      # token(String):: Generated message identifier
-      # request(PendingRequest):: Pending request
-      #
-      # === Return
-      # (PendingRequest):: Stored request
-      def []=(token, request)
-        now = Time.now
-        if (now - @last_cleanup) > MIN_CLEANUP_INTERVAL
-          self.reject! { |t, r| PUSH_KINDS.include?(r.kind) && (now - r.receive_time) > MAX_PUSH_AGE }
-          @last_cleanup = now
-        end
-        super
-      end
-
-      # Select cache entries of the given kinds
-      #
-      # === Parameters
-      # kinds(Array):: Kind of requests to be included
-      #
-      # === Return
-      # (Hash):: Requests of specified kind
-      def kind(kinds)
-        self.reject { |t, r| !kinds.include?(r.kind) }
-      end
-
-      # Get age of youngest pending request
-      #
-      # === Return
-      # age(Integer):: Age of youngest request
-      def youngest_age
-        now = Time.now
-        age = nil
-        self.each_value do |r|
-          seconds = (now - r.receive_time).to_i
-          age = seconds if age.nil? || seconds < age
-        end
-        age
-      end
-
-      # Get age of oldest pending request
-      #
-      # === Return
-      # age(Integer):: Age of oldest request
-      def oldest_age
-        now = Time.now
-        age = nil
-        self.each_value do |r|
-          seconds = (now - r.receive_time).to_i
-          age = seconds if age.nil? || seconds > age
-        end
-        age
-      end
-
-    end # PendingRequests
-
-    # Queue for storing requests while disconnected from broker and then sending
-    # them when successfully reconnect
-    class OfflineHandler
-
-      # Maximum seconds to wait before starting flushing offline queue when disabling offline mode
-      MAX_QUEUE_FLUSH_DELAY = 2 * 60
-
-      # Maximum number of offline queued requests before triggering restart vote
-      MAX_QUEUED_REQUESTS = 100
-
-      # Number of seconds that should be spent in offline mode before triggering a restart vote
-      RESTART_VOTE_DELAY = 15 * 60
-
-      # (Symbol) Current queue state with possible values:
-      #   Value          Description                Action               Next state
-      #   :created       Queue created              init                 :initializing
-      #   :initializing  Agent still initializing   start                :running
-      #   :running       Queue has been started     disable when offline :flushing
-      #   :flushing      Sending queued requests    enable               :running
-      #   :terminating   Agent terminating
-      attr_reader :state
-
-      # (Symbol) Current offline handling mode with possible values:
-      #   Value          Description
-      #   :initializing  Agent still initializing
-      #   :online        Agent connected to broker
-      #   :offline       Agent disconnected from broker
-      attr_reader :mode
-
-      # (Array) Offline queue
-      attr_accessor :queue
-
-      # Create offline queue
-      #
-      # === Parameters
-      # restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
-      #   by offline queue exceeding MAX_QUEUED_REQUESTS
-      # offline_stats(RightSupport::Stats::Activity):: Offline queue tracking statistics
-      def initialize(restart_callback, offline_stats)
-        @restart_vote = restart_callback
-        @restart_vote_timer = nil
-        @restart_vote_count = 0
-        @offline_stats = offline_stats
-        @state = :created
-        @mode = :initializing
-        @queue = []
-      end
-
-      # Initialize the offline queue
-      # All requests sent prior to running this initialization are queued
-      # and then are sent once this initialization has run
-      # All requests following this call and prior to calling start
-      # are prepended to the request queue
-      #
-      # === Return
-      # true:: Always return true
-      def init
-        @state = :initializing if @state == :created
-        true
-      end
-
-      # Switch to online mode and send all buffered messages
-      #
-      # === Return
-      # true:: Always return true
-      def start
-        if @state == :initializing
-          if @mode == :offline
-            @state = :running
-          else
-            @state = :flushing
-            flush
-          end
-          @mode = :online if @mode == :initializing
-        end
-        true
-      end
-
-      # Is agent currently offline?
-      #
-      # === Return
-      # (Boolean):: true if agent offline, otherwise false
-      def offline?
-        @mode == :offline || @state == :created
-      end
-
-      # In request queueing mode?
-      #
-      # === Return
-      # (Boolean):: true if should queue request, otherwise false
-      def queueing?
-        offline? && @state != :flushing
-      end
-
-      # Switch to offline mode
-      # In this mode requests are queued in memory rather than sent to the mapper
-      # Idempotent
-      #
-      # === Return
-      # true:: Always return true
-      def enable
-        if offline?
-          if @state == :flushing
-            # If we were in offline mode then switched back to online but are still in the
-            # process of flushing the in-memory queue and are now switching to offline mode
-            # again then stop the flushing
-            @state = :running
-          end
-        else
-          Log.info("[offline] Disconnect from broker detected, entering offline mode")
-          Log.info("[offline] Messages will be queued in memory until connection to broker is re-established")
-          @offline_stats.update
-          @queue ||= []  # Ensure queue is valid without losing any messages when going offline
-          @mode = :offline
-          start_timer
-        end
-        true
-      end
-
-      # Switch back to sending requests to mapper after in-memory queue gets flushed
-      # Idempotent
-      #
-      # === Return
-      # true:: Always return true
-      def disable
-        if offline? && @state != :created
-          Log.info("[offline] Connection to broker re-established")
-          @offline_stats.finish
-          cancel_timer
-          @state = :flushing
-          # Wait a bit to avoid flooding the mapper
-          EM.add_timer(rand(MAX_QUEUE_FLUSH_DELAY)) { flush }
-        end
-        true
-      end
-
-      # Queue given request in memory
-      #
-      # === Parameters
-      # request(Hash):: Request to be stored
-      #
-      # === Return
-      # true:: Always return true
-      def queue_request(kind, type, payload, target, callback)
-        request = {:kind => kind, :type => type, :payload => payload, :target => target, :callback => callback}
-        Log.info("[offline] Queuing request: #{request.inspect}")
-        vote_to_restart if (@restart_vote_count += 1) >= MAX_QUEUED_REQUESTS
-        if @state == :initializing
-          # We are in the initialization callback, requests should be put at the head of the queue
-          @queue.unshift(request)
-        else
-          @queue << request
-        end
-        true
-      end
-
-      # Prepare for agent termination
-      #
-      # === Return
-      # true:: Always return true
-      def terminate
-        @state = :terminating
-        cancel_timer
-        true
-      end
-
-      protected
-
-      # Send any requests that were queued while in offline mode
-      # Do this asynchronously to allow for agents to respond to requests
-      # Once all in-memory requests have been flushed, switch off offline mode
-      #
-      # === Return
-      # true:: Always return true
-      def flush
-        if @state == :flushing
-          Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless @mode == :initializing
-          unless @queue.empty?
-            r = @queue.shift
-            if r[:callback]
-              Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target]) { |result| r[:callback].call(result) }
-            else
-              Sender.instance.__send__(r[:kind], r[:type], r[:payload], r[:target])
-            end
-          end
-          if @queue.empty?
-            Log.info("[offline] Request queue flushed, resuming normal operations") unless @mode == :initializing
-            @mode = :online
-            @state = :running
-          else
-            EM.next_tick { flush }
-          end
-        end
-        true
-      end
-
-      # Vote for restart and reset trigger
-      #
-      # === Parameters
-      # timer_trigger(Boolean):: true if vote was triggered by timer, false if it
-      #   was triggered by number of messages in in-memory queue
-      #
-      # === Return
-      # true:: Always return true
-      def vote_to_restart(timer_trigger = false)
-        if @restart_vote
-          @restart_vote.call
-          if timer_trigger
-            start_timer
-          else
-            @restart_vote_count = 0
-          end
-        end
-        true
-      end
-
-      # Start restart vote timer
-      #
-      # === Return
-      # true:: Always return true
-      def start_timer
-        if @restart_vote && @state != :terminating
-          @restart_vote_timer ||= EM::Timer.new(RESTART_VOTE_DELAY) { vote_to_restart(timer_trigger = true) }
-        end
-        true
-      end
-
-      # Cancel restart vote timer
-      #
-      # === Return
-      # true:: Always return true
-      def cancel_timer
-        if @restart_vote_timer
-          @restart_vote_timer.cancel
-          @restart_vote_timer = nil
-          @restart_vote_count = 0
-        end
-        true
-      end
-
-    end # OfflineHandler
-
-    # Broker connectivity checker
-    # Checks connectivity when requested
-    class ConnectivityChecker
-
-      # Minimum number of seconds between restarts of the inactivity timer
-      MIN_RESTART_INACTIVITY_TIMER_INTERVAL = 60
-
-      # Number of seconds to wait for ping response from a mapper when checking connectivity
-      PING_TIMEOUT = 30
-
-      # Default maximum number of consecutive ping timeouts before attempt to reconnect
-      MAX_PING_TIMEOUTS = 3
-
-      # (EM::Timer) Timer while waiting for mapper ping response
-      attr_accessor :ping_timer
-
-      def initialize(sender, check_interval, ping_stats, exception_stats)
-        @sender = sender
-        @check_interval = check_interval
-        @ping_timeouts = {}
-        @ping_timer = nil
-        @ping_stats = ping_stats
-        @exception_stats = exception_stats
-        @last_received = Time.now
-        @message_received_callbacks = []
-        restart_inactivity_timer if @check_interval > 0
-      end
-
-      # Update the time this agent last received a request or response message
-      # and restart the inactivity timer thus deferring the next connectivity check
-      # Also forward this message receipt notification to any callbacks that have registered
-      #
-      # === Block
-      # Optional block without parameters that is activated when a message is received
-      #
-      # === Return
-      # true:: Always return true
-      def message_received(&callback)
-        if block_given?
-          @message_received_callbacks << callback
-        else
-          @message_received_callbacks.each { |c| c.call }
-          if @check_interval > 0
-            now = Time.now
-            if (now - @last_received) > MIN_RESTART_INACTIVITY_TIMER_INTERVAL
-              @last_received = now
-              restart_inactivity_timer
-            end
-          end
-        end
-        true
-      end
-
-      # Check whether broker connection is usable by pinging a mapper via that broker
-      # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds and
-      # if have reached timeout limit
-      # Ignore request if already checking a connection
-      #
-      # === Parameters
-      # id(String):: Identity of specific broker to use to send ping, defaults to any
-      #   currently connected broker
-      # max_ping_timeouts(Integer):: Maximum number of ping timeouts before attempt
-      #   to reconnect, defaults to MAX_PING_TIMEOUTS
-      #
-      # === Return
-      # true:: Always return true
-      def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
-        unless @terminating || @ping_timer || (id && !@sender.broker.connected?(id))
-          @ping_id = id
-          @ping_timer = EM::Timer.new(PING_TIMEOUT) do
-            if @ping_id
-              begin
-                @ping_stats.update("timeout")
-                @ping_timer = nil
-                @ping_timeouts[@ping_id] = (@ping_timeouts[@ping_id] || 0) + 1
-                if @ping_timeouts[@ping_id] >= max_ping_timeouts
-                  Log.error("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds and now " +
-                            "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
-                            "attempting to reconnect")
-                  host, port, index, priority = @sender.broker.identity_parts(@ping_id)
-                  @sender.agent.connect(host, port, index, priority, force = true)
-                else
-                  Log.warning("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds")
-                end
-              rescue Exception => e
-                Log.error("Failed to reconnect to broker #{@ping_id}", e, :trace)
-                @exception_stats.track("ping timeout", e)
-              end
-            else
-              @ping_timer = nil
-            end
-          end
-
-          handler = lambda do |_|
-            begin
-              if @ping_timer
-                @ping_stats.update("success")
-                @ping_timer.cancel
-                @ping_timer = nil
-                @ping_timeouts[@ping_id] = 0
-                @ping_id = nil
-              end
-            rescue Exception => e
-              Log.error("Failed to cancel mapper ping", e, :trace)
-              @exception_stats.track("cancel ping", e)
-            end
-          end
-          request = Request.new("/mapper/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
-          @sender.pending_requests[request.token] = PendingRequest.new(:send_persistent_request, Time.now, handler)
-          ids = [@ping_id] if @ping_id
-          @ping_id = @sender.__send__(:publish, request, ids).first
-        end
-        true
-      end
-
-      # Prepare for agent termination
-      #
-      # === Return
-      # true:: Always return true
-      def terminate
-        @terminating = true
-        @check_interval = 0
-        if @ping_timer
-          @ping_timer.cancel
-          @ping_timer = nil
-        end
-        if @inactivity_timer
-          @inactivity_timer.cancel
-          @inactivity_timer = nil
-        end
-        true
-      end
-
-      protected
-
-      # Start timer that waits for inactive messaging period to end before checking connectivity
-      #
-      # === Return
-      # true:: Always return true
-      def restart_inactivity_timer
-        @inactivity_timer.cancel if @inactivity_timer
-        @inactivity_timer = EM::Timer.new(@check_interval) do
-          begin
-            check(id = nil, max_ping_timeouts = 1)
-          rescue Exception => e
-            Log.error("Failed connectivity check", e, :trace)
-            @exception_stats.track("check connectivity", e)
-          end
-        end
-        true
-      end
-
-    end # ConnectivityChecker
+    class SendFailure < RuntimeError; end
+    class TemporarilyOffline < RuntimeError; end
 
     # Factor used on each retry iteration to achieve exponential backoff
     RETRY_BACKOFF_FACTOR = 3
 
     # (PendingRequests) Requests waiting for a response
-    attr_accessor :pending_requests
+    attr_reader :pending_requests
 
-    # (OfflineHandler) Handler for requests when disconnected from broker
+    # (OfflineHandler) Handler for requests when client disconnected
     attr_reader :offline_handler
 
-    # (ConnectivityChecker) Broker connection checker
+    # (ConnectivityChecker) AMQP broker connection checker
     attr_reader :connectivity_checker
 
-    # (RightAMQP::HABrokerClient) High availability AMQP broker client
-    attr_accessor :broker
+    # (RightNetClient|RightAMQP::HABrokerClient) Client for accessing RightNet
+    attr_reader :client
+
+    # (Symbol) Protocol used for RightNet communication: "http" or "amqp"
+    attr_reader :protocol
 
     # (String) Identity of the associated agent
     attr_reader :identity
@@ -557,40 +57,32 @@ module RightScale
     # (Agent) Associated agent
     attr_reader :agent
 
-    # For direct access to current sender
-    #
-    # === Return
-    # (Sender):: This sender instance if defined, otherwise nil
-    def self.instance
-      @@instance if defined?(@@instance)
-    end
-
     # Initialize sender
     #
     # === Parameters
-    # agent(Agent):: Agent using this sender; uses its identity, broker, and following options:
+    # agent(Agent):: Agent using this sender; uses its identity, client, and following options:
     #   :exception_callback(Proc):: Callback with following parameters that is activated on exception events:
     #     exception(Exception):: Exception
     #     message(Packet):: Message being processed
     #     agent(Agent):: Reference to agent
-    #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to any brokers,
+    #   :offline_queueing(Boolean):: Whether to queue request if client currently disconnected,
     #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below,
-    #     as well as enable_offline_mode and disable_offline_mode as broker connections status changes
-    #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
+    #     as well as enable_offline_mode and disable_offline_mode as client connection status changes
+    #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping RightNet
     #     to check connectivity, defaults to 0 meaning do not ping
     #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
-    #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online
+    #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access RightNet when online
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :retry_interval(Numeric):: Number of seconds before initial request retry, increases exponentially
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
     #     by the receiver, 0 means never expire
     #   :secure(Boolean):: true indicates to use Security features of rabbitmq to restrict agents to themselves
-    def initialize(agent)
+    def init(agent)
       @agent = agent
       @identity = @agent.identity
       @options = @agent.options || {}
-      @broker = @agent.broker
-      @right_api = @agent.right_api
+      @protocol = @agent.protocol
+      @client = @agent.client
       @secure = @options[:secure]
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
       @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
@@ -598,8 +90,11 @@ module RightScale
 
       reset_stats
       @offline_handler = OfflineHandler.new(@options[:restart_callback], @offline_stats)
-      @connectivity_checker = ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
-      @@instance = self
+      if @protocol == "amqp"
+        # Only need connectivity checker for AMQP broker since RightNetClient does its own checking
+        # via periodic session renewal
+        @connectivity_checker = ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
+      end
     end
 
     # Initialize the offline queue
@@ -610,7 +105,11 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
     def initialize_offline_queue
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
       @offline_handler.init if @options[:offline_queueing]
     end
 
@@ -618,35 +117,51 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
     def start_offline_queue
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
       @offline_handler.start if @options[:offline_queueing]
     end
 
     # Switch to offline mode
-    # In this mode requests are queued in memory rather than sent to the mapper
+    # In this mode requests are queued in memory rather than sent
     # Idempotent
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
     def enable_offline_mode
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
       @offline_handler.enable if @options[:offline_queueing]
     end
 
-    # Switch back to sending requests to mapper after in memory queue gets flushed
+    # Switch back to sending requests after in memory queue gets flushed
     # Idempotent
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
     def disable_offline_mode
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
       @offline_handler.disable if @options[:offline_queueing]
     end
 
-    # Determine whether currently offline
+    # Determine whether currently connected to RightNet via client
     #
     # === Return
-    # (Boolean):: true if offline or if not connected to any brokers, otherwise false
-    def offline?
-      (@options[:offline_queueing] && @offline_handler.offline?) || @broker.connected.size == 0
+    # (Boolean):: true if offline or if client disconnected, otherwise false
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
+    def connected?
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      @protocol == "http" ? @client.connected? : @client.connected.size == 0
     end
 
     # Update the time this agent last received a request or response message
@@ -658,45 +173,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def message_received(&callback)
-      @connectivity_checker.message_received(&callback)
-    end
-
-    # Send a request to a single target or multiple targets with no response expected other
-    # than routing failures
-    # Do not persist the request en route
-    # Enqueue the request if the target is not currently available
-    # Never automatically retry the request
-    # Set time-to-live to be forever
-    #
-    # === Parameters
-    # type(String):: Dispatch route for the request; typically identifies actor and action
-    # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
-    #   targets, or nil if routing solely using type
-    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Scoping to be used to restrict routing
-    #     :account(Integer):: Restrict to agents with this account id
-    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
-    #       ones with no shard id
-    #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
-    #     defaults to :any
-    #
-    # === Block
-    # Optional block used to process routing responses asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
-    #     with an initial SUCCESS response containing the targets to which the mapper published the
-    #     request and any additional responses indicating any failures to actually route the request
-    #     to those targets, use RightScale::OperationResult.from_results to decode
-    #
-    # === Return
-    # true:: Always return true
-    #
-    # === Raise
-    # SendFailure:: If publishing of request failed unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def send_push(type, payload = nil, target = nil, &callback)
-      build_and_send_packet(:send_push, type, payload, target, callback)
+      @connectivity_checker.message_received(&callback) if @connectivity_checker
     end
 
     # Send a request to a single target or multiple targets with no response expected other
@@ -704,7 +181,7 @@ module RightScale
     # Persist the request en route to reduce the chance of it being lost at the expense of some
     # additional network overhead
     # Enqueue the request if the target is not currently available
-    # Never automatically retry the request
+    # Never automatically retry the request if there is the possibility of it being duplicated
     # Set time-to-live to be forever
     #
     # === Parameters
@@ -723,19 +200,22 @@ module RightScale
     # === Block
     # Optional block used to process routing responses asynchronously with the following parameter:
     #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
-    #     with an initial SUCCESS response containing the targets to which the mapper published the
-    #     request and any additional responses indicating any failures to actually route the request
+    #     with an initial SUCCESS response containing the targets to which the request was sent
+    #     and any additional responses indicating any failures to actually route the request
     #     to those targets, use RightScale::OperationResult.from_results to decode
     #
     # === Return
     # true:: Always return true
     #
     # === Raise
-    # SendFailure:: If publishing of request failed unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def send_persistent_push(type, payload = nil, target = nil, &callback)
-      build_and_send_packet(:send_persistent_push, type, payload, target, callback)
+    # RuntimeError:: Init was not called
+    # ArgumentError:: If target invalid
+    # SendFailure:: If sending of request failed unexpectedly
+    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
+    #   and offline queueing is disabled
+    def send_push(type, payload = nil, target = nil, &callback)
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+      build_and_send_packet(:send_push, type, payload, target, callback)
     end
 
     # Send a request to a single target with a response expected
@@ -768,58 +248,56 @@ module RightScale
     # true:: Always return true
     #
     # === Raise
-    # ArgumentError:: If block missing
-    # SendFailure:: If publishing of request failed unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def send_retryable_request(type, payload = nil, target = nil, &callback)
+    # RuntimeError:: Init was not called
+    # ArgumentError:: If target invalid or block missing
+    # SendFailure:: If sending of request failed unexpectedly
+    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
+    #   and offline queueing is disabled
+    def send_request(type, payload = nil, target = nil, &callback)
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
       raise ArgumentError, "Missing block for response callback" unless callback
-      build_and_send_packet(:send_retryable_request, type, payload, target, callback)
+      build_and_send_packet(:send_request, type, payload, target, callback)
     end
 
-    # Send a request to a single target with a response expected
-    # Persist the request en route to reduce the chance of it being lost at the expense of some
-    # additional network overhead
-    # Enqueue the request if the target is not currently available
-    # Never automatically retry the request if there is the possibility of the request being duplicated
-    # Set time-to-live to be forever
-    # Note that receiving a response does not guarantee that the request activity has actually
-    # completed since the request processing may involve other asynchronous requests
+    # Build and send packet
     #
     # === Parameters
+    # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
-    #   randomly, or nil if routing solely using type
+    # target(String|Hash):: Identity of specific target, or hash for selecting targets
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
-    #
-    # === Block
-    # Required block used to process response asynchronously with the following parameter:
-    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR,
-    #     use RightScale::OperationResult.from_results to decode
+    #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
+    # callback(Proc|nil):: Block used to process routing response
     #
     # === Return
     # true:: Always return true
     #
     # === Raise
-    # ArgumentError:: If block missing
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    # SendFailure:: If publishing of request failed unexpectedly
-    def send_persistent_request(type, payload = nil, target = nil, &callback)
-      raise ArgumentError, "Missing block for response callback" unless callback
-      build_and_send_packet(:send_persistent_request, type, payload, target, callback)
+    # RuntimeError:: Init was not called
+    # ArgumentError:: If target invalid
+    # SendFailure:: If sending of request failed unexpectedly
+    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
+    #   and offline queueing is disabled
+    def build_and_send_packet(kind, type, payload, target, callback)
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+      if (packet = build_packet(kind, type, payload, target, callback))
+        action = type.split('/').last
+        received_at = @request_stats.update(action, packet.token)
+        @request_kind_stats.update((packet.selector == :all ? "fanout" : kind.to_s)[5..-1])
+        send("#{@protocol}_send", kind, action, target, packet, received_at, callback)
+      end
+      true
     end
 
     # Build packet or queue it if offline
     #
     # === Parameters
-    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
-    #   or :send_persistent_request
+    # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
     # target(String|Hash):: Identity of specific target, or hash for selecting targets
@@ -835,28 +313,28 @@ module RightScale
     # (Push|Request|NilClass):: Packet created, or nil if queued instead
     #
     # === Raise
+    # RuntimeError:: Init was not called
     # ArgumentError:: If target is invalid
     def build_packet(kind, type, payload, target, callback = false)
-      validate_target(target, !!(kind.to_s =~ /push/))
-      if should_queue?
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+      validate_target(target, kind == :send_push)
+      if queueing?
         @offline_handler.queue_request(kind, type, payload, target, callback)
         nil
       else
-        kind_str = kind.to_s
-        persistent = !!(kind_str =~ /persistent/)
-        if kind_str =~ /push/
+        if kind == :send_push
           packet = Push.new(type, payload)
           packet.selector = target[:selector] || :any if target.is_a?(Hash)
+          packet.persistent = true
           packet.confirm = true if callback
         else
           packet = Request.new(type, payload)
           ttl = @options[:time_to_live]
-          packet.expires_at = Time.now.to_i + ttl if !persistent && ttl && ttl != 0
+          packet.expires_at = Time.now.to_i + ttl if ttl && ttl != 0
           packet.selector = :any
         end
         packet.from = @identity
         packet.token = AgentIdentity.generate
-        packet.persistent = persistent
         if target.is_a?(Hash)
           packet.tags = target[:tags] || []
           packet.scope = target[:scope]
@@ -867,36 +345,6 @@ module RightScale
       end
     end
 
-    # Send packet
-    #
-    # === Parameters
-    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
-    #   or :send_persistent_request
-    # packet(Push|Request|NilClass):: Packet to send; nothing sent if nil
-    # callback(Proc|nil):: Block used to process routing response
-    #
-    # === Return
-    # true:: Always return true
-    #
-    # === Raise
-    # SendFailure:: If publishing of request fails unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def send_packet(kind, packet, callback)
-      if packet
-        method = packet.type.split('/').last
-        received_at = @request_stats.update(method, packet.token)
-        @request_kind_stats.update((packet.selector == :all ? kind.to_s.sub(/push/, "fanout") : kind.to_s)[5..-1])
-        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
-        if !packet.persistent && kind.to_s =~ /request/
-          publish_with_timeout_retry(packet, packet.token)
-        else
-          publish(packet)
-        end
-      end
-      true
-    end
-
     # Handle response to a request
     #
     # === Parameters
@@ -904,9 +352,13 @@ module RightScale
     #
     # === Return
     # true:: Always return true
+    #
+    # === Raise
+    # RuntimeError:: Init was not called
     def handle_response(response)
-      token = response.token
+      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
       if response.is_a?(Result)
+        token = response.token
         if (result = OperationResult.from_results(response))
           if result.non_delivery?
             @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
@@ -918,26 +370,26 @@ module RightScale
           @result_stats.update(response.results.nil? ? "nil" : response.results)
         end
 
-        if (handler = @pending_requests[token])
-          if result && result.non_delivery? && handler.kind == :send_retryable_request
+        if (pending_request = @pending_requests[token])
+          if result && result.non_delivery? && pending_request.kind == :send_request
             if result.content == OperationResult::TARGET_NOT_CONNECTED
               # Log and temporarily ignore so that timeout retry mechanism continues, but save reason for use below if timeout
               # Leave purging of associated request until final response, i.e., success response or retry timeout
-              if (parent = handler.retry_parent)
-                @pending_requests[parent].non_delivery = result.content
+              if (parent_token = pending_request.retry_parent_token)
+                @pending_requests[parent_token].non_delivery = result.content
               else
-                handler.non_delivery = result.content
+                pending_request.non_delivery = result.content
               end
               Log.info("Non-delivery of <#{token}> because #{result.content}")
-            elsif result.content == OperationResult::RETRY_TIMEOUT && handler.non_delivery
+            elsif result.content == OperationResult::RETRY_TIMEOUT && pending_request.non_delivery
               # Request timed out but due to another non-delivery reason, so use that reason since more germane
-              response.results = OperationResult.non_delivery(handler.non_delivery)
-              deliver(response, handler)
+              response.results = OperationResult.non_delivery(pending_request.non_delivery)
+              deliver_response(response, pending_request)
             else
-              deliver(response, handler)
+              deliver_response(response, pending_request)
             end
           else
-            deliver(response, handler)
+            deliver_response(response, pending_request)
           end
         elsif result && result.non_delivery?
           Log.info("Non-delivery of <#{token}> because #{result.content}")
@@ -948,16 +400,20 @@ module RightScale
       true
     end
 
-    # Take any actions necessary to quiesce mapper interaction in preparation
+    # Take any actions necessary to quiesce client interaction in preparation
     # for agent termination but allow message receipt to continue
     #
     # === Return
     # (Array):: Number of pending non-push requests and age of youngest request
     def terminate
-      @offline_handler.terminate
-      @connectivity_checker.terminate
-      pending = @pending_requests.kind(PendingRequests::REQUEST_KINDS)
-      [pending.size, pending.youngest_age]
+      if @offline_handler
+        @offline_handler.terminate
+        @connectivity_checker.terminate if @connectivity_checker
+        pending = @pending_requests.kind(:send_request)
+        [pending.size, pending.youngest_age]
+      else
+        [0, nil]
+      end
     end
 
     # Create displayable dump of unfinished non-push request information
@@ -967,11 +423,13 @@ module RightScale
     # info(Array(String)):: Receive time and token for each request in descending time order
     def dump_requests
       info = []
-      @pending_requests.kind(PendingRequests::REQUEST_KINDS).each do |token, request|
-        info << "#{request.receive_time.localtime} <#{token}>"
+      if @pending_requests
+        @pending_requests.kind(:send_request).each do |token, request|
+          info << "#{request.receive_time.localtime} <#{token}>"
+        end
+        info.sort!.reverse!
+        info = info[0..49] + ["..."] if info.size > 50
       end
-      info.sort.reverse
-      info = info[0..49] + ["..."] if info.size > 50
       info
     end
 
@@ -1007,31 +465,34 @@ module RightScale
     #   "send failure"(Hash|nil):: Send failure activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per failure type, or nil if none
     def stats(reset = false)
-      offlines = @offline_stats.all
-      offlines.merge!("duration" => @offline_stats.avg_duration) if offlines
-      if @pending_requests.size > 0
-        pending = {}
-        pending["pushes"] = @pending_requests.kind(PendingRequests::PUSH_KINDS).size
-        requests = @pending_requests.kind(PendingRequests::REQUEST_KINDS)
-        if (pending["requests"] = requests.size) > 0
-          pending["oldest age"] = requests.oldest_age
+      stats = {}
+      if @agent
+        offlines = @offline_stats.all
+        offlines.merge!("duration" => @offline_stats.avg_duration) if offlines
+        if @pending_requests.size > 0
+          pending = {}
+          pending["pushes"] = @pending_requests.kind(:send_push).size
+          requests = @pending_requests.kind(:send_request)
+          if (pending["requests"] = requests.size) > 0
+            pending["oldest age"] = requests.oldest_age
+          end
         end
+        stats = {
+          "exceptions"       => @exception_stats.stats,
+          "non-deliveries"   => @non_delivery_stats.all,
+          "offlines"         => offlines,
+          "pings"            => @ping_stats.all,
+          "request kinds"    => @request_kind_stats.all,
+          "requests"         => @request_stats.all,
+          "requests pending" => pending,
+          "response time"    => @request_stats.avg_duration,
+          "result errors"    => @result_error_stats.all,
+          "results"          => @result_stats.all,
+          "retries"          => @retry_stats.all,
+          "send failures"    => @send_failure_stats.all
+        }
+        reset_stats if reset
       end
-      stats = {
-        "exceptions"       => @exception_stats.stats,
-        "non-deliveries"   => @non_delivery_stats.all,
-        "offlines"         => offlines,
-        "pings"            => @ping_stats.all,
-        "request kinds"    => @request_kind_stats.all,
-        "requests"         => @request_stats.all,
-        "requests pending" => pending,
-        "response time"    => @request_stats.avg_duration,
-        "result errors"    => @result_error_stats.all,
-        "results"          => @result_stats.all,
-        "retries"          => @retry_stats.all,
-        "send failures"    => @send_failure_stats.all
-      }
-      reset_stats if reset
       stats
     end
 
@@ -1080,7 +541,7 @@ module RightScale
       if target.is_a?(Hash)
         t = SerializationHelper.symbolize_keys(target)
 
-        if selector = t[:selector]
+        if (selector = t[:selector])
           if allow_selector
             selector = selector.to_sym
             unless [:any, :all].include?(selector)
@@ -1092,7 +553,7 @@ module RightScale
           end
         end
 
-        if scope = t[:scope]
+        if (scope = t[:scope])
           if scope.is_a?(Hash)
             scope = SerializationHelper.symbolize_keys(scope)
             unless (scope[:account] || scope[:shard]) && (scope.keys - [:account, :shard]).empty?
@@ -1118,84 +579,156 @@ module RightScale
       true
     end
 
-    # Build and send packet
+    # Send request via HTTP and then handle response
     #
     # === Parameters
-    # kind(Symbol):: Kind of send request: :send_push, :send_persistent_push, :send_retryable_request,
-    #   or :send_persistent_request
-    # type(String):: Dispatch route for the request; typically identifies actor and action
-    # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets
-    #   :tags(Array):: Tags that must all be associated with a target for it to be selected
-    #   :scope(Hash):: Scoping to be used to restrict routing
-    #     :account(Integer):: Restrict to agents with this account id
-    #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
-    #       ones with no shard id
-    #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
-    # callback(Proc|nil):: Block used to process routing response
+    # kind(Symbol):: Kind of request: :send_push or :send_request
+    # action(String):: Requested action in actor
+    # target(Hash|String|nil):: Target for request
+    # packet(Push|Request):: Request packet to send
+    # received_at(Time):: Time when request received
+    # callback(Proc|nil):: Block used to process response
+    #
+    # === Return
+    # true:: Always return true
+    def http_send(kind, action, target, packet, received_at, callback)
+      begin
+        method = packet.class.name.split("::").last.downcase
+        if (result = @client.send(method, packet.type, packet.payload, target, packet.token))
+          result = success_result(result)
+        end
+      rescue RightScale::Exceptions::ConnectivityFailure => e
+        # This indicates RightNet connectivity issues
+        if queueing?
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, callback)
+          result = nil
+        else
+          result = retry_result("lost RightNet connectivity")
+        end
+      rescue RightScale::Exceptions::RetryableError => e
+        # This indicates the request failed but if retried may succeed
+        result = retry_result(e.message)
+      rescue RightScale::Exceptions::StructuredError => e
+        # This indicates a structured error result
+        result = error_result(e.error_data)
+      rescue RightScale::Exceptions::Application => e
+        # This indicates the request was not processable
+        result = error_result(e.message)
+      rescue RightScale::Exceptions::Terminating => e
+        # This indicates service is terminating
+        result = nil
+      rescue ArgumentError => e
+        @exception_stats.track("request", e)
+        result = error_result(e.message)
+      rescue StandardError => e
+        msg = "Failed to send #{packet.trace} #{packet.type}"
+        if e.respond_to?(:http_body)
+          Log.error("#{msg} (#{e.inspect})")
+          @send_failure_stats.update("#{action} - #{e.http_code}")
+          result = error_result(e.inspect)
+        else
+          Log.error(msg, e, :trace)
+          @send_failure_stats.update("#{action} - #{e.class.name}")
+          @exception_stats.track("request", e)
+          result = error_result(e.message)
+        end
+      end
+
+      if result && packet.is_a?(Request)
+        result = Result.new(packet.token, @identity, result, from = packet.target)
+        result.received_at = received_at.to_f
+        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
+        handle_response(result)
+      end
+      true
+    end
+
+    # Send request via AMQP
+    # If lack connectivity and queueing enabled, queue request
+    #
+    # === Parameters
+    # kind(Symbol):: Kind of request: :send_push or :send_request
+    # action(String):: Requested action in actor
+    # target(Hash|String|nil):: Target for request
+    # received_at(Time):: Time when request received
+    # packet(Push|Request):: Request packet to send
+    # callback(Proc|nil):: Block used to process response
     #
     # === Return
     # true:: Always return true
     #
     # === Raise
-    # ArgumentError:: If target is invalid
-    # SendFailure:: If publishing of request fails unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def build_and_send_packet(kind, type, payload, target, callback)
-      packet = build_packet(kind, type, payload, target, callback)
-      send_packet(kind, packet, callback)
+    # SendFailure:: If sending of request failed unexpectedly
+    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
+    #   and offline queueing is disabled
+    def amqp_send(kind, action, target, packet, received_at, callback)
+      begin
+        @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
+        if packet.class == Request
+          amqp_send_retry(packet, packet.token)
+        else
+          amqp_send_once(packet)
+        end
+      rescue TemporarilyOffline => e
+        if queueing?
+          # Queue request until come back online
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, callback)
+          @pending_requests.delete(packet.token) if callback
+        else
+          # Send retry response so that requester, e.g., RetryableRequest, can retry
+          result = OperationResult.retry("lost RightNet connectivity")
+          handle_response(Result.new(packet.token, @identity, result, @identity))
+        end
+      rescue SendFailure => e
+        # Send non-delivery response so that requester, e.g., RetryableRequest, can retry
+        result = OperationResult.non_delivery("send failed unexpectedly")
+        handle_response(Result.new(packet.token, @identity, result, @identity))
+      end
       true
     end
 
-    # Publish request to request queue
+    # Send request via AMQP without retrying
     # Use mandatory flag to request return of message if it cannot be delivered
     #
     # === Parameters
-    # packet(Push|Request):: Packet to be sent
+    # packet(Push|Request):: Request packet to send
     # ids(Array|nil):: Identity of specific brokers to choose from, or nil if any okay
     #
     # === Return
-    # (Array):: Identity of brokers published to
+    # (Array):: Identity of brokers to which request was published
     #
     # === Raise
-    # SendFailure:: If publishing of request fails unexpectedly
-    # TemporarilyOffline:: If cannot publish request because currently not connected
-    #    to any brokers and offline queueing is disabled
-    def publish(request, ids = nil)
-      begin
-        if @right_api
-          response = @right_api.make_request(request)
-          handle_response(response) if response
-        else
-          exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
-          @broker.publish(exchange, request, :persistent => request.persistent, :mandatory => true,
-                          :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
-        end
-      rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        msg = "Failed to publish request #{request.trace} #{request.type}"
-        Log.error(msg, e)
-        @send_failure_stats.update("NoConnectedBrokers")
-        raise TemporarilyOffline.new(msg + " (#{e.class}: #{e.message})")
-      rescue Exception => e
-        msg = "Failed to publish request #{request.trace} #{request.type}"
-        Log.error(msg, e, :trace)
-        @send_failure_stats.update(e.class.name)
-        @exception_stats.track("publish", e, request)
-        raise SendFailure.new(msg + " (#{e.class}: #{e.message})")
-      end
+    # SendFailure:: If sending of request failed unexpectedly
+    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
+    #   and offline queueing is disabled
+    def amqp_send_once(packet, ids = nil)
+      exchange = {:type => :fanout, :name => "request", :options => {:durable => true, :no_declare => @secure}}
+      @client.publish(exchange, packet, :persistent => packet.persistent, :mandatory => true,
+                      :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
+    rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
+      msg = "Failed to publish request #{packet.trace} #{packet.type}"
+      Log.error(msg, e)
+      @send_failure_stats.update("NoConnectedBrokers")
+      raise TemporarilyOffline.new(msg + " (#{e.class}: #{e.message})")
+    rescue Exception => e
+      msg = "Failed to publish request #{packet.trace} #{packet.type}"
+      Log.error(msg, e, :trace)
+      @send_failure_stats.update(e.class.name)
+      @exception_stats.track("publish", e, packet)
+      raise SendFailure.new(msg + " (#{e.class}: #{e.message})")
     end
 
-    # Publish request with one or more retries if do not receive a response in time
+    # Send request via AMQP with one or more retries if do not receive a response in time
     # Send timeout result if reach configured retry timeout limit
     # Use exponential backoff with RETRY_BACKOFF_FACTOR for retry spacing
     # Adjust retry interval by average response time to avoid adding to system load
     # when system gets slow
     # Rotate through brokers on retries
+    # Check connectivity after first retry timeout
     #
     # === Parameters
-    # request(Request):: Request to be sent
-    # parent(String):: Token for original request
+    # packet(Request):: Request packet to send
+    # parent_token(String):: Token for original request
     # count(Integer):: Number of retries so far
     # multiplier(Integer):: Multiplier for retry interval for exponential backoff
     # elapsed(Integer):: Elapsed time in seconds since this request was first attempted
@@ -1203,79 +736,74 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def publish_with_timeout_retry(request, parent, count = 0, multiplier = 1, elapsed = 0, broker_ids = nil)
-      published_broker_ids = publish(request, broker_ids)
+    def amqp_send_retry(packet, parent_token, count = 0, multiplier = 1, elapsed = 0, broker_ids = nil)
+      check_broker_ids = amqp_send_once(packet, broker_ids)
 
-      if @retry_interval && @retry_timeout && parent
+      if @retry_interval && @retry_timeout && parent_token
         interval = [(@retry_interval * multiplier) + (@request_stats.avg_duration || 0), @retry_timeout - elapsed].min
         EM.add_timer(interval) do
           begin
-            if handler = @pending_requests[parent]
+            if @pending_requests[parent_token]
               count += 1
               elapsed += interval
               if elapsed < @retry_timeout
-                request.tries << request.token
-                request.token = AgentIdentity.generate
-                @pending_requests[parent].retry_parent = parent if count == 1
-                @pending_requests[request.token] = @pending_requests[parent]
-                broker_ids ||= @broker.all
-                publish_with_timeout_retry(request, parent, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed,
-                                           broker_ids.push(broker_ids.shift))
-                @retry_stats.update(request.type.split('/').last)
+                packet.tries << packet.token
+                packet.token = AgentIdentity.generate
+                @pending_requests[parent_token].retry_parent_token = parent_token if count == 1
+                @pending_requests[packet.token] = @pending_requests[parent_token]
+                broker_ids ||= @client.all
+                amqp_send_retry(packet, parent_token, count, multiplier * RETRY_BACKOFF_FACTOR, elapsed,
+                                broker_ids.push(broker_ids.shift))
+                @retry_stats.update(packet.type.split('/').last)
               else
-                Log.warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{request.trace} #{request.type}")
+                Log.warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{packet.trace} #{packet.type}")
                 result = OperationResult.non_delivery(OperationResult::RETRY_TIMEOUT)
                 @non_delivery_stats.update(result.content)
-                handle_response(Result.new(request.token, request.reply_to, result, @identity))
+                handle_response(Result.new(packet.token, @identity, result, @identity))
               end
-              @connectivity_checker.check(published_broker_ids.first) if count == 1 && !published_broker_ids.empty?
+              @connectivity_checker.check(check_broker_ids.first) if check_broker_ids && count == 1
             end
           rescue TemporarilyOffline => e
-            # Send retry response so that requester, e.g., IdempotentRequest, can retry
-            Log.error("Failed retry for #{request.trace} #{request.type} because temporarily offline")
-            result = OperationResult.retry("lost connectivity")
-            handle_response(Result.new(request.token, request.reply_to, result, @identity))
+            Log.error("Failed retry for #{packet.trace} #{packet.type} because temporarily offline")
           rescue SendFailure => e
-            # Send non-delivery response so that requester, e.g., IdempotentRequest, can retry
-            Log.error("Failed retry for #{request.trace} #{request.type} because of send failure")
-            result = OperationResult.non_delivery("retry failed")
-            handle_response(Result.new(request.token, request.reply_to, result, @identity))
+            Log.error("Failed retry for #{packet.trace} #{packet.type} because of send failure")
           rescue Exception => e
             # Not sending a response here because something more basic is broken in the retry
             # mechanism and don't want an error response to preempt a delayed actual response
-            Log.error("Failed retry for #{request.trace} #{request.type} without responding", e, :trace)
-            @exception_stats.track("retry", e, request)
+            Log.error("Failed retry for #{packet.trace} #{packet.type} without responding", e, :trace)
+            @exception_stats.track("retry", e, packet)
           end
         end
       end
       true
     end
 
-    # Deliver the response and remove associated request(s) from pending
+    # Deliver the response and remove associated non-push requests from pending
+    # including all associated retry requests
     #
     # === Parameters
     # response(Result):: Packet received as result of request
-    # handler(Hash):: Associated request handler
+    # pending_request(Hash):: Associated pending request
     #
     # === Return
     # true:: Always return true
-    def deliver(response, handler)
-      @request_stats.finish(handler.receive_time, response.token)
+    def deliver_response(response, pending_request)
+      @request_stats.finish(pending_request.receive_time, response.token)
 
-      @pending_requests.delete(response.token) if PendingRequests::REQUEST_KINDS.include?(handler.kind)
-      if parent = handler.retry_parent
-        @pending_requests.reject! { |k, v| k == parent || v.retry_parent == parent }
+      @pending_requests.delete(response.token) if pending_request.kind == :send_request
+      if (parent_token = pending_request.retry_parent_token)
+        @pending_requests.reject! { |k, v| k == parent_token || v.retry_parent_token == parent_token }
       end
 
-      handler.response_handler.call(response) if handler.response_handler
+      pending_request.response_handler.call(response) if pending_request.response_handler
       true
     end
 
-    # Should agent be queueing current request?
+    # Determine whether currently queueing requests because offline
     #
     # === Return
-    # (Boolean):: true if should queue request, otherwise false
-    def should_queue?
+    # (Boolean):: true if queueing, otherwise false
+    def queueing?
       @options[:offline_queueing] && @offline_handler.queueing?
     end
 

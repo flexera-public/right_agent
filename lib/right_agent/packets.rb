@@ -156,7 +156,7 @@ module RightScale
     # === Return
     # log_msg(String):: Log representation
     def to_s(filter = nil, version = nil)
-      v = __send__(version) if version
+      v = send(version) if version
       v = (v && v != DEFAULT_VERSION) ? " v#{v}" : ""
       log_msg = "[#{name}#{v}]"
       duration = if @duration && (filter.nil? || filter.include?(:duration))

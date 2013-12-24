@@ -28,7 +28,9 @@
 #      --type TYPE              Use agent type TYPE to build agent's' identity,
 #                               defaults to AGENT with any trailing '_[0-9]+' removed
 #      --secure-identity, -S    Derive actual token from given TOKEN and ID
-#      --url                    Set agent AMQP connection URL (host, port, user, pass, vhost)
+#      --auth-client CLASS      Set class name of authorization client to be used
+#      --auth-url URL           Set URL for agent authorization using HTTP
+#      --url URL                Set agent AMQP connection URL (host, port, user, pass, vhost)
 #      --user, -u USER          Set agent AMQP username
 #      --password, -p PASS      Set agent AMQP password
 #      --vhost, -v VHOST        Set agent AMQP virtual host
@@ -187,6 +189,14 @@ module RightScale
           options[:prefetch] = count.to_i
         end
 
+        opts.on("--auth-client CLASS") do |klass|
+          options[:auth_client] = klass
+        end
+
+        opts.on("--auth-url URL") do |url|
+          options[:auth_url] = url
+        end
+
         opts.on('-b', '--heartbeat SEC') do |sec|
           options[:heartbeat] = sec.to_i
         end
@@ -281,6 +291,8 @@ module RightScale
       cfg[:root_dir]           = AgentConfig.root_dir
       cfg[:pid_dir]            = AgentConfig.pid_dir
       cfg[:identity]           = options[:identity] if options[:identity]
+      cfg[:auth_client]        = options[:auth_client] if options[:auth_client]
+      cfg[:auth_url]           = options[:auth_url] if options[:auth_url]
       cfg[:user]               = options[:user] if options[:user]
       cfg[:pass]               = options[:pass] if options[:pass]
       cfg[:vhost]              = options[:vhost] if options[:vhost]

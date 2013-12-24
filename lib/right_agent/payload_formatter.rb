@@ -39,7 +39,7 @@ module RightScale
       parts = type.split('/')
       meth = "#{parts[1]}_#{parts[2]}".to_sym
       res = nil
-      res = @formatter.__send__(meth, payload) if @formatter.respond_to?(meth)
+      res = @formatter.send(meth, payload) if @formatter.respond_to?(meth)
       res
     end
 

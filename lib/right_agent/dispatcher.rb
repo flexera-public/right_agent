@@ -225,9 +225,9 @@ module RightScale
     def perform(request, actor, method, idempotent)
       @dispatched_cache.store(request.token) if @dispatched_cache && !idempotent
       if actor.method(method).arity.abs == 1
-        actor.__send__(method, request.payload)
+        actor.send(method, request.payload)
       else
-        actor.__send__(method, request.payload, request)
+        actor.send(method, request.payload, request)
       end
     rescue Exception => e
       @dispatch_failure_stats.update("#{request.type}->#{e.class.name}")

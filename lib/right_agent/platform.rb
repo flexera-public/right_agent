@@ -170,7 +170,7 @@ unless defined?(RightScale::Platform)
         end
         raise "No platform dispatch target found in #{binding.class} for " +
               "'#{meth.inspect}', tried " + dispatch_candidates(meth).join(', ') unless target
-        binding.__send__(target, *args)
+        binding.send(target, *args)
       end
 
       # @return [Controller] Platform-specific controller object

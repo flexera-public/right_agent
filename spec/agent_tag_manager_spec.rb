@@ -33,14 +33,14 @@ describe RightScale::AgentTagManager do
     @agent = flexmock("agent", :identity => @identity)
     @agent_id1 = "rs-agent-1-1"
     @agent_id2 = "rs-agent-2-2"
-    @agent_ids = [@agent_id2, @agent_id3]
+    @agent_ids = [@agent_id2, @agent_id2]
     @manager = RightScale::AgentTagManager.instance
     @manager.agent = @agent
     @request = flexmock("request", :run => true)
     @request.should_receive(:callback).and_yield("result").by_default
     @request.should_receive(:errback).by_default
     @request.should_receive(:raw_response).and_return("raw response").by_default
-    @idempotent_request = flexmock(RightScale::IdempotentRequest)
+    @retryable_request = flexmock(RightScale::RetryableRequest)
     @tag = "some:tag=value"
     @tag1 = "other:tag=value"
     @tags = [@tag, @tag1]
@@ -50,9 +50,8 @@ describe RightScale::AgentTagManager do
   context :tags do
 
     before(:each) do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :agent_ids => [@identity]},
-                                                    {}).and_return(@request).once.by_default
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :agent_ids => [@identity]}, {}).and_return(@request).once.by_default
     end
 
     it "retrieves current agent tags" do
@@ -81,9 +80,8 @@ describe RightScale::AgentTagManager do
     end
 
     it "forwards timeout option" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :agent_ids => [@identity]},
-                                                    {:timeout => 9}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :agent_ids => [@identity]}, {:timeout => 9}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}}).once
       @manager.tags(:timeout => 9) { |r| @result = r }
       @result.should == [@tag]
@@ -101,27 +99,24 @@ describe RightScale::AgentTagManager do
   context :query_tags do
 
     it "queries for agents having individual tag" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => [@tag]},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
       @manager.query_tags(@tag) { |r| @result = r }
       @result.should == {@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}
     end
 
     it "queries for agents having multiple tags" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => @tags},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => @tags}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
       @manager.query_tags(@tags) { |r| @result = r }
       @result.should == {@agent_id1 => {"tags" => @tags}}
     end
 
     it "forwards options" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => @tags},
-                                                    {:timeout => 9}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => @tags}, {:timeout => 9}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}}).once
       @request.should_receive(:raw_response).and_return("raw response").once
       @manager.query_tags(@tags, :raw => true, :timeout => 9) { |r| @result = r }
@@ -129,9 +124,8 @@ describe RightScale::AgentTagManager do
     end
 
     it "yields error result and logs error" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => [@tag]},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
       @log.should_receive(:error).with(/Failed to query tags/).once
       @request.should_receive(:errback).and_yield("error").once
       @request.should_receive(:callback).once
@@ -147,45 +141,40 @@ describe RightScale::AgentTagManager do
     end
 
     it "always yields raw response" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => [@tag]},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
       @manager.query_tags_raw(@tag) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "queries for agents having individual tag and always yields raw response" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => [@tag]},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
       @manager.query_tags_raw(@tag) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "queries for agents having multiple tags always yields raw response" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => @tags},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => @tags}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
       @manager.query_tags_raw(@tags) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "queries for selected agents" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :agent_ids => @agent_ids, :tags => @tags},
-                                                    {}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :agent_ids => @agent_ids, :tags => @tags}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
       @manager.query_tags_raw(@tags, @agent_ids) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "forwards timeout option" do
-      @idempotent_request.should_receive(:new).with("/mapper/query_tags",
-                                                    {:agent_identity => @identity, :tags => @tags},
-                                                    {:timeout => 9}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/query_tags",
+          {:agent_identity => @identity, :tags => @tags}, {:timeout => 9}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}}).once
       @manager.query_tags_raw(@tags, nil, :timeout => 9) { |r| @result = r }
       @result.should == "raw response"
@@ -201,20 +190,17 @@ describe RightScale::AgentTagManager do
     end
 
     it "adds individual tag to agent" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => []}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @manager.add_tags(@tag).should be_true
     end
 
     it "adds multiple tags to agent" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => @tags, :obsolete_tags => []}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => @tags}).and_return(@request).once
       @manager.add_tags(@tags).should be_true
     end
 
     it "optionally yields raw response" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => @tags, :obsolete_tags => []}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => @tags}).and_return(@request).once
       @request.should_receive(:callback).and_yield("result").once
       @manager.add_tags(@tags) { |r| @result = r }
       @result.should == "raw response"
@@ -223,8 +209,7 @@ describe RightScale::AgentTagManager do
     it "updates local tags" do
       @agent.should_receive(:tags).and_return([@tag1]).once
       @agent.should_receive(:tags=).should_receive([@tag]).once
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => []}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @manager.add_tags(@tag).should be_true
     end
   end
@@ -238,20 +223,17 @@ describe RightScale::AgentTagManager do
     end
 
     it "removes individual tag to agent" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [], :obsolete_tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => [@tag]}).and_return(@request).once
       @manager.remove_tags(@tag).should be_true
     end
 
     it "removes multiple tags to agent" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [], :obsolete_tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => @tags}).and_return(@request).once
       @manager.remove_tags(@tags).should be_true
     end
 
     it "optionally yields raw response" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [], :obsolete_tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => @tags}).and_return(@request).once
       @request.should_receive(:callback).and_yield("result").once
       @manager.remove_tags(@tags) { |r| @result = r }
       @result.should == "raw response"
@@ -260,13 +242,12 @@ describe RightScale::AgentTagManager do
     it "updates local tags" do
       @agent.should_receive(:tags).and_return([]).once
       @agent.should_receive(:tags=).should_receive([@tag]).once
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [], :obsolete_tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => [@tag]}).and_return(@request).once
       @manager.remove_tags(@tag).should be_true
     end
   end
 
-  context :update_tags do
+  context :do_update do
 
     before(:each) do
       @agent.should_receive(:tags).and_return([]).once.by_default
@@ -275,42 +256,51 @@ describe RightScale::AgentTagManager do
     it "checks that agent has been set" do
       @manager.agent = nil
       @agent.should_receive(:tags).never
-      lambda { @manager.update_tags([@tag], [@tag1]) }.should raise_error(ArgumentError, "Must set agent= before using tag manager")
+      lambda { @manager.send(:do_update, [@tag], []) }.should \
+          raise_error(ArgumentError, "Must set agent= before using tag manager")
     end
 
-    it "adds and removes tags for agent" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => [@tag1]}).and_return(@request).once
+    it "does not allow both add and removal of tags in same request" do
+      @agent.should_receive(:tags).never
+      lambda { @manager.send(:do_update, [@tag], [@tag1]) }.should \
+          raise_error(ArgumentError, "Cannot add and remove tags in same update")
+    end
+
+    it "adds tags for agent" do
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @agent.should_receive(:tags=).never
-      @manager.update_tags([@tag], [@tag1]).should be_true
+      @manager.send(:do_update, [@tag], []).should be_true
+    end
+
+    it "removes tags for agent" do
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => [@tag1]}).and_return(@request).once
+      @agent.should_receive(:tags=).never
+      @manager.send(:do_update, [], [@tag1]).should be_true
     end
 
     it "yields raw response if block given" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => [@tag1]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags=).once
-      @manager.update_tags([@tag], [@tag1]) { |r| @result = r }
+      @manager.send(:do_update, [@tag], []) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "updates local tags if block given and successful" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => [@tag1]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags=).with([@tag]).once
-      @manager.update_tags([@tag], [@tag1]) { |r| @result = r }
+      @manager.send(:do_update, [@tag], []) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "yields error result and does not update local tags" do
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [@tag], :obsolete_tags => [@tag1]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/add_tags", {:tags => [@tag]}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("error").once
       @request.should_receive(:errback).and_yield("error").once
       @request.should_receive(:callback).once
       @agent.should_receive(:tags=).never
-      @manager.update_tags([@tag], [@tag1]) { |r| @result = r }
+      @manager.send(:do_update, [@tag], []) { |r| @result = r }
       @result.should == "error"
     end
   end
@@ -321,8 +311,7 @@ describe RightScale::AgentTagManager do
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags).and_return(@tags).twice
       @agent.should_receive(:tags=).with([]).once
-      @idempotent_request.should_receive(:new).with("/mapper/update_tags",
-                                                    {:new_tags => [], :obsolete_tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/mapper/delete_tags", {:tags => @tags}).and_return(@request).once
       @manager.clear { |r| @result = r }
       @result.should == "raw response"
     end

@@ -456,7 +456,7 @@ module RightScale
     def self.all_dirs(type)
       dirs = []
       root_dirs.each do |d|
-        c = self.__send__(type, d)
+        c = self.send(type, d)
         dirs << c if File.directory?(c)
       end
       dirs
@@ -466,7 +466,7 @@ module RightScale
     def self.first_file(type, name)
       file = nil
       root_dirs.each do |d|
-        if File.exist?(f = File.join(self.__send__(type, d), name))
+        if File.exist?(f = File.join(self.send(type, d), name))
           file = f
           break
         end

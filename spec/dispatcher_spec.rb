@@ -89,7 +89,7 @@ describe "RightScale::Dispatcher" do
     @registry = RightScale::ActorRegistry.new
     @registry.register(@actor, nil)
     @agent_id = "rs-agent-1-1"
-    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry).by_default
+    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry, :exception_callback => nil).by_default
     @cache = RightScale::DispatchedCache.new(@agent_id)
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
   end

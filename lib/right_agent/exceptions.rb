@@ -43,6 +43,15 @@ module RightScale
     # Agent compute platform error
     class PlatformError < StandardError; end
 
+    # Not authorized to make request
+    class Unauthorized < RuntimeError
+      attr_reader :nested_exception
+      def initialize(message, nested_exception = nil)
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
     # Cannot connect or lost connection to external resource
     class ConnectivityFailure < RuntimeError
       attr_reader :nested_exception
@@ -61,11 +70,29 @@ module RightScale
       end
     end
 
+    # Request failed with additional data returned about the error
+    class StructuredError < RuntimeError
+      attr_reader :error_data
+      attr_reader :nested_exception
+      def initialize(message, error_data, nested_exception = nil)
+        @error_data = error_data
+        @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
     # Database query failed
     class QueryFailure < RuntimeError
       attr_reader :nested_exception
       def initialize(message, nested_exception = nil)
         @nested_exception = nested_exception
+        super(message)
+      end
+    end
+
+    # Terminating service
+    class Terminating < RuntimeError
+      def initialize(message)
         super(message)
       end
     end

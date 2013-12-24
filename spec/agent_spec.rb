@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2012 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -279,7 +279,8 @@ describe RightScale::Agent do
       @sender = flexmock("sender", :pending_requests => [], :request_age => nil,
                          :message_received => true, :stats => "").by_default
       @sender.should_receive(:terminate).and_return([0, 0]).by_default
-      flexmock(RightScale::Sender).should_receive(:new).and_return(@sender)
+      flexmock(RightScale::Sender).should_receive(:init)
+      flexmock(RightScale::Sender).should_receive(:instance).and_return(@sender)
       @dispatcher = flexmock("dispatcher", :dispatch_age => nil, :dispatch => true, :stats => "").by_default
       flexmock(RightScale::Dispatcher).should_receive(:new).and_return(@dispatcher)
       @identity = "rs-instance-123-1"
@@ -309,7 +310,7 @@ describe RightScale::Agent do
           @agent.instance_variable_get(:@remaining_queue_setup).should == {@identity => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
-          @agent.__send__(:check_status)
+          @agent.send(:check_status)
         end
       end
 
