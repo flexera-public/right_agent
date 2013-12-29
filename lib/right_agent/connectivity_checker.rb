@@ -29,13 +29,13 @@ module RightScale
     # Minimum number of seconds between restarts of the inactivity timer
     MIN_RESTART_INACTIVITY_TIMER_INTERVAL = 60
 
-    # Number of seconds to wait for ping response from a mapper when checking connectivity
+    # Number of seconds to wait for ping response from a RightNet router when checking connectivity
     PING_TIMEOUT = 30
 
     # Default maximum number of consecutive ping timeouts before attempt to reconnect
     MAX_PING_TIMEOUTS = 3
 
-    # (EM::Timer) Timer while waiting for mapper ping response
+    # (EM::Timer) Timer while waiting for RightNet router ping response
     attr_accessor :ping_timer
 
     def initialize(sender, check_interval, ping_stats, exception_stats)
@@ -75,7 +75,7 @@ module RightScale
       true
     end
 
-    # Check whether broker connection is usable by pinging a mapper via that broker
+    # Check whether broker connection is usable by pinging a router via that broker
     # Attempt to reconnect if ping does not respond in PING_TIMEOUT seconds and
     # if have reached timeout limit
     # Ignore request if already checking a connection
@@ -125,11 +125,11 @@ module RightScale
               @ping_id = nil
             end
           rescue Exception => e
-            Log.error("Failed to cancel mapper ping", e, :trace)
+            Log.error("Failed to cancel router ping", e, :trace)
             @exception_stats.track("cancel ping", e)
           end
         end
-        request = Request.new("/mapper/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
+        request = Request.new("/router/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
         @sender.pending_requests[request.token] = PendingRequest.new(Request, Time.now, handler)
         ids = [@ping_id] if @ping_id
         @ping_id = @sender.send(:publish, request, ids).first

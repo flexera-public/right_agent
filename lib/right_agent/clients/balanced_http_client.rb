@@ -1,45 +1,41 @@
 #--
-# Copyright (c) 2013 RightScale, Inc, All Rights Reserved Worldwide.
+# Copyright (c) 2013 RightScale Inc
 #
-# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
-# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
-# reproduction, modification, or disclosure of this program is
-# strictly prohibited.  Any use of this program by an authorized
-# licensee is strictly subject to the terms and conditions,
-# including confidentiality obligations, set forth in the applicable
-# License Agreement between RightScale.com, Inc. and
-# the licensee.
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
 
 require 'restclient'
 
 module RightScale
 
-  # HTTP REST client for request balanced access to RightScale services
+  # HTTP REST client for request balanced access to RightScale servers
   # It is intended for use by instance agents and by infrastructure servers
   # and therefore supports both session cookie and global session-based authentication
   class BalancedHttpClient
 
     # TODO
-    # * strip off user and password for health check
-    # * get rid of auth_proc and instead have :auth_header option on request
-    # - detect redirect and return location redirected to in new Redirect exception (need RightSupport change)
     # - move this to right_support eventually but then need to switch to using RightSupport::Log::Mixin
+    #   and not rely on NestedException and change copyright?
 
-    # When service not responding and retry is recommended
-    class NotResponding < RuntimeError; end
-
-    # When received redirection request
-    class Redirect < RuntimeError
-      attr_reader :location
-      attr_reader :nested_exception
-
-      def initialize(message, location, nested_exception = nil)
-        @location = location
-        @nested_exception = nested_exception
-        super(message)
-      end
-    end
+    # When server not responding and retry is recommended
+    class NotResponding < Exceptions::NestedException; end
 
     # HTTP status codes for which a retry is warranted, which is limited to when server
     # is not accessible for some reason (502, 503) or server response indicates that
@@ -55,6 +51,9 @@ module RightScale
     # Default time to wait for response from request
     DEFAULT_REQUEST_TIMEOUT = 30
 
+    # Default health check path
+    DEFAULT_HEALTH_CHECK_PATH = "/health-check"
+
     # Text used for filtered parameter value
     FILTERED_PARAM_VALUE = "<hidden>"
 
@@ -62,31 +61,35 @@ module RightScale
     #
     # @param [Array, String] urls of server being accessed as array or comma-separated string
     #
-    # @option options [Proc] :auth_proc for returning authorization data to be merged into request
-    #   header; it has no parameters
     # @option options [String] :api_version for X-API-Version header
-    # @option options [String] :health_check_path in URI for health check resource
+    # @option options [String] :server_name of server for use in exceptions; defaults to host name
+    # @option options [String] :health_check_path in URI for health check resource;
+    #   defaults to DEFAULT_HEALTH_CHECK_PATH
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging; can be augmented on individual requests
     def initialize(urls, options = {})
       @urls = split(urls)
-      @auth_proc = options[:auth_proc]
       @api_version = options[:api_version]
+      @server_name = options[:server_name]
       @filter_params = (options[:filter_params] || []).map { |p| p.to_s }
 
       # Create health check proc for use by request balancer
-      health_check_proc = Proc.new do |host|
+      # Strip user and password from host name since health-check does not require authorization
+      @health_check_proc = Proc.new do |host|
+        uri = URI.parse(host)
+        uri.user = uri.password = nil
+        uri.path = options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH
         check_options = {
           :open_timeout => DEFAULT_OPEN_TIMEOUT,
           :timeout => HEALTH_CHECK_TIMEOUT }
         check_options[:headers] = {"X-API-Version" => @api_version} if @api_version
-        RightSupport::Net::HTTPClient.new.get(host + @options[:health_check_path], check_options)
+        RightSupport::Net::HTTPClient.new.get(uri.to_s, check_options)
       end
 
       # Initialize request balancer
       balancer_options = {
         :policy => RightSupport::Net::LB::HealthCheck,
-        :health_check => health_check_proc }
+        :health_check => @health_check_proc }
       @balancer = RightSupport::Net::RequestBalancer.new(@urls, balancer_options)
     end
 
@@ -128,7 +131,7 @@ module RightScale
     # @return [Object] result returned by receiver of request
     #
     # @raise [Redirect] being told to redirect request to another location
-    # @raise [NotResponding] service not responding, recommend retry
+    # @raise [NotResponding] server not responding, recommend retry
     def request(verb, path, params = {}, options = {})
       result = nil
       host_picked = nil
@@ -162,10 +165,6 @@ module RightScale
       rescue RightSupport::Net::NoResult => e
         report_failure(host_picked, path, params, filter, request_uuid, started_at, e)
         handle_no_result(e, host_picked)
-      rescue RestClient::MovedPermanently, RestClient::Found => e
-        # TODO need change in balancer so that can obtain location from response header
-        # raise Redirect.new("#{verb.to_s.upcase} request redirected", response.headers[:location], e)
-        raise
       rescue Exception => e
         report_failure(host_picked, path, params, filter, request_uuid, started_at, e)
         raise
@@ -192,6 +191,9 @@ module RightScale
 
     # Handle no result from balancer
     # Distinguish the not responding case since it likely warrants a retry by the client
+    # Also try to distinguish between the targeted server not responding and that server
+    # gatewaying to another server that is not responding, so that the receiver of
+    # the resulting exception is clearer as to the source of the problem
     #
     # @param [RightSupport::Net::NoResult] no_result exception raised by request balancer when it
     #   could not deliver request
@@ -199,13 +201,20 @@ module RightScale
     #
     # @return [TrueClass] always true
     #
-    # @raise [NotResponding] service not responding, recommend retry
+    # @raise [NotResponding] server not responding, recommend retry
     def handle_no_result(no_result, host)
+      server_name = @server_name || host
       e = no_result.details.values.flatten.last
-      if no_result.details.empty? || (e.respond_to?(:http_code) && RETRY_STATUS_CODES.include?(e.http_code))
-        raise NotResponding.new("No response from #{host} (#{exception_text(e)})")
+      if no_result.details.empty?
+        raise NotResponding.new("#{server_name} not responding", no_result)
+      elsif (e.respond_to?(:http_code) && RETRY_STATUS_CODES.include?(e.http_code))
+        if e.http_code == 504 && (e.http_body && !e.http_body.empty?)
+          raise NotResponding.new(e.http_body, e)
+        else
+          raise NotResponding.new("#{server_name} not responding", e)
+        end
       else
-        raise e || no_result
+        raise e
       end
       true
     end
@@ -284,7 +293,7 @@ module RightScale
       case exception
       when String
         exception
-        when RestClient::Exception
+      when RestClient::Exception
         if exception.http_body.nil? || exception.http_body.empty? || exception.http_body =~ /^<html>/
           exception.message
         else

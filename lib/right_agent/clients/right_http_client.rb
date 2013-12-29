@@ -31,29 +31,19 @@ module RightScale
   # A status callback is provided so that the user of this client can take action
   # (e.g., queue requests) when connectivity is lost
   # Health checks are sent periodically to try to recover from connectivity failures
-  class RightNetClient
+  class RightHttpClient
 
     include RightSupport::Ruby::EasySingleton
 
     # TODO
-    # * move instance_auth_client to RL
-    # * cleanup agent deployer and common parser regarding auth and protocol parameters
-    # * change "http" and "amqp" to symbols everywhere but in database
-    # * change Sender to use EasySingleton
-    # * now that using OAuth is agent_id still necessary or can it be retrieved from global session
-    # * change Terminating to Closing
-    # * get :auth_url into config.yml via rad when start up and update if get re-pointed during oauth
-    # * add client_status call to agent to allow RL to request status updates and use this as hook
-    #   needed to notify of change in protocol as detected by check status
-    # * periodic (say ping_interval after drop to an hour) new auths to see if should switch from amqp to http
-    # * change mapper to router in RL and verify that ok in each case to go to shard router rather than island
     # * cannot update config.yml on initial enroll since deploy step happens after enroll
-    # * discover oauth timeout after oauth and re-auth in half that time or less, and if cannot connect for auth use old auth
     # * generate X.509 keys so that can get rid of enroll/reenroll or refactor to optionally do amqp stuff
+    # * cleanup agent deployer and common parser regarding auth and mode parameters
+    # * get :auth_url into config.yml via rad when start up and update if get re-pointed during oauth
+    # * now that using OAuth is agent_id still necessary or can it be retrieved from global session
     # * create RightScale rest-client gem with net-http-persistent additions or (monkey patch temporarily)
-    # * understand how to build tarball
     # * unit test including splitting sender_spec into parts
-    # - refactor cook communication so no longer need SecureSerializer
+    # - refactor cook communication so no longer need SecureSerializer (ivory)
     # - form encoding of routing_keys on websocket request (use CGI.escape?)
     # - simplify OperationResult to no longer store hash of results in Result
     # - make broker stats optional and add rstat support for right_net stats
@@ -62,7 +52,7 @@ module RightScale
     # - figure out why events not working on mac so that can get integration tests running again
     # - move BalancedHttpClient into right_support
     # - convert right_agent comments to yard
-    # - apply RightNetClientInit and RightNetClient in infrastructure servers
+    # - apply RightHttpClientInit and RightHttpClient in infrastructure servers
     # - handle v5 user_data (perhaps via amqp)
 
     # Issues
@@ -70,7 +60,7 @@ module RightScale
     # - current special casing of broker stats in rstat vs. those of http client
     # - is it okay to seek to re-enroll (and hence reconnect) if fail to reconnect for 5 minutes
     #   or should it be much longer?
-    # - does disconnected mode and auto health checking make sense for infrastructure servers
+    # - does disconnected mode and auto health checking make sense for infrastructure server users
 
     # Initialize RightNet client
     # Must be called before any other functions are usable
@@ -131,16 +121,16 @@ module RightScale
     # @return [NilClass] always nil since there is no expected response to the request
     #
     # @raise [RuntimeError] init was not called
-    # @raise [RightScale::Exceptions::Unauthorized] authorization failed
-    # @raise [RightScale::Exceptions::ConnectivityFailure] cannot connect to service or
-    #   service cannot connect to its services
-    # @raise [RightScale::Exceptions::StructuredError] mismatch in state from which transitioning
-    # @raise [RightScale::Exceptions::Application] request could not be processed by target
-    # @raise [RightScale::Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityError] cannot connect to server, lost connection
+    #   to it, or it is out of service or too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
     def push(type, payload = nil, target = nil, request_token = nil)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.make_request(:push, type, payload, target, request_token)
+      client.push(type, payload, target, request_token)
     end
 
     # Route a request to a single target with a response expected
@@ -165,17 +155,16 @@ module RightScale
     # @return [Result, NilClass] response from request
     #
     # @raise [RuntimeError] init was not called
-    # @raise [RightScale::Exceptions::Unauthorized] authorization failed
-    # @raise [RightScale::Exceptions::ConnectivityFailure] cannot connect to service or
-    #   service cannot connect to its services
-    # @raise [RightScale::Exceptions::RetryableError] request failed but if retried may succeed
-    # @raise [RightScale::Exceptions::StructuredError] mismatch in state from which transitioning
-    # @raise [RightScale::Exceptions::Application] request could not be processed by target
-    # @raise [RightScale::Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityError] cannot connect to server, lost connection
+    #   to it, or it is out of service or too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
     def request(type, payload = nil, target = nil, request_token = nil)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.make_request(:request, type, payload, target, request_token)
+      client.request(type, payload, target, request_token)
     end
 
     # Route event
@@ -188,9 +177,12 @@ module RightScale
     # @return [TrueClass] always true
     #
     # @raise [RuntimeError] init was not called
-    # @raise [RightScale::Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
     def notify(event, key)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       @router.notify(event, key)
     end
 
@@ -198,22 +190,25 @@ module RightScale
     # This is a blocking call and therefore should be used from a thread different than
     # otherwise used with this object, e.g., EM.defer thread
     #
-    # @yield [event] to required block each time event received
+    # @yield [event] called each time event received (required)
     # @yieldparam [Object] event received
     #
     # @return [TrueClass] always true, although normally never returns
     #
     # @raise [RuntimeError] init was not called
-    # @raise [RightScale::Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
     def listen(&handler)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       @router.listen(&handler)
     end
 
     # Record callback to be notified of status changes
     # Multiple callbacks are supported
     #
-    # @yield [type, status] called when status changes
+    # @yield [type, status] called when status changes (optional)
     # @yieldparam [Symbol] type of client reporting status change: :auth, :api, or :router
     # @yieldparam [Symbol] state of client
     #
@@ -221,7 +216,7 @@ module RightScale
     #
     # @raise [RuntimeError] init was not called
     def status(&callback)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       @status_callbacks = (@status_callbacks || []) << callback
       true
     end
@@ -246,7 +241,7 @@ module RightScale
     #
     # @raise [RuntimeError] init was not called
     def stats(reset = false)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @auth
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       stats = {}
       stats["auth client stats"] = @auth.stats(reset)
       stats["router client stats"] = @router.stats(reset)
@@ -274,6 +269,6 @@ module RightScale
       @status
     end
 
-  end # RightNetClient
+  end # RightHttpClient
 
 end # RightScale

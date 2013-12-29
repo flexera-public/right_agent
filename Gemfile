@@ -7,6 +7,12 @@ gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
     :branch => 'master'
 
+gem 'right_support',
+    :git => 'git@github.com:rightscale/right_support.git',
+    :branch => 'cornsilk_13_16_experimental_long_polling'
+
+gem "simple_uuid", "~> 0.2"
+
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # Going forward to ruby 1.9 we can relax the constraint on the json gem.
 gem 'json', '~> 1.4'

@@ -168,7 +168,7 @@ module RightScale
       payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       payload[:agent_ids] = ensure_flat_array_value(agent_ids) unless agent_ids.nil? || agent_ids.empty?
-      request = RightScale::RetryableRequest.new("/mapper/query_tags", payload, request_options)
+      request = RightScale::RetryableRequest.new("/router/query_tags", payload, request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|
         Log.error("Failed to query tags: #{message}")
@@ -200,9 +200,9 @@ module RightScale
       tags.uniq!
 
       if new_tags.any?
-        request = RightScale::RetryableRequest.new("/mapper/add_tags", {:tags => new_tags})
+        request = RightScale::RetryableRequest.new("/router/add_tags", {:tags => new_tags})
       elsif old_tags.any?
-        request = RightScale::RetryableRequest.new("/mapper/delete_tags", {:tags => old_tags})
+        request = RightScale::RetryableRequest.new("/router/delete_tags", {:tags => old_tags})
       else
         return
       end

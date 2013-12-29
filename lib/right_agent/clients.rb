@@ -24,9 +24,8 @@
 CLIENTS_BASE_DIR = File.join(File.dirname(__FILE__), 'clients')
 
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'balanced_http_client'))
-require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'base_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'base_retry_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'auth_client'))
-require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'instance_auth_client'))
-require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'router_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'api_client'))
-require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'right_net_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'router_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'right_http_client'))

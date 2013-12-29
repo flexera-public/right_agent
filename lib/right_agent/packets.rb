@@ -40,7 +40,7 @@ end
 
 module RightScale
 
-  # Base class for all packets flowing through the mappers
+  # Base class for all packets flowing through the RightNet routers
   # Knows how to dump itself to MessagePack or JSON
   class Packet
 
@@ -295,8 +295,8 @@ module RightScale
     # opts(Hash):: Optional settings:
     #   :from(String):: Sender identity
     #   :scope(Hash):: Define behavior that should be used to resolve tag based routing
-    #   :token(String):: Generated request id that a mapper uses to identify replies
-    #   :reply_to(String):: Identity of the node that actor replies to, usually a mapper itself
+    #   :token(String):: Generated request id that a router uses to identify replies
+    #   :reply_to(String):: Identity of the node that actor replies to, usually a router itself
     #   :selector(Symbol):: Selector used to route the request: :any or :all, defaults to :any,
     #     :all deprecated for version 13 and above
     #   :target(String|Array):: Target recipient(s)
@@ -426,12 +426,12 @@ module RightScale
     # opts(Hash):: Optional settings:
     #   :from(String):: Sender identity
     #   :scope(Hash):: Define behavior that should be used to resolve tag based routing
-    #   :token(String):: Generated request id that a mapper uses to identify replies
+    #   :token(String):: Generated request id that a router uses to identify replies
     #   :selector(Symbol):: Selector used to route the request: :any or :all, defaults to :any
     #   :target(String|Array):: Target recipient(s)
     #   :persistent(Boolean):: Indicates if this request should be saved to persistent storage
     #     by the AMQP broker
-    #   :confirm(Boolean):: Whether require confirmation response from mapper containing targets
+    #   :confirm(Boolean):: Whether require confirmation response from router containing targets
     #     to which request was published but not necessarily delivered
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
     #      is to be ignored by the receiver; value 0 means never expire; defaults to 0
@@ -532,7 +532,7 @@ module RightScale
     # Create packet
     #
     # === Parameters
-    # token(String):: Generated request id that a mapper uses to identify replies
+    # token(String):: Generated request id that a router uses to identify replies
     # to(String):: Identity of the node to which result should be delivered
     # results(Any):: Arbitrary data that is transferred from actor, a result of actor's work
     # from(String):: Sender identity

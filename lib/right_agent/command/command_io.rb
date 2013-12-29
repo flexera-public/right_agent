@@ -76,11 +76,11 @@ module RightScale
     # true:: Always return true
     #
     # === Raise
-    # (RightScale::Exceptions::Argument):: If block is missing
-    # (RightScale::Exceptions::Application):: If +listen+ has already been called and +stop+ hasn't since
-    # (RightScale::Exceptions::Application):: If port is already bound
+    # (ArgumentError):: If block is missing
+    # (Exceptions::Application):: If +listen+ has already been called and +stop+ hasn't since
+    # (Exceptions::Application):: If port is already bound
     def listen(socket_port, &block)
-      raise Exceptions::Argument, 'Missing listener block' unless block_given?
+      raise ArgumentError, 'Missing listener block' unless block_given?
       raise Exceptions::Application, 'Already listening' if listening
       begin
         @conn = EM.start_server('127.0.0.1', socket_port, ServerInputHandler, block)

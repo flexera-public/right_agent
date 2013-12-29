@@ -24,7 +24,7 @@
 module RightScale
 
   # HTTP interface to RightApi for use when mapping actor-based requests to API requests
-  class ApiClient < BaseClient
+  class ApiClient < BaseRetryClient
 
     # RightApi API version for use in X-API-Version header
     API_VERSION = "1.5"
@@ -48,7 +48,6 @@ module RightScale
       "/auditor/create_entry"              => [:post, "/api/audit_entries"],
       "/auditor/update_entry"              => [:post, "/api/audit_entries/:id/append"],
       "/booter/declare"                    => [:post, "/api/right_net/booter/declare"],
-      "/booter/set_r_s_version"            => [:put,  "/api/right_net/booter/set_r_s_version"],
       "/booter/get_repositories"           => [:get,  "/api/right_net/booter/get_repositories"],
       "/booter/get_boot_bundle"            => [:get,  "/api/right_net/booter/get_boot_bundle"],
       "/booter/get_decommission_bundle"    => [:get,  "/api/right_net/booter/get_decommission_bundle"],
@@ -58,10 +57,10 @@ module RightScale
       "/forwarder/schedule_recipe"         => [:post, "/api/right_net/scheduler/schedule_recipe"],
       "/forwarder/shutdown"                => [:post, "/api/right_net/scheduler/shutdown"],
       "/key_server/retrieve_public_keys"   => [:get,  "/api/right_net/key_server/retrieve_public_keys"],
-      "/mapper/ping"                       => [:post, HEALTH_CHECK_PATH],
-      "/mapper/query_tags"                 => [:post, "/api/tags/by_resource"],
-      "/mapper/add_tags"                   => [:post, "/api/tags/multi_add"],
-      "/mapper/delete_tags"                => [:post, "/api/tags/multi_delete"],
+      "/router/ping"                       => [:post, HEALTH_CHECK_PATH],
+      "/router/query_tags"                 => [:post, "/api/tags/by_resource"],
+      "/router/add_tags"                   => [:post, "/api/tags/multi_add"],
+      "/router/delete_tags"                => [:post, "/api/tags/multi_delete"],
       "/state_recorder/record"             => [:put,  "/api/right_net/state_recorder/record"],
       "/storage_valet/get_planned_volumes" => [:get,  "/api/right_net/storage_valet/get_planned_volumes"],
       "/storage_valet/attach_volume"       => [:post, "/api/right_net/storage_valet/attach_volume"],
@@ -75,7 +74,7 @@ module RightScale
       :klass          => :class_name }
 
     # Symbols for audit request parameters whose values are to be hidden when logging
-    AUDIT_FILTER_PARAMS = [ "detail", "text"]
+    AUDIT_FILTER_PARAMS = ["detail", "text"]
 
     # Create RightApi client of specified type
     #
@@ -86,11 +85,79 @@ module RightScale
     # @option options [Numeric] :retry_timeout maximum before stop retrying; defaults to DEFAULT_RETRY_TIMEOUT
     # @option options [Array] :retry_intervals between successive retries; defaults to DEFAULT_RETRY_INTERVALS
     # @option options [Boolean] :retry_enabled for requests that fail to connect or that return a retry result
+    # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
     # @option options [Proc] :exception_callback for unexpected exceptions
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)
-      init(:api, auth_client, options.merge(:api_version => API_VERSION, :health_check_path => HEALTH_CHECK_PATH))
+      init(:api, auth_client, options.merge(:server_name => "RightApi",
+                                            :api_version => API_VERSION,
+                                            :health_check_path => HEALTH_CHECK_PATH))
+    end
+
+    # Route a request to a single target or multiple targets with no response expected
+    # Persist the request en route to reduce the chance of it being lost at the expense of some
+    # additional network overhead
+    # Enqueue the request if the target is not currently available
+    # Never automatically retry the request if there is the possibility of it being duplicated
+    # Set time-to-live to be forever
+    #
+    # @param [String] type of request as path specifying actor and action
+    # @param [Hash, NilClass] payload for request
+    # @param [String, Hash, NilClass] target for request, which may be identity of specific
+    #   target, hash for selecting potentially multiple targets, or nil if routing solely
+    #   using type; hash may contain:
+    #   [Array] :tags that must all be associated with a target for it to be selected
+    #   [Hash] :scope for restricting routing which may contain:
+    #     [Integer] :account id that agents must be associated with to be included
+    #     [Integer] :shard id that agents must be in to be included, or if value is
+    #       Packet::GLOBAL, ones with no shard id
+    #   [Symbol] :selector for picking from qualified targets: :any or :all;
+    #     defaults to :any
+    # @param [String, NilClass] token uniquely identifying this request;
+    #   defaults to randomly generated ID
+    #
+    # @return [NilClass] always nil since there is no expected response to the request
+    #
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityError] cannot connect to server, lost connection
+    #   to it, or it is out of service or too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
+    def push(type, payload, target, token = nil)
+      map_request(type, payload, token)
+    end
+
+    # Route a request to a single target with a response expected
+    # Automatically retry the request if a response is not received in a reasonable amount of time
+    # or if there is a non-delivery response indicating the target is not currently available
+    # Timeout the request if a response is not received in time, typically configured to 30 sec
+    # Because of retries there is the possibility of duplicated requests, and these are detected and
+    # discarded automatically for non-idempotent actions
+    # Allow the request to expire per the agent's configured time-to-live, typically 1 minute
+    #
+    # @param [String] type of request as path specifying actor and action
+    # @param [Hash, NilClass] payload for request
+    # @param [String, Hash, NilClass] target for request, which may be identity of specific
+    #   target, hash for selecting targets of which one is picked randomly, or nil if routing solely
+    #   using type; hash may contain:
+    #   [Array] :tags that must all be associated with a target for it to be selected
+    #   [Hash] :scope for restricting routing which may contain:
+    #     [Integer] :account id that agents must be associated with to be included
+    # @param [String, NilClass] token uniquely identifying this request;
+    #   defaults to randomly generated ID
+    #
+    # @return [Result, NilClass] response from request
+    #
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityError] cannot connect to server, lost connection
+    #   to it, or it is out of service or too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
+    def request(type, payload, target, token = nil)
+      map_request(type, payload, token)
     end
 
     # Determine whether request supported by this client
@@ -102,134 +169,92 @@ module RightScale
       API_MAP.has_key?(type)
     end
 
-    # Make request via HTTP after mapping it to RightApi format
-    # Concatenate audit ID and request token for identifying request in HTTP header
-    # Rely on underlying HTTP client to log request and response
-    # Retry request if response indicates to or if there are "not responding" failures
+    protected
+
+    # Convert request to RightApi form and then make request via HTTP
     #
-    # @param [Symbol] kind of request: :send_push or :send_request
     # @param [String] type of request as path specifying actor and action
     # @param [Hash, NilClass] payload for request
-    # @param [String, Hash, NilClass] target for request
-    # @param [String, NilClass] request_token uniquely identifying this request;
+    # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
-    # @return [Object, NilClass] result of request with nil meaning no result
+    # @return [Result, NilClass] response from request
     #
-    # @raise [ArgumentError] request type does not map to supported request
-    # @raise [RightScale::Exceptions::Unauthorized] authorization failed
-    # @raise [RightScale::Exceptions::ConnectivityFailure] could not make connection to send request
-    # @raise [RightScale::Exceptions::StructuredError] mismatch in state from which transitioning
-    # @raise [RightScale::Exceptions::Application] request could not be processed by target
-    # @raise [RightScale::Exceptions::Terminating] closing client and terminating service
-    def make_request(kind, type, payload, target, request_token)
-      raise RightScale::Exceptions::Terminating if state == :closing
-      raise RightScale::Exceptions::ConnectivityFailure unless state == :connected
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityError] cannot connect to server, lost connection
+    #   to it, or it is too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
+    def map_request(type, payload, token)
       verb, path = API_MAP[type]
-      raise ArgumentError.new("Unsupported request type: #{type}") if path.nil?
+      raise ArgumentError, "Unsupported request type: #{type}" if path.nil?
       actor, action = type.split("/")[1..-1]
-      request_token = [payload.is_a?(Hash) && payload[:audit_id],
-                       request_token || RightSupport::Data::UUID.generate].compact.join(":")
-      original_request_token = request_token
-      started_at = @stats["requests sent"].update(action, request_token)
-      attempts = 0
-
-      begin
-        attempts += 1
-        params = {:request_token => request_token}
-        options = {
-          :open_timeout => @options[:open_timeout],
-          :request_timeout => @options[:request_timeout],
-          :request_uuid => request_token,
-          :auth_header => @auth_client.auth_header }
-        if actor == "auditor"
-          result = make_audit_request(verb, path, action, payload, options)
-        elsif actor == "mapper" && action =~ /tags/
-          result = make_tags_request(verb, path, payload, options)
-        else
-          params[:account_id] = @auth_client.account_id
-          payload.each { |k, v| params[PARAM_NAME_MAP[k.to_sym] || k.to_sym] = v } if payload.is_a?(Hash)
-          result = @http_client.send(verb, path, params, options)
-        end
-      rescue StandardError => e
-        request_token = handle_exception(e, action, type, original_request_token, started_at, attempts)
-        retry
-      end
-
-      @stats["requests sent"].finish(started_at, original_request_token)
+      path, params, options = parameterize(actor, action, payload, path)
+      result = make_request(verb, path, params, action, token, options)
+      # Convert returned audit entry href to audit ID
+      result.sub!(/^.*\/api\/audit_entries\//, "") if result.is_a?(String)
       result
     end
 
-    protected
-
-    # Perform any other steps needed to make this client fully usable
-    # once HTTP client has been created and service known to be accessible
+    # Convert payload to HTTP parameters
     #
-    # @return [TrueClass] always true
-    def init_client_usage
-      options = {
-        :api_version => @options[:api_version],
-        :auth_header => @auth_client.auth_header }
-      response = @http_client.get("/api/sessions/instance", nil, options)
-      @instance_href = response["links"].select { |link| link["rel"] == "self" }.first["href"]
-      true
-    end
-
-    # Translate tags request to RightApi request
-    #
-    # @param [Symbol] verb for HTTP REST request
+    # @param [String] actor from request type
+    # @param [String] action from request type
+    # @param [Hash, NilClass] payload for request
     # @param [String] path in URI for desired resource
-    # @param [Hash] payload from submitted request
-    # @param [Hash] options for HTTP request
     #
-    # @return [Object] result of final request to RightApi
-    def make_tags_request(verb, path, payload, options)
-      params = {:resource_hrefs => [@instance_href]}
-      params[:tags] = Array(payload[:tags]).flatten.compact if payload[:tags]
-      @http_client.send(verb, path, params, options)
+    # @return [Array] path string and parameters and options hashes
+    def parameterize(actor, action, payload, path)
+      options = {}
+      params = {}
+      if actor == "auditor"
+        path = path.sub(/:id/, payload[:audit_id].to_s || "")
+        params = parameterize_audit(action, payload)
+        options = {:filter_params => AUDIT_FILTER_PARAMS}
+      elsif actor == "router" && action =~ /_tags/
+        params[:resource_hrefs] = [@instance_href]
+        params[:tags] = Array(payload[:tags]).flatten.compact if payload[:tags]
+      else
+        params[:account_id] = @auth_client.account_id
+        payload.each { |k, v| params[PARAM_NAME_MAP[k.to_sym] || k.to_sym] = v } if payload.is_a?(Hash)
+      end
+      [path, params, options]
     end
 
-    # Translate audit request to RightApi request
+    # Translate audit request payload to HTTP parameters
     # Truncate audit summary to MAX_AUDIT_SUMMARY_LENGTH, the limit imposed by RightApi
     #
-    # @param [Symbol] verb for HTTP REST request
-    # @param [String] path in URI for desired resource
     # @param [String] action requested: create_entry or update_entry
     # @param [Hash] payload from submitted request
-    # @param [Hash] options for HTTP request
     #
-    # @return [Object] result of request to RightApi
+    # @return [Hash] HTTP request parameters
     #
     # @raise [ArgumentError] unknown request action
-    def make_audit_request(verb, path, action, payload, options)
+    def parameterize_audit(action, payload)
       params = {}
-      path = path.sub(/:id/, payload[:audit_id].to_s || "")
-      filter_params = {:filter_params => AUDIT_FILTER_PARAMS}
+      summary = non_blank(payload[:summary])
+      detail = non_blank(payload[:detail])
       case action
       when "create_entry"
-        params[:audit_entry] = {
-          :auditee_href => @instance_href,
-          :summary      => truncate(payload[:summary], MAX_AUDIT_SUMMARY_LENGTH) }
-        params[:audit_entry][:detail] = payload[:detail] if payload[:detail]
-        params[:user_email] = payload[:user_email] if payload[:user_email]
+        params[:audit_entry] = {:auditee_href => @instance_href}
+        params[:audit_entry][:summary] = truncate(summary, MAX_AUDIT_SUMMARY_LENGTH) if summary
+        params[:audit_entry][:detail] = detail if detail
+        if (user_email = non_blank(payload[:user_email]))
+          params[:user_email] = user_email
+        end
         params[:notify] = payload[:category] if payload[:category]
-        result = @http_client.send(verb, path, params, options.merge(filter_params))
-        # Convert returned audit entry href to audit ID
-        result.sub!(/^.*\/api\/audit_entries\//, "")
       when "update_entry"
         params[:offset] = payload[:offset] if payload[:offset]
-        if (summary = payload[:summary]) && !summary.empty?
+        if summary
           params[:summary] = truncate(summary, MAX_AUDIT_SUMMARY_LENGTH)
           params[:notify] = payload[:category] if payload[:category]
         end
-        if (detail = payload[:detail]) && !detail.empty?
-          params[:detail] = detail
-        end
-        result = @http_client.send(verb, path, params, options.merge(filter_params))
+        params[:detail] = detail if detail
       else
-        raise ArgumentError.new("Unknown audit request action: #{action}")
+        raise ArgumentError, "Unknown audit request action: #{action}"
       end
-      result
+      params
     end
 
     # Truncate string if it exceeds maximum length
@@ -244,7 +269,7 @@ module RightScale
     #
     # @raise [ArgumentError] max_length too small
     def truncate(value, max_length)
-      raise ArgumentError.new("max_length must be greater than 3") if max_length <= 3
+      raise ArgumentError, "max_length must be greater than 3" if max_length <= 3
       if value.is_a?(String) && value.bytesize > max_length
         max_truncated = max_length - 3
         truncated = value[0, max_truncated]
@@ -255,6 +280,28 @@ module RightScale
       else
         value
       end
+    end
+
+    # Determine whether value is non-blank
+    #
+    # @param [String, NilClass] value to be tested
+    #
+    # @return [String, NilClass] value if non-blank, otherwise nil
+    def non_blank(value)
+      value && !value.empty? ? value : nil
+    end
+
+    # Perform any other steps needed to make this client fully usable
+    # once HTTP client has been created and server known to be accessible
+    #
+    # @return [TrueClass] always true
+    def enable_use
+      options = {
+        :api_version => @options[:api_version],
+        :auth_header => @auth_client.auth_header }
+      result = make_request(:get, "/api/sessions/instance", {}, options)
+      @instance_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
+      true
     end
 
   end # ApiClient

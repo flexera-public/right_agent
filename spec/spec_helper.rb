@@ -27,7 +27,6 @@ require 'flexmock'
 require 'rspec'
 require 'eventmachine'
 require 'fileutils'
-require 'restclient'
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent'))
 require File.expand_path(File.join(File.dirname(__FILE__), 'results_mock'))
@@ -75,20 +74,4 @@ module RightScale
 
   end # Log
 
-end
-
-# Simulate RestClient exception since cannot create directly
-# but need its interface for error reporting
-class BadRequestMock < RestClient::Exception
-  attr_accessor :message
-  attr_reader :http_code, :http_body
-  def initialize(http_body = nil)
-    @message = "400 Bad Request"
-    @http_code = 400
-    @http_body = http_body
-  end
-
-  def inspect
-    "#{@message}: #{@http_body}"
-  end
 end

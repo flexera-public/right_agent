@@ -1,18 +1,28 @@
 #--
-# Copyright (c) 2013 RightScale, Inc, All Rights Reserved Worldwide.
+# Copyright (c) 2013 RightScale Inc
 #
-# THIS PROGRAM IS CONFIDENTIAL AND PROPRIETARY TO RIGHTSCALE
-# AND CONSTITUTES A VALUABLE TRADE SECRET.  Any unauthorized use,
-# reproduction, modification, or disclosure of this program is
-# strictly prohibited.  Any use of this program by an authorized
-# licensee is strictly subject to the terms and conditions,
-# including confidentiality obligations, set forth in the applicable
-# License Agreement between RightScale.com, Inc. and
-# the licensee.
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
 
 require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
-require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent', 'clients', 'balanced_http_client'))
+require File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib', 'right_agent', 'clients', 'balanced_http_client'))
 
 describe RightScale::BalancedHttpClient do
 
@@ -89,13 +99,11 @@ describe RightScale::BalancedHttpClient do
         @options = {}
         create_options = {
           :request_uuid => "my uuid",
-          :api_version => "1.0",
-          :auth_proc => lambda { {"Authorization" => "Bearer <session>"} }
-        }
+          :api_version => "1.0" }
         request_options = {
           :open_timeout => 1,
-          :request_timeout => 2
-        }
+          :request_timeout => 2,
+          :auth_header => {"Authorization" => "Bearer <session>"} }
         @client = RightScale::BalancedHttpClient.new(@urls, create_options)
         @http_client.should_receive(:get).with("#{@url}#{@path}", on { |a| @options = a }).and_return(nil)
         @client.send(:request, :get, @path, nil, request_options).should be_nil
@@ -114,7 +122,7 @@ describe RightScale::BalancedHttpClient do
         @options[:headers]["X-API-Version"].should == "1.0"
       end
 
-      it "uses auth_proc for setting authorization in header" do
+      it "uses auth_header for setting authorization in header" do
         @options[:headers]["Authorization"].should == "Bearer <session>"
       end
     end
@@ -139,6 +147,33 @@ describe RightScale::BalancedHttpClient do
               a[:query].nil? }).and_return(nil).once
           @client.send(:request, verb, @path, payload).should be_nil
         end
+      end
+    end
+
+    context "health check proc" do
+      it "removes user and password from URL when checking health" do
+        @url = "http://me:pass@my.com"
+        @client = RightScale::BalancedHttpClient.new(@url, :health_check_path => "/api/health-check")
+        @http_client.should_receive(:get).with("http://my.com/api/health-check", Hash).once
+        @client.instance_variable_get(:@health_check_proc).call(@url)
+      end
+
+      it "uses default path if none specified" do
+        @client = RightScale::BalancedHttpClient.new(@url)
+        @http_client.should_receive(:get).with("http://my.com/health-check", Hash).once
+        @client.instance_variable_get(:@health_check_proc).call(@url)
+      end
+
+      it "uses fixed timeout values" do
+        @client = RightScale::BalancedHttpClient.new(@url, :open_timeout => 5, :request_timeout => 30)
+        @http_client.should_receive(:get).with(String, {:open_timeout => 2, :timeout => 5}).once
+        @client.instance_variable_get(:@health_check_proc).call(@url)
+      end
+
+      it "sets API version if specified" do
+        @client = RightScale::BalancedHttpClient.new(@url, :api_version => "2.0")
+        @http_client.should_receive(:get).with(String, hsh(:headers => {"X-API-Version" => "2.0"})).once
+        @client.instance_variable_get(:@health_check_proc).call(@url)
       end
     end
 
@@ -169,6 +204,14 @@ describe RightScale::BalancedHttpClient do
       @response.should_receive(:code).and_return(204).twice
       @balancer.should_receive(:request).and_return(@response).once
       @client.send(:request, :get, @path).should be_nil
+    end
+
+    it "handles NoResult response from balancer" do
+      @log.should_receive(:error).with(/Failed <random uuid>.*#{@path}/).once
+      @balancer.should_receive(:request).and_yield(@url).once
+      flexmock(RightSupport::Net::HTTPClient).should_receive(:new).and_raise(RightSupport::Net::NoResult.new("no result", {})).once
+      flexmock(@client).should_receive(:handle_no_result).with(RightSupport::Net::NoResult, @url).once
+      @client.send(:request, :get, @path)
     end
 
     it "reports and re-raises unexpected exception" do
@@ -215,12 +258,71 @@ describe RightScale::BalancedHttpClient do
         end
 
         it "logs response failure including filtered params" do
-          @http_client.should_receive(:post).and_raise(BadRequestMock.new("bad data")).once
+          @http_client.should_receive(:post).and_raise(RestExceptionMock.new(400, "bad data")).once
           @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
           @log.should_receive(:error).with("Failed <random uuid> in 10ms | 400 [http://my.com/foo/bar (#{@filtered_params})] | 400 Bad Request: bad data").once
           lambda { @client.send(:request, :post, @path, @params, @options) }.should raise_error(RuntimeError)
         end
       end
+    end
+  end
+
+  context :handle_no_result do
+    before(:each) do
+      @no_result = RightSupport::Net::NoResult.new("no result", {})
+      @client = RightScale::BalancedHttpClient.new(@urls)
+    end
+
+    it "uses configured server name" do
+      @client = RightScale::BalancedHttpClient.new(@urls, :server_name => "Some server")
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "Some server not responding")
+    end
+
+    it "defaults server name to host name" do
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "http://my.com not responding")
+    end
+
+    it "uses last exception stored in NoResult details" do
+      gateway_timeout = RestExceptionMock.new(504, "server timeout")
+      bad_request = RestExceptionMock.new(400, "bad data")
+      @no_result = RightSupport::Net::NoResult.new("no result", {@url => gateway_timeout, @url => bad_request})
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should raise_error(bad_request)
+    end
+
+    it "uses server name in NotResponding exception if there are no details" do
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "http://my.com not responding")
+    end
+
+    it "uses http_body in raised NotResponding exception if status code is 504" do
+      gateway_timeout = RestExceptionMock.new(504, "server timeout")
+      @no_result = RightSupport::Net::NoResult.new("no result", {@url => gateway_timeout})
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "server timeout")
+    end
+
+    it "uses raise NotResponding if status code is 504 and http_body is nil or empty" do
+      gateway_timeout = RestExceptionMock.new(504, "")
+      @no_result = RightSupport::Net::NoResult.new("no result", {@url => gateway_timeout})
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "http://my.com not responding")
+    end
+
+    [502, 503].each do |code|
+      it "uses server name in NotResponding exception if status code is #{code}" do
+        e = RestExceptionMock.new(code)
+        @no_result = RightSupport::Net::NoResult.new("no result", {@url => e})
+        lambda { @client.send(:handle_no_result, @no_result, @url) }.should \
+          raise_error(RightScale::BalancedHttpClient::NotResponding, "http://my.com not responding")
+      end
+    end
+
+    it "raises last exception in details if not retryable" do
+      bad_request = RestExceptionMock.new(400, "bad data")
+      @no_result = RightSupport::Net::NoResult.new("no result", {@url => bad_request})
+      lambda { @client.send(:handle_no_result, @no_result, @url) }.should raise_error(bad_request)
     end
   end
 
@@ -232,7 +334,7 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "logs exception" do
-      exception = BadRequestMock.new("bad data")
+      exception = RestExceptionMock.new(400, "bad data")
       @log.should_receive(:error).with("Failed <uuid> in 10ms | 400 [http://my.com/foo/bar (\"params\")] | 400 Bad Request: bad data").once
       @client.send(:report_failure, @url, @path, "params", [], "uuid", @started_at, exception)
     end
@@ -285,7 +387,7 @@ describe RightScale::BalancedHttpClient do
       end
 
       it "includes exception text" do
-        exception = BadRequestMock.new("bad data")
+        exception = RestExceptionMock.new(400, "bad data")
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, exception)
         text.should == "[http://my.com/foo/bar ({:some=>\"data\", :secret=>\"<hidden>\"})] | 400 Bad Request: bad data"
       end
@@ -349,19 +451,18 @@ describe RightScale::BalancedHttpClient do
     end
 
     context "when REST exception" do
-      it "adds exception code/type and any message" do
-        exception = BadRequestMock.new("bad data")
+      it "adds exception code/type and any http_body" do
+        exception = RestExceptionMock.new(400, "bad data")
         RightScale::BalancedHttpClient.exception_text(exception).should == "400 Bad Request: bad data"
       end
 
-      it "adds exception code/type but omits message if it is html" do
-        exception = BadRequestMock.new("<html> bad </html>")
+      it "adds exception code/type but omits http_body if it is html" do
+        exception = RestExceptionMock.new(400, "<html> bad </html>")
         RightScale::BalancedHttpClient.exception_text(exception).should == "400 Bad Request"
       end
 
-      it "adds exception code/type and omits message if it is blank" do
-        exception = BadRequestMock.new
-        exception.message = nil
+      it "adds exception code/type and omits http_body if it is blank" do
+        exception = RestExceptionMock.new(400)
         RightScale::BalancedHttpClient.exception_text(exception).should == "400 Bad Request"
       end
     end

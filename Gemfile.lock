@@ -7,11 +7,19 @@ GIT
       eventmachine (>= 0.12.10, < 2.0)
       right_support (>= 1.2, < 3.0)
 
+GIT
+  remote: git@github.com:rightscale/right_support.git
+  revision: 9662460ff5f4829e918934f95fb19b6a89e315cc
+  branch: cornsilk_13_16_experimental_long_polling
+  specs:
+    right_support (2.8.7)
+
 PATH
   remote: .
   specs:
     right_agent (1.0.2)
       eventmachine (>= 0.12.10, < 2.0)
+      faye-websocket (= 0.7.0)
       ffi
       json (~> 1.4)
       msgpack (>= 0.4.4, < 0.6)
@@ -30,21 +38,25 @@ GEM
     eventmachine (1.0.0.4)
     eventmachine (1.0.0.4-x86-mingw32)
     eventmachine (1.0.0.4-x86-mswin32)
+    faye-websocket (0.7.0)
+      eventmachine (>= 0.12.0)
+      websocket-driver (>= 0.3.0)
     ffi (1.9.3)
+    ffi (1.9.3-x86-mingw32)
     flexmock (0.9.0)
     json (1.8.1)
     linecache (0.46)
       rbx-require-relative (> 0.0.4)
     linecache19 (0.5.12)
       ruby_core_source (>= 0.1.4)
-    mime-types (1.25)
-    msgpack (0.5.7)
+    mime-types (2.0)
+    msgpack (0.5.8)
+    msgpack (0.5.8-x86-mingw32)
     net-ssh (2.7.0)
     rake (0.9.2.2)
     rbx-require-relative (0.0.9)
     rest-client (1.6.7)
       mime-types (>= 1.16)
-    right_support (2.7.0)
     rspec (2.10.0)
       rspec-core (~> 2.10.0)
       rspec-expectations (~> 2.10.0)
@@ -68,6 +80,8 @@ GEM
       ruby-debug-base19 (>= 0.11.19)
     ruby_core_source (0.1.5)
       archive-tar-minitar (>= 0.5.2)
+    simple_uuid (0.4.0)
+    websocket-driver (0.3.1)
     win32-dir (0.4.6)
       ffi (>= 1.0.0)
     win32-process (0.7.3)
@@ -85,8 +99,10 @@ DEPENDENCIES
   rake (>= 0.9.2.2)
   right_agent!
   right_amqp!
+  right_support!
   rspec (~> 2.8)
   ruby-debug
   ruby-debug19
+  simple_uuid (~> 0.2)
   win32-dir (~> 0.4.5)
   win32-process (~> 0.7.3)

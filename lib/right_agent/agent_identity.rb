@@ -21,7 +21,7 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 module RightScale
-  
+
   # Agent identity management
   class AgentIdentity
 
@@ -47,7 +47,7 @@ module RightScale
     # separator(String):: Character used to separate identity components, defaults to ID_SEPARATOR
     #
     # === Raise
-    # RightScale::Exceptions::Argument:: Invalid argument
+    # ArgumentError:: Invalid argument
     def initialize(prefix, agent_type, base_id, token=nil, separator=nil)
       err = "Prefix cannot contain '#{ID_SEPARATOR}'" if prefix && prefix.include?(ID_SEPARATOR)
       err = "Prefix cannot contain '#{ID_SEPARATOR_OLD}'" if prefix && prefix.include?(ID_SEPARATOR_OLD)
@@ -58,7 +58,7 @@ module RightScale
       err = "Base ID must be a positive integer" unless base_id.kind_of?(Integer) && base_id >= 0
       err = "Token cannot contain '#{ID_SEPARATOR}'" if token && token.include?(ID_SEPARATOR)
       err = "Token cannot contain '#{ID_SEPARATOR_OLD}'" if token && token.include?(ID_SEPARATOR_OLD)
-      raise RightScale::Exceptions::Argument, err if err
+      raise ArgumentError, err if err
 
       @separator  = separator || ID_SEPARATOR
       @prefix     = prefix
@@ -97,12 +97,12 @@ module RightScale
     # (AgentIdentity):: Corresponding agent identity
     #
     # === Raise
-    # (RightScale::Exceptions::Argument):: Serialized agent identity is invalid
+    # (ArgumentError):: Serialized agent identity is invalid
     def self.parse(serialized_id)
       prefix, agent_type, token, bid, separator = parts(self.compatible_serialized(serialized_id))
-      raise RightScale::Exceptions::Argument, "Invalid agent identity: #{serialized_id.inspect}" unless prefix && agent_type && token && bid
+      raise ArgumentError, "Invalid agent identity: #{serialized_id.inspect}" unless prefix && agent_type && token && bid
       base_id = bid.to_i
-      raise RightScale::Exceptions::Argument, "Invalid agent identity base ID: #{bid ? bid : bid.inspect}" unless base_id.to_s == bid
+      raise ArgumentError, "Invalid agent identity base ID: #{bid ? bid : bid.inspect}" unless base_id.to_s == bid
 
       AgentIdentity.new(prefix, agent_type, base_id, token, separator)
     end
@@ -120,7 +120,7 @@ module RightScale
       if version < 10
         serialized_id = "nanite-#{serialized_id}" if self.valid_parts?(serialized_id)
       else
-        serialized_id = serialized_id[7..-1] if serialized_id =~ /^nanite-|^mapper-/
+        serialized_id = serialized_id[7..-1] if serialized_id =~ /^nanite-|^mapper-|^router-/
       end
       serialized_id
     end

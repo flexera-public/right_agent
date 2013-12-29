@@ -31,9 +31,9 @@ module RightScale
     # Block that will get called back whenever a command is successfully parsed
     #
     # === Raise
-    # (RightScale::Exceptions::Argument): If block is missing
+    # (ArgumentError): If block is missing
     def initialize &block
-      raise RightScale::Exceptions::Argument, 'Missing handler block' unless block
+      raise ArgumentError, 'Missing handler block' unless block
       @callback = block
       @buildup = ''
     end

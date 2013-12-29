@@ -45,11 +45,11 @@ module RightScale
     # (ConnectivityChecker) AMQP broker connection checker
     attr_reader :connectivity_checker
 
-    # (RightNetClient|RightAMQP::HABrokerClient) Client for accessing RightNet
+    # (RightHttpClient|RightAMQP::HABrokerClient) Client for accessing RightNet/RightApi
     attr_reader :client
 
-    # (Symbol) Protocol used for RightNet communication: "http" or "amqp"
-    attr_reader :protocol
+    # (Symbol) RightNet communication mode: :http or :amqp
+    attr_reader :mode
 
     # (String) Identity of the associated agent
     attr_reader :identity
@@ -81,7 +81,7 @@ module RightScale
       @agent = agent
       @identity = @agent.identity
       @options = @agent.options || {}
-      @protocol = @agent.protocol
+      @mode = @agent.mode
       @client = @agent.client
       @secure = @options[:secure]
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
@@ -90,8 +90,8 @@ module RightScale
 
       reset_stats
       @offline_handler = OfflineHandler.new(@options[:restart_callback], @offline_stats)
-      if @protocol == "amqp"
-        # Only need connectivity checker for AMQP broker since RightNetClient does its own checking
+      if @mode == :amqp
+        # Only need connectivity checker for AMQP broker since RightHttpClient does its own checking
         # via periodic session renewal
         @connectivity_checker = ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
       end
@@ -161,7 +161,7 @@ module RightScale
     # RuntimeError:: Init was not called
     def connected?
       raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
-      @protocol == "http" ? @client.connected? : @client.connected.size == 0
+      @mode == :http ? @client.connected? : @client.connected.size == 0
     end
 
     # Update the time this agent last received a request or response message
@@ -250,9 +250,6 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     # ArgumentError:: If target invalid or block missing
-    # SendFailure:: If sending of request failed unexpectedly
-    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
-    #   and offline queueing is disabled
     def send_request(type, payload = nil, target = nil, &callback)
       raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
       raise ArgumentError, "Missing block for response callback" unless callback
@@ -280,16 +277,13 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     # ArgumentError:: If target invalid
-    # SendFailure:: If sending of request failed unexpectedly
-    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
-    #   and offline queueing is disabled
     def build_and_send_packet(kind, type, payload, target, callback)
       raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
       if (packet = build_packet(kind, type, payload, target, callback))
         action = type.split('/').last
         received_at = @request_stats.update(action, packet.token)
         @request_kind_stats.update((packet.selector == :all ? "fanout" : kind.to_s)[5..-1])
-        send("#{@protocol}_send", kind, action, target, packet, received_at, callback)
+        send("#{@mode}_send", kind, target, packet, received_at, callback)
       end
       true
     end
@@ -579,11 +573,10 @@ module RightScale
       true
     end
 
-    # Send request via HTTP and then handle response
+    # Send request via HTTP and then immediately handle response
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
-    # action(String):: Requested action in actor
     # target(Hash|String|nil):: Target for request
     # packet(Push|Request):: Request packet to send
     # received_at(Time):: Time when request received
@@ -591,46 +584,38 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def http_send(kind, action, target, packet, received_at, callback)
+    def http_send(kind, target, packet, received_at, callback)
       begin
         method = packet.class.name.split("::").last.downcase
         if (result = @client.send(method, packet.type, packet.payload, target, packet.token))
           result = success_result(result)
         end
-      rescue RightScale::Exceptions::ConnectivityFailure => e
-        # This indicates RightNet connectivity issues
+      rescue Exceptions::Unauthorized => e
+        result = error_result(e.message)
+      rescue Exceptions::ConnectivityError => e
         if queueing?
           @offline_handler.queue_request(kind, packet.type, packet.payload, target, callback)
           result = nil
         else
-          result = retry_result("lost RightNet connectivity")
+          result = retry_result("RightNet not responding")
         end
-      rescue RightScale::Exceptions::RetryableError => e
-        # This indicates the request failed but if retried may succeed
+      rescue Exceptions::RetryableError => e
         result = retry_result(e.message)
-      rescue RightScale::Exceptions::StructuredError => e
-        # This indicates a structured error result
-        result = error_result(e.error_data)
-      rescue RightScale::Exceptions::Application => e
-        # This indicates the request was not processable
-        result = error_result(e.message)
-      rescue RightScale::Exceptions::Terminating => e
-        # This indicates service is terminating
+      rescue Exceptions::InternalServerError => e
+        result = error_result("#{e.server} internal error")
+      rescue Exceptions::Terminating => e
         result = nil
-      rescue ArgumentError => e
-        @exception_stats.track("request", e)
-        result = error_result(e.message)
       rescue StandardError => e
-        msg = "Failed to send #{packet.trace} #{packet.type}"
+        # These errors are either unexpected errors or RestClient errors with an http_body
+        # giving details about the error that are conveyed in the error_result
         if e.respond_to?(:http_body)
-          Log.error("#{msg} (#{e.inspect})")
-          @send_failure_stats.update("#{action} - #{e.http_code}")
+          # No need to log here since any HTTP request errors have already been logged
           result = error_result(e.inspect)
         else
-          Log.error(msg, e, :trace)
-          @send_failure_stats.update("#{action} - #{e.class.name}")
+          agent_type = AgentIdentity.parse(@identity).agent_type
+          Log.error("Failed to send #{packet.trace} #{packet.type}", e, :trace)
           @exception_stats.track("request", e)
-          result = error_result(e.message)
+          result = error_result("#{agent_type.capitalize} agent internal error")
         end
       end
 
@@ -648,7 +633,6 @@ module RightScale
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
-    # action(String):: Requested action in actor
     # target(Hash|String|nil):: Target for request
     # received_at(Time):: Time when request received
     # packet(Push|Request):: Request packet to send
@@ -656,12 +640,7 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    #
-    # === Raise
-    # SendFailure:: If sending of request failed unexpectedly
-    # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
-    #   and offline queueing is disabled
-    def amqp_send(kind, action, target, packet, received_at, callback)
+    def amqp_send(kind, target, packet, received_at, callback)
       begin
         @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
         if packet.class == Request

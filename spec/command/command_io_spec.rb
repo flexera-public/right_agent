@@ -53,7 +53,7 @@ describe RightScale::CommandIO do
   end
 
   it 'should detect missing blocks' do
-    lambda { RightScale::CommandIO.instance.listen(@socket_port) }.should raise_error(RightScale::Exceptions::Argument)
+    lambda { RightScale::CommandIO.instance.listen(@socket_port) }.should raise_error(ArgumentError)
   end
 
   it 'should receive a command' do

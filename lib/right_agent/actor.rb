@@ -178,5 +178,5 @@ module RightScale
     end # InstanceMethods
     
   end # Actor
-  
+
 end # RightScale

@@ -24,10 +24,10 @@ require 'socket'
 
 module RightScale
 
-  # Agent for receiving messages from the mapper and acting upon them
+  # Agent for receiving requests via RightNet and acting upon them
   # by dispatching to a registered actor to perform
   # See load_actors for details on how the agent specific environment is loaded
-  # Operates in either HTTP or AMQP mode
+  # Operates in either HTTP or AMQP mode for RightNet communication
   class Agent
 
     include ConsoleHelper
@@ -45,11 +45,11 @@ module RightScale
     # (ActorRegistry) Registry for this agents actors
     attr_reader :registry
 
-    # (RightNetClient|RightAMQP::HABrokerClient) Client for accessing RightNet
+    # (RightHttpClient|RightAMQP::HABrokerClient) Client for accessing RightNet/RightApi
     attr_reader :client
 
-    # (String) Protocol used for RightNet communication: "http" or "amqp"
-    attr_reader :protocol
+    # (Symbol) RightNet communication mode: :http or :amqp
+    attr_reader :mode
 
     # (Array) Tag strings published by agent
     attr_accessor :tags
@@ -67,7 +67,7 @@ module RightScale
       :daemonize          => false,
       :console            => false,
       :root_dir           => Dir.pwd,
-      :protocol           => "amqp",
+      :mode               => :amqp,
       :time_to_live       => 0,
       :retry_interval     => nil,
       :retry_timeout      => nil,
@@ -90,13 +90,13 @@ module RightScale
     #
     # === Parameters
     # opts(Hash):: Configuration options:
-    #   :identity(String):: Identity of this agent, no default
+    #   :identity(String):: Identity of this agent; no default
     #   :agent_name(String):: Local name for this agent
-    #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init,
+    #   :root_dir(String):: Application root for this agent containing subdirectories actors, certs, and init;
     #     defaults to current working directory
-    #   :pid_dir(String):: Path to the directory where the agent stores its process id file (only if daemonized),
+    #   :pid_dir(String):: Path to the directory where the agent stores its process id file (only if daemonized);
     #     defaults to the current working directory
-    #   :log_dir(String):: Log directory path, defaults to the platform specific log directory
+    #   :log_dir(String):: Log directory path; defaults to the platform specific log directory
     #   :log_level(Symbol):: The verbosity of logging -- :debug, :info, :warn, :error or :fatal
     #   :actors(Array):: List of actors to load
     #   :console(Boolean):: true indicates to start interactive console
@@ -104,16 +104,16 @@ module RightScale
     #   :retry_interval(Numeric):: Number of seconds between request retries
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
-    #     by the receiver, 0 means never expire, defaults to 0
+    #     by the receiver, 0 means never expire; defaults to 0
     #   :connect_timeout(Integer):: Number of seconds to wait for an AMQP broker connection to be established
     #   :reconnect_interval(Integer):: Number of seconds between AMQP broker reconnect attempts
     #   :offline_queueing(Boolean):: Whether to queue request if currently not connected to RightNet,
     #     also requires agent invocation of Sender initialize_offline_queue and start_offline_queue methods,
     #     as well as enable_offline_mode and disable_offline_mode as connection status changes
-    #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the mapper
-    #     to check connectivity, defaults to 0 meaning do not ping
+    #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping the RightNet
+    #     router to check connectivity; defaults to 0 meaning do not ping
     #   :check_interval(Integer):: Number of seconds between publishing stats and checking for AMQP broker
-    #     connections that failed during agent launch and then attempting to reconnect via the mapper
+    #     connections that failed during agent launch and then attempting to reconnect
     #   :heartbeat(Integer):: Number of seconds between AMQP connection heartbeats used to keep
     #     connection alive (e.g., when AMQP broker is behind a firewall), nil or 0 means disable
     #   :grace_timeout(Integer):: Maximum number of seconds to wait after last request received before
@@ -129,18 +129,18 @@ module RightScale
     #     agent(Agent):: Reference to agent
     #   :ready_callback(Proc):: Called once agent is connected to AMQP broker and ready for service (no argument)
     #   :restart_callback(Proc):: Called on each restart vote with votes being initiated by offline queue
-    #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access mapper when online (no argument)
+    #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access RightNet when online (no argument)
     #   :abnormal_terminate_callback(Proc):: Called at end of termination when terminate abnormally (no argument)
-    #   :services(Symbol):: List of services provided by this agent. Defaults to all methods exposed by actors.
+    #   :services(Symbol):: List of services provided by this agent; defaults to all methods exposed by actors
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
-    #   :protocol(String):: Protocol to use for RightNet communication: "http" or "amqp"; defaults to "amqp"
+    #   :mode(Symbol):: RightNet communication mode: :http or :amqp; defaults to :amqp
     #   :auth_client(Class):: Class name of authorization client to be used
     #   :auth_url(String):: URL for creating authorization session for HTTP access to RightNet and RightApi
     #   :vhost(String):: AMQP broker virtual host
     #   :user(String):: AMQP broker user
     #   :pass(String):: AMQP broker password
     #   :host(String):: Comma-separated list of AMQP broker hosts; if only one, it is reapplied
-    #     to successive ports; if none, defaults to 'localhost'
+    #     to successive ports; if none; defaults to 'localhost'
     #   :port(Integer):: Comma-separated list of AMQP broker ports corresponding to hosts; if only one,
     #     it is incremented and applied to successive hosts; if none, defaults to AMQP::HOST
     #
@@ -204,9 +204,9 @@ module RightScale
         # Create authorization client if configured
         @auth_client = @options[:auth_client].new(@options) if @options[:auth_client]
 
-        if @protocol == "http"
+        if @mode == :http
           # HTTP is being used for RightNet communication instead of AMQP
-          @client = RightNetClient.init(@auth_client, @options.merge(:retry_enabled => true))
+          @client = RightHttpClient.init(@auth_client, @options.merge(:retry_enabled => true))
           start_service(&terminate_callback)
         else
           # Initiate AMQP broker connection, wait for connection before proceeding
@@ -457,7 +457,7 @@ module RightScale
         "machine uptime"  => Platform.shell.uptime
       }
       stats["revision"] = @revision if @revision
-      if @protocol == "http"
+      if @mode == :http
         stats.merge!(@client.stats(reset))
       else
         stats["broker"] = @client.stats(reset)
@@ -494,7 +494,7 @@ module RightScale
         "request failures"  => @request_failure_stats.all,
         "response failures" => @response_failure_stats.all
       }
-      unless @protocol == "http"
+      unless @mode == :http
         stats["connect requests"] = @connect_request_stats.all
         stats["non-deliveries"] = @non_delivery_stats.all
       end
@@ -547,7 +547,7 @@ module RightScale
       parsed_identity = AgentIdentity.parse(@identity)
       @agent_type = parsed_identity.agent_type
       @agent_name = @options[:agent_name]
-      @protocol = @options[:protocol]
+      @mode = @options[:mode]
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
       @exception_callback = @options[:exception_callback]
       @revision = revision
@@ -593,14 +593,14 @@ module RightScale
         load_actors
         setup_traps
         setup_status
-        unless @protocol == "http"
+        unless @mode == :http
           setup_non_delivery
           setup_queues
         end
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
         EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-        EM.defer { @client.listen { |e| handle_event(e) } } if @protocol == "http"
+        EM.defer { @client.listen { |e| handle_event(e) } } if @mode == :http
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next
@@ -719,7 +719,7 @@ module RightScale
     def setup_status
       @status = {}
       @status_callbacks = []
-      if @protocol == "http"
+      if @mode == :http
         @status = @client.status { |type, state| update_status(type, state) }
       else
         @client.connection_status { |state| update_status(:broker, state) }
@@ -901,7 +901,7 @@ module RightScale
     # true:: Always return true
     def setup_status_checks(interval)
       @check_status_count = 0
-      @check_status_brokers = @client.all unless @protocol == "http"
+      @check_status_brokers = @client.all unless @mode == :http
       @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
       true
     end
@@ -917,24 +917,24 @@ module RightScale
     # true:: Always return true
     def check_status
       begin
-        if @auth_client && @auth_client.protocol != @protocol
-          Log.info("Detected request to switch protocol from #{@protocol} to #{@auth_client.protocol}")
+        if @auth_client && @auth_client.mode != @mode
+          Log.info("Detected request to switch mode from #{@mode} to #{@auth_client.mode}")
           update_status(:auth, :reconfig)
         end
       rescue Exception => e
-        Log.error("Failed switching protocol", e)
+        Log.error("Failed switching mode", e)
         @exception_stats.track("check status", e)
       end
 
       begin
-        finish_setup unless @terminating || @protocol == "http"
+        finish_setup unless @terminating || @mode == :http
       rescue Exception => e
         Log.error("Failed finishing setup", e)
         @exception_stats.track("check status", e)
       end
 
       begin
-        @client.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating || @protocol == "http"
+        @client.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating || @mode == :http
       rescue Exception => e
         Log.error("Failed checking queue status", e)
         @exception_stats.track("check status", e)
@@ -964,7 +964,7 @@ module RightScale
     # true:: Always return true
     def publish_stats
       s = stats({}).content
-      if @protocol == "http"
+      if @mode == :http
         @client.notify(s, "stats")
       else
         exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
@@ -998,6 +998,7 @@ module RightScale
     end
 
     # Gracefully stop processing
+    # Close clients except for authorization
     #
     # === Parameters
     # timeout(Integer):: Maximum number of seconds to wait after last request received before
@@ -1009,7 +1010,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def stop_gracefully(timeout, &block)
-      if @protocol == "http"
+      if @mode == :http
         @client.close
       else
         @client.unusable.each { |id| @client.close_one(id, propagate = false) }
@@ -1036,7 +1037,7 @@ module RightScale
           request_count, request_age = @sender.terminate
           Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                    "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-          @client.close { block.call } unless @protocol == "http"
+          @client.close { block.call } unless @mode == :http
         end
 
         if (wait_time = [timeout - (request_age || timeout), 0].max) > 0

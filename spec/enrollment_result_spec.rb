@@ -15,7 +15,7 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..' , 'lib', 'right_
 describe RightScale::EnrollmentResult do
   before(:each) do
     @key = 'topsecret'
-    @result = RightScale::EnrollmentResult.new(6, Time.now, 'mapper cert', 'my cert', 'my private key', @key)
+    @result = RightScale::EnrollmentResult.new(6, Time.now, 'router cert', 'my cert', 'my private key', @key)
     @message  = RightScale::EnrollmentResult.dump(@result)
   end
 
@@ -27,7 +27,7 @@ describe RightScale::EnrollmentResult do
   context "supporting different versions" do
     RightScale::EnrollmentResult::SUPPORTED_VERSIONS.each do |v|
       it "should support version #{v}" do
-        @result = RightScale::EnrollmentResult.new(v, Time.now, 'mapper cert', 'my cert', 'my private key', @key)
+        @result = RightScale::EnrollmentResult.new(v, Time.now, 'router cert', 'my cert', 'my private key', @key)
         serialized = RightScale::EnrollmentResult.dump(@result)
         @result2 = RightScale::EnrollmentResult.load(serialized, @key)
         @result.should == @result2

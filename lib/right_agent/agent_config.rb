@@ -44,10 +44,11 @@ module RightScale
   #
   # The certs directory contains the x.509 public certificate and keys needed
   # to sign and encrypt all outgoing messages as well as to check the signature
-  # and decrypt any incoming messages. This directory should contain at least:
+  # and decrypt any incoming messages. If AMQP is being used as the RightNet
+  # protocol, this directory should contain at least:
   #   <agent name>.key  - agent's' private key
   #   <agent name>.cert - agent's' public certificate
-  #   mapper.cert       - mapper's' public certificate
+  #   router.cert       - router's' public certificate
   #
   # The scripts directory at a minimum contains the following:
   #   install.sh - script for installing standard and agent specific tools in /usr/bin
@@ -63,7 +64,7 @@ module RightScale
   module AgentConfig
 
     # Current agent protocol version
-    PROTOCOL_VERSION = 22
+    PROTOCOL_VERSION = 23
 
     # Current agent protocol version
     #

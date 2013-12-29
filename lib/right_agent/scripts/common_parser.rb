@@ -107,7 +107,7 @@ module RightScale
       true
     end
 
-    # Generate agent or mapper identity from options
+    # Generate agent identity from options
     # Build identity from base_id, token, prefix and agent name
     #
     # === Parameters

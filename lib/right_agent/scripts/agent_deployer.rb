@@ -45,7 +45,7 @@
 #      --retry-interval SEC     Set number of seconds before initial request retry, increases exponentially
 #      --check-interval SEC     Set number of seconds between failed connection checks, increases exponentially
 #      --ping-interval SEC      Set minimum number of seconds since last message receipt for the agent
-#                               to ping the mapper to check connectivity, 0 means disable ping
+#                               to ping the RightNet router to check connectivity, 0 means disable ping
 #      --reconnect-interval SEC Set number of seconds between broker reconnect attempts
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
