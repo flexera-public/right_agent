@@ -11,6 +11,10 @@ gem 'right_support',
     :git => 'git@github.com:rightscale/right_support.git',
     :branch => 'cornsilk_13_16_experimental_long_polling'
 
+gem 'rest-client',
+    :git => 'git@github.com:duncan-bayne/rest-client.git',
+    :branch => 'feature-keep-alive'
+
 gem "simple_uuid", "~> 0.2"
 
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
