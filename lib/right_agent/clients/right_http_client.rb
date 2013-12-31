@@ -41,7 +41,6 @@ module RightScale
     # * cleanup agent deployer and common parser regarding auth and mode parameters
     # * get :auth_url into config.yml via rad when start up and update if get re-pointed during oauth
     # * now that using OAuth is agent_id still necessary or can it be retrieved from global session
-    # * create RightScale rest-client gem with net-http-persistent additions or (monkey patch temporarily)
     # * unit test including splitting sender_spec into parts
     # - refactor cook communication so no longer need SecureSerializer (ivory)
     # - form encoding of routing_keys on websocket request (use CGI.escape?)
@@ -115,7 +114,7 @@ module RightScale
     #       Packet::GLOBAL, ones with no shard id
     #   [Symbol] :selector for picking from qualified targets: :any or :all;
     #     defaults to :any
-    # @param [String, NilClass] request_token uniquely identifying this request;
+    # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
     # @return [NilClass] always nil since there is no expected response to the request
@@ -127,10 +126,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def push(type, payload = nil, target = nil, request_token = nil)
+    def push(type, payload = nil, target = nil, token = nil)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.push(type, payload, target, request_token)
+      client.push(type, payload, target, token)
     end
 
     # Route a request to a single target with a response expected
@@ -149,7 +148,7 @@ module RightScale
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
-    # @param [String, NilClass] request_token uniquely identifying this request;
+    # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
     # @return [Result, NilClass] response from request
@@ -161,10 +160,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def request(type, payload = nil, target = nil, request_token = nil)
+    def request(type, payload = nil, target = nil, token = nil)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.request(type, payload, target, request_token)
+      client.request(type, payload, target, token)
     end
 
     # Route event

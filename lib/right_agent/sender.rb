@@ -22,6 +22,9 @@
 
 module RightScale
 
+  # TODO require target to be hash or nil only once cleanup string values in RightLink usage
+  # TODO require payload to be hash or nil only once cleanup RightApi and RightLink usage
+
   # This class allows sending requests to agents via RightNet
   # It is used by Actor.request which is used by actors that need to send requests to remote agents
   # If requested, it will queue requests when there are is no RightNet connection
@@ -87,13 +90,13 @@ module RightScale
       @retry_timeout = RightSupport::Stats.nil_if_zero(@options[:retry_timeout])
       @retry_interval = RightSupport::Stats.nil_if_zero(@options[:retry_interval])
       @pending_requests = PendingRequests.new
-
+      @terminating = nil
       reset_stats
       @offline_handler = OfflineHandler.new(@options[:restart_callback], @offline_stats)
-      if @mode == :amqp
+      @connectivity_checker = if @mode == :amqp
         # Only need connectivity checker for AMQP broker since RightHttpClient does its own checking
         # via periodic session renewal
-        @connectivity_checker = ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
+        ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
       end
     end
 
@@ -109,7 +112,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def initialize_offline_queue
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @offline_handler
       @offline_handler.init if @options[:offline_queueing]
     end
 
@@ -121,7 +124,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def start_offline_queue
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @offline_handler
       @offline_handler.start if @options[:offline_queueing]
     end
 
@@ -135,7 +138,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def enable_offline_mode
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @offline_handler
       @offline_handler.enable if @options[:offline_queueing]
     end
 
@@ -148,7 +151,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def disable_offline_mode
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @offline_handler
       @offline_handler.disable if @options[:offline_queueing]
     end
 
@@ -160,7 +163,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def connected?
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @offline_handler
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @offline_handler
       @mode == :http ? @client.connected? : @client.connected.size == 0
     end
 
@@ -196,6 +199,7 @@ module RightScale
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :any
+    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
     #
     # === Block
     # Optional block used to process routing responses asynchronously with the following parameter:
@@ -213,9 +217,9 @@ module RightScale
     # SendFailure:: If sending of request failed unexpectedly
     # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
     #   and offline queueing is disabled
-    def send_push(type, payload = nil, target = nil, &callback)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
-      build_and_send_packet(:send_push, type, payload, target, callback)
+    def send_push(type, payload = nil, target = nil, token = nil, &callback)
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @client
+      build_and_send_packet(:send_push, type, payload, target, token, callback)
     end
 
     # Send a request to a single target with a response expected
@@ -238,6 +242,7 @@ module RightScale
     #     :account(Integer):: Restrict to agents with this account id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
+    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -250,10 +255,10 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     # ArgumentError:: If target invalid or block missing
-    def send_request(type, payload = nil, target = nil, &callback)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+    def send_request(type, payload = nil, target = nil, token = nil, &callback)
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @client
       raise ArgumentError, "Missing block for response callback" unless callback
-      build_and_send_packet(:send_request, type, payload, target, callback)
+      build_and_send_packet(:send_request, type, payload, target, token, callback)
     end
 
     # Build and send packet
@@ -262,13 +267,15 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets
+    # target(Hash|String):: Identity of specific target as string, or hash for selecting targets
+    #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
+    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
     # callback(Proc|nil):: Block used to process routing response
     #
     # === Return
@@ -277,9 +284,9 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     # ArgumentError:: If target invalid
-    def build_and_send_packet(kind, type, payload, target, callback)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
-      if (packet = build_packet(kind, type, payload, target, callback))
+    def build_and_send_packet(kind, type, payload, target, token, callback)
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @client
+      if (packet = build_packet(kind, type, payload, target, token, callback))
         action = type.split('/').last
         received_at = @request_stats.update(action, packet.token)
         @request_kind_stats.update((packet.selector == :all ? "fanout" : kind.to_s)[5..-1])
@@ -294,13 +301,15 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, or hash for selecting targets
+    # target(Hash|String):: Identity of specific target as string, or hash for selecting targets
+    #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
+    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
     # callback(Boolean):: Whether this request has an associated response callback
     #
     # === Return
@@ -309,8 +318,8 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     # ArgumentError:: If target is invalid
-    def build_packet(kind, type, payload, target, callback = false)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+    def build_packet(kind, type, payload, target, token, callback = false)
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @client
       validate_target(target, kind == :send_push)
       if queueing?
         @offline_handler.queue_request(kind, type, payload, target, callback)
@@ -328,10 +337,14 @@ module RightScale
           packet.selector = :any
         end
         packet.from = @identity
-        packet.token = AgentIdentity.generate
+        packet.token = token || AgentIdentity.generate
         if target.is_a?(Hash)
-          packet.tags = target[:tags] || []
-          packet.scope = target[:scope]
+          if (agent_id = target[:agent_id])
+            packet.target = agent_id
+          else
+            packet.tags = target[:tags] || []
+            packet.scope = target[:scope]
+          end
         else
           packet.target = target
         end
@@ -350,7 +363,7 @@ module RightScale
     # === Raise
     # RuntimeError:: Init was not called
     def handle_response(response)
-      raise RuntimeError.new("#{self.class.name}.init was not called") unless @client
+      raise RuntimeError.new("#{self.class.name}#init was not called") unless @client
       if response.is_a?(Result)
         token = response.token
         if (result = OperationResult.from_results(response))
@@ -512,9 +525,11 @@ module RightScale
 
     # Validate target argument of send per the semantics of each kind of send:
     #   - The target is either a specific target name, a non-empty hash, or nil
-    #   - A specific target name must be a string
+    #   - A specific target name must be a string (or use :agent_id key)
     #   - A non-empty hash target
     #     - may have keys in symbol or string format
+    #     - may contain an :agent_id to select a specific target, but then cannot
+    #       have any other keys
     #     - may be allowed to contain a :selector key with value :any or :all,
     #       depending on the kind of send
     #     - may contain a :scope key with a hash value with keys :account and/or :shard
@@ -531,9 +546,13 @@ module RightScale
     # === Raise
     # ArgumentError:: If target is invalid
     def validate_target(target, allow_selector)
-      choices = (allow_selector ? ":selector, " : "") + ":tags and/or :scope"
+      choices = ":agent_id OR " + (allow_selector ? ":selector, " : "") + ":tags and/or :scope"
       if target.is_a?(Hash)
         t = SerializationHelper.symbolize_keys(target)
+
+        if (agent_id = t[:agent_id])
+          raise ArgumentError, "Invalid target: #{target.inspect}" if t.size > 1
+        end
 
         if (selector = t[:selector])
           if allow_selector
@@ -563,7 +582,7 @@ module RightScale
           raise ArgumentError, "Invalid target tags (#{t[:tags].inspect}), must be an array"
         end
 
-        unless (selector || scope || tags) && (t.keys - [:selector, :scope, :tags]).empty?
+        unless (agent_id || selector || scope || tags) && (t.keys - [:agent_id, :selector, :scope, :tags]).empty?
           raise ArgumentError, "Invalid target hash (#{target.inspect}), choices are #{choices}"
         end
         target = t
@@ -740,7 +759,7 @@ module RightScale
                 @non_delivery_stats.update(result.content)
                 handle_response(Result.new(packet.token, @identity, result, @identity))
               end
-              @connectivity_checker.check(check_broker_ids.first) if check_broker_ids && count == 1
+              @connectivity_checker.check(check_broker_ids.first) if check_broker_ids.any? && count == 1
             end
           rescue TemporarilyOffline => e
             Log.error("Failed retry for #{packet.trace} #{packet.type} because temporarily offline")

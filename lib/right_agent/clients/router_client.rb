@@ -90,7 +90,7 @@ module RightScale
     #       Packet::GLOBAL, ones with no shard id
     #   [Symbol] :selector for picking from qualified targets: :any or :all;
     #     defaults to :any
-    # @param [String, NilClass] request_token uniquely identifying this request;
+    # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
     # @return [NilClass] always nil since there is no expected response to the request
@@ -125,7 +125,7 @@ module RightScale
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
-    # @param [String, NilClass] request_token uniquely identifying this request;
+    # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
     # @return [Result, NilClass] response from request
