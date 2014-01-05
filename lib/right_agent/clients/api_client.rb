@@ -29,8 +29,8 @@ module RightScale
     # RightApi API version for use in X-API-Version header
     API_VERSION = "1.5"
 
-    # Path for RightApi health check
-    HEALTH_CHECK_PATH = "/api/right_net/health-check"
+    # Path for RightApi health check excluding base path
+    HEALTH_CHECK_PATH = "/right_net/health-check"
 
     # Maximum length of an audit summary as enforced by RightApi
     MAX_AUDIT_SUMMARY_LENGTH = 255
@@ -45,28 +45,28 @@ module RightScale
     # Map from actor-based request paths to RightApi HTTP verb and path; only requests whose type
     # matches an entry in this hash will be routed to the RightApi; all others will be routed to RightNet
     API_MAP = {
-      "/auditor/create_entry"              => [:post, "/api/audit_entries"],
-      "/auditor/update_entry"              => [:post, "/api/audit_entries/:id/append"],
-      "/booter/declare"                    => [:post, "/api/right_net/booter/declare"],
-      "/booter/get_repositories"           => [:get,  "/api/right_net/booter/get_repositories"],
-      "/booter/get_boot_bundle"            => [:get,  "/api/right_net/booter/get_boot_bundle"],
-      "/booter/get_decommission_bundle"    => [:get,  "/api/right_net/booter/get_decommission_bundle"],
-      "/booter/get_missing_attributes"     => [:get,  "/api/right_net/booter/get_missing_attributes"],
-      "/booter/get_login_policy"           => [:get,  "/api/right_net/booter/get_login_policy"],
-      "/forwarder/schedule_right_script"   => [:post, "/api/right_net/scheduler/schedule_right_script"],
-      "/forwarder/schedule_recipe"         => [:post, "/api/right_net/scheduler/schedule_recipe"],
-      "/forwarder/shutdown"                => [:post, "/api/right_net/scheduler/shutdown"],
-      "/key_server/retrieve_public_keys"   => [:get,  "/api/right_net/key_server/retrieve_public_keys"],
+      "/auditor/create_entry"              => [:post, "/audit_entries"],
+      "/auditor/update_entry"              => [:post, "/audit_entries/:id/append"],
+      "/booter/declare"                    => [:post, "/right_net/booter/declare"],
+      "/booter/get_repositories"           => [:get,  "/right_net/booter/get_repositories"],
+      "/booter/get_boot_bundle"            => [:get,  "/right_net/booter/get_boot_bundle"],
+      "/booter/get_decommission_bundle"    => [:get,  "/right_net/booter/get_decommission_bundle"],
+      "/booter/get_missing_attributes"     => [:get,  "/right_net/booter/get_missing_attributes"],
+      "/booter/get_login_policy"           => [:get,  "/right_net/booter/get_login_policy"],
+      "/forwarder/schedule_right_script"   => [:post, "/right_net/scheduler/schedule_right_script"],
+      "/forwarder/schedule_recipe"         => [:post, "/right_net/scheduler/schedule_recipe"],
+      "/forwarder/shutdown"                => [:post, "/right_net/scheduler/shutdown"],
+      "/key_server/retrieve_public_keys"   => [:get,  "/right_net/key_server/retrieve_public_keys"],
       "/router/ping"                       => [:post, HEALTH_CHECK_PATH],
-      "/router/query_tags"                 => [:post, "/api/tags/by_resource"],
-      "/router/add_tags"                   => [:post, "/api/tags/multi_add"],
-      "/router/delete_tags"                => [:post, "/api/tags/multi_delete"],
-      "/state_recorder/record"             => [:put,  "/api/right_net/state_recorder/record"],
-      "/storage_valet/get_planned_volumes" => [:get,  "/api/right_net/storage_valet/get_planned_volumes"],
-      "/storage_valet/attach_volume"       => [:post, "/api/right_net/storage_valet/attach_volume"],
-      "/storage_valet/detach_volume"       => [:post, "/api/right_net/storage_valet/detach_volume"],
-      "/updater/update_inputs"             => [:post, "/api/right_net/scheduler/update_inputs"],
-      "/vault/read_documents"              => [:get,  "/api/right_net/vault/read_documents"] }
+      "/router/query_tags"                 => [:post, "/tags/by_resource"],
+      "/router/add_tags"                   => [:post, "/tags/multi_add"],
+      "/router/delete_tags"                => [:post, "/tags/multi_delete"],
+      "/state_recorder/record"             => [:put,  "/right_net/state_recorder/record"],
+      "/storage_valet/get_planned_volumes" => [:get,  "/right_net/storage_valet/get_planned_volumes"],
+      "/storage_valet/attach_volume"       => [:post, "/right_net/storage_valet/attach_volume"],
+      "/storage_valet/detach_volume"       => [:post, "/right_net/storage_valet/detach_volume"],
+      "/updater/update_inputs"             => [:post, "/right_net/scheduler/update_inputs"],
+      "/vault/read_documents"              => [:get,  "/right_net/vault/read_documents"] }
 
     # Request parameter name map
     PARAM_NAME_MAP = {
@@ -299,7 +299,7 @@ module RightScale
       options = {
         :api_version => @options[:api_version],
         :auth_header => @auth_client.auth_header }
-      result = make_request(:get, "/api/sessions/instance", {}, options)
+      result = make_request(:get, "/sessions/instance", {}, options)
       @instance_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
       true
     end

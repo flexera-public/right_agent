@@ -36,12 +36,15 @@ module RightScale
     include RightSupport::Ruby::EasySingleton
 
     # TODO
+    # * change sender to use UUID generator instead of AgentIdentity
+    # * change sender to just append -<retries count> to create retry token
+    # * missing specs for RightHttpClient, ConnectivityChecker, and changes to Agent
+    # * how to add parameters to websocket connect request for routing_keys?
     # * cannot update config.yml on initial enroll since deploy step happens after enroll
     # * generate X.509 keys so that can get rid of enroll/reenroll or refactor to optionally do amqp stuff
     # * cleanup agent deployer and common parser regarding auth and mode parameters
     # * get :auth_url into config.yml via rad when start up and update if get re-pointed during oauth
-    # * now that using OAuth is agent_id still necessary or can it be retrieved from global session
-    # * unit test including splitting sender_spec into parts
+    # - change RightLink to check utf-8 conformance in audits especially
     # - refactor cook communication so no longer need SecureSerializer (ivory)
     # - form encoding of routing_keys on websocket request (use CGI.escape?)
     # - simplify OperationResult to no longer store hash of results in Result
@@ -170,8 +173,9 @@ module RightScale
     # Use WebSocket if possible
     # Do not block this request even if in the process of closing
     #
-    # @param [Hash, Packet] event to send
-    # @param [String] key for routing
+    # @param [Hash] event to send
+    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
+    #   event to interested parties
     #
     # @return [TrueClass] always true
     #
@@ -180,16 +184,18 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def notify(event, key)
+    def notify(event, routing_keys)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.notify(event, key)
+      @router.notify(event, routing_keys)
     end
 
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
     # This is a blocking call and therefore should be used from a thread different than
     # otherwise used with this object, e.g., EM.defer thread
     #
-    # @yield [event] called each time event received (required)
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    #
+    # @yield [event] required block called each time event received
     # @yieldparam [Object] event received
     #
     # @return [TrueClass] always true, although normally never returns
@@ -199,9 +205,9 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(&handler)
+    def listen(routing_keys, &handler)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.listen(&handler)
+      @router.listen(routing_keys, &handler)
     end
 
     # Record callback to be notified of status changes

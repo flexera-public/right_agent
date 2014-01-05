@@ -74,9 +74,9 @@ module RightScale
       @account_id
     end
 
-    # URL for accessing RightApi
+    # URL for accessing RightApi including base path
     #
-    # @return [String] base URL
+    # @return [String] URL including base path
     #
     # @raise [Exceptions::Unauthorized] not authorized
     # @raise [Exceptions::RetryableError] authorization expired, if retry may succeed
@@ -85,9 +85,9 @@ module RightScale
       @api_url
     end
 
-    # URL for accessing RightNet router
+    # URL for accessing RightNet router including base path
     #
-    # @return [String] base URL
+    # @return [String] URL including base path
     #
     # @raise [Exceptions::Unauthorized] not authorized
     # @raise [Exceptions::RetryableError] authorization expired, if retry may succeed

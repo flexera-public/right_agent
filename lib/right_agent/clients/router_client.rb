@@ -106,7 +106,7 @@ module RightScale
         :type => type,
         :payload => payload,
         :target => target }
-      make_request(:post, "/router/requests/push", params, type.split("/")[2], token)
+      make_request(:post, "/requests/push", params, type.split("/")[2], token)
     end
 
     # Route a request to a single target with a response expected
@@ -141,15 +141,16 @@ module RightScale
         :type => type,
         :payload => payload,
         :target => target }
-      make_request(:post, "/router/requests/request", params, type.split("/")[2], token)
+      make_request(:post, "/requests/request", params, type.split("/")[2], token)
     end
 
     # Route event
     # Use WebSocket if possible
     # Do not block this request even if in the process of closing since used for request responses
     #
-    # @param [Hash, Packet] event to send
-    # @param [String] routing_key to assist router in routing event to interested parties
+    # @param [Hash] event to send
+    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
+    #   event to interested parties
     #
     # @return [TrueClass] always true
     #
@@ -159,15 +160,16 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def notify(event, routing_key)
+    def notify(event, routing_keys)
+      event[:uuid] ||= RightSupport::Data::UUID.generate
+      event[:version] ||= AgentConfig.protocol_version
       params = {
-        :agent_id => @auth_client.identity,
         :event => event,
-        :routing_key => routing_key }
+        :routing_keys => routing_keys }
       if @websocket
         @websocket.send(JSON.dump(params))
       else
-        make_request(:post, "/router/events/notify", params, "notify")
+        make_request(:post, "/events/notify", params, "notify")
       end
       true
     end
@@ -176,8 +178,10 @@ module RightScale
     # This is a blocking call and therefore should be used from a thread different than
     # otherwise used with this object, e.g., EM.defer thread
     #
-    # @yield [event] block each time event received (required)
-    # @yieldparam [Object] event received
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
     #
     # @return [TrueClass] always true, although normally never returns
     #
@@ -188,7 +192,7 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(&handler)
+    def listen(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       @connect_interval = WEBSOCKET_CONNECT_INTERVAL # instance variable needed for testing
@@ -201,7 +205,7 @@ module RightScale
           if @websocket.nil? && (Time.now - last_connect_time) > @connect_interval
             begin
               @stats["reconnects"].update("websocket") unless @websocket
-              create_websocket(&handler)
+              create_websocket(routing_keys, &handler)
               sleep(@options[:listen_timeout])
             rescue Exception => e
               Log.error("Failed creating WebSocket", e)
@@ -217,7 +221,7 @@ module RightScale
         # Resort to long-polling if a WebSocket cannot be created
         if @websocket.nil?
           begin
-            long_poll(&handler)
+            long_poll(routing_keys, &handler)
           rescue Exception => e
             trace = e.is_a?(Exceptions::ConnectivityError) ? :no_trace : :trace
             Log.error("Failed long-polling", e, trace)
@@ -269,69 +273,85 @@ module RightScale
 
     # Connect to RightNet router using WebSocket for receiving events
     #
-    # @yield [event] called when event received (required)
+    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
+    #   event to interested parties
+    #
+    # @yield [event] required block called when event received
     # @yieldparam [Object] event received
     #
     # @return [Faye::WebSocket] WebSocket created
     #
     # @raise [ArgumentError] block missing
-    def create_websocket(&handler)
+    def create_websocket(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
+      # TODO figure out how to send routing_keys as parameter to connect
       options = {
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
-      uri = @auth_client.router_url + "/router/events/connect/#{@auth_client.identity}"
+      uri = @auth_client.router_url + "/events/connect"
       @websocket = Faye::WebSocket::Client.new(uri, protocols = nil, options)
 
-      @websocket.onmessage = lambda do |event|
-        begin
-          event = JSON.load(event.data) rescue event
-          Log.info("Received event: #{(event.respond_to?(:type) ? event.type : event.inspect)}")
-          @stats["events"].update(event.respond_to?(:type) ? event.type : "unknown")
-          if (response = handler.call(event))
-            @websocket.send(JSON.dump(response))
-          end
-        rescue Exception => e
-          Log.error("Failed handling event", e, :trace)
-          @stats["exceptions"].track("event", e)
-        end
+      @websocket.onerror = lambda do |event|
+        Log.error("WebSocket error (#{event.data})")
       end
 
       @websocket.onclose = lambda do |event|
-        msg = "Closing WebSocket (#{event.code}"
-        msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
-        Log.info(msg)
+        begin
+          msg = "WebSocket closed (#{event.code}"
+          msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
+          Log.info(msg)
+        rescue Exception => e
+          Log.error("Failed closing WebSocket", e, :trace)
+          @stats["exceptions"].track("event", e)
+        end
         @websocket = nil
       end
 
-      @websocket.onerror = lambda do |event|
-        Log.error("Error on WebSocket (#{event.data})")
+      @websocket.onmessage = lambda do |event|
+        begin
+          event = SerializationHelper.symbolize_keys(JSON.load(event.data))
+          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
+          @stats["events"].update(event[:type])
+          if (result = handler.call(event))
+            Log.info("Sending #{event[:type]} event <#{event[:uuid]}> to #{event[:from]}")
+            @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
+          end
+        rescue Exception => e
+          Log.error("Failed handling WebSocket event", e, :trace)
+          @stats["exceptions"].track("event", e)
+        end
       end
 
       @websocket
     end
 
-    # Make long-polling request to receive an event
+    # Make long-polling request to receive one or more events
     #
-    # @yield [event] called when event received (required)
+    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
+    #   event to interested parties
+    #
+    # @yield [event] required block called for each event received
     # @yieldparam [Object] event received
     #
     # @return [TrueClass] always true
     #
     # @raise [ArgumentError] block missing
-    def long_poll(&handler)
+    def long_poll(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       params = {
-        :agent_id => @auth_client.identity,
         :wait_time => @options[:listen_timeout] - 5,
+        :routing_keys => routing_keys,
         :timestamp => Time.now.to_f }
-      if (event = make_request(:get, "/router/events/listen", params, "listen", nil,
-                               :request_timeout => @options[:listen_timeout]))
-        Log.info("Received event: #{(event.respond_to?(:type) ? event.type : event.inspect)}")
-        @stats["events"].update(event.respond_to?(:type) ? event.type : "unknown")
-        handler.call(event)
+      if (events = make_request(:get, "/events/listen", params, "listen", nil,
+                                :request_timeout => @options[:listen_timeout]))
+        events.each do |event|
+          event = SerializationHelper.symbolize_keys(event)
+          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
+          @stats["events"].update(event[:type])
+          handler.call(event)
+        end
       end
       true
     end

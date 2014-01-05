@@ -153,8 +153,8 @@ describe RightScale::BalancedHttpClient do
     context "health check proc" do
       it "removes user and password from URL when checking health" do
         @url = "http://me:pass@my.com"
-        @client = RightScale::BalancedHttpClient.new(@url, :health_check_path => "/api/health-check")
-        @http_client.should_receive(:get).with("http://my.com/api/health-check", Hash).once
+        @client = RightScale::BalancedHttpClient.new(@url, :health_check_path => "/health-check")
+        @http_client.should_receive(:get).with("http://my.com/health-check", Hash).once
         @client.instance_variable_get(:@health_check_proc).call(@url)
       end
 

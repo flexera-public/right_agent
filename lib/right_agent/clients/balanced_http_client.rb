@@ -30,10 +30,6 @@ module RightScale
   # and therefore supports both session cookie and global session-based authentication
   class BalancedHttpClient
 
-    # TODO
-    # - move this to right_support eventually but then need to switch to using RightSupport::Log::Mixin
-    #   and not rely on NestedException and change copyright?
-
     # When server not responding and retry is recommended
     class NotResponding < Exceptions::NestedException; end
 

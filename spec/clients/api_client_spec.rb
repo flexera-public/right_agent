@@ -72,19 +72,19 @@ describe RightScale::ApiClient do
       options[:retry_timeout] = 3
       options[:retry_intervals] = [1, 2, 3]
       options[:reconnect_interval] = 4
-      options[:health_check_path] = "/api/right_net/health-check"
+      options[:health_check_path] = "/right_net/health-check"
     end
   end
 
   context :push do
     it "makes mapped request" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/audit_entries/111/append", {:detail => "details"},
+      flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries/111/append", {:detail => "details"},
           "update_entry", @token, Hash).and_return(nil).once
       @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target, @token).should be_nil
     end
 
     it "does not require token" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/audit_entries/111/append", {:detail => "details"},
+      flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries/111/append", {:detail => "details"},
           "update_entry", nil, Hash).and_return(nil).once
       @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target).should be_nil
     end
@@ -92,13 +92,13 @@ describe RightScale::ApiClient do
 
   context :request do
     it "makes mapped request" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/right_net/booter/declare", {:agent_id => @agent_id,
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
           :account_id => @account_id, :r_s_version => @version}, "declare", @token, Hash).and_return(nil).once
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
     end
 
     it "does not require token" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/right_net/booter/declare", {:agent_id => @agent_id,
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
           :account_id => @account_id, :r_s_version => @version}, "declare", nil, Hash).and_return(nil).once
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target).should be_nil
     end
@@ -121,13 +121,13 @@ describe RightScale::ApiClient do
     end
 
     it "makes request" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/right_net/booter/declare", {:agent_id => @agent_id,
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
           :account_id => @account_id, :r_s_version => @version}, "declare", @token, Hash).and_return(nil).once
       @client.send(:map_request, "/booter/declare", @payload.merge(:r_s_version => @version), @token).should be_nil
     end
 
     it "converts audit entry href in result to an audit ID" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/api/audit_entries",
+      flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries",
           {:audit_entry => {:auditee_href => @instance_href, :summary => "summary"}}, "create_entry", @token, Hash).
           and_return("/api/audit_entries/111").once
       @client.send(:map_request, "/auditor/create_entry", @payload.merge(:summary => "summary"), @token).should == "111"
@@ -139,7 +139,7 @@ describe RightScale::ApiClient do
     context "for audits" do
       before(:each) do
         @path, @params, @options = @client.send(:parameterize, "auditor", "update_entry", @payload.merge(:audit_id => 111,
-                                                :detail => "details"), "/api/audit_entries/:id/append")
+                                                :detail => "details"), "/audit_entries/:id/append")
       end
 
       it "converts audit parameters" do
@@ -147,7 +147,7 @@ describe RightScale::ApiClient do
       end
 
       it "substitutes audit ID into path" do
-        @path.should == "/api/audit_entries/111/append"
+        @path.should == "/audit_entries/111/append"
       end
 
       it "adds parameter filter to options" do
@@ -158,7 +158,7 @@ describe RightScale::ApiClient do
     context "for tags" do
       before(:each) do
         @path, @params, @options = @client.send(:parameterize, "router", "add_tags", @payload.merge(:tags => ["a:b=c", nil, [nil, "x:y=z"]]),
-                                                "/api/tags/multi_add")
+                                                "/tags/multi_add")
       end
 
       it "adds resource hrefs to parameters" do
@@ -170,7 +170,7 @@ describe RightScale::ApiClient do
       end
 
       it "does not add tags if not present" do
-        _, @params, _ = @client.send(:parameterize, "router", "query_tags", @payload, "/api/tags/multi_add")
+        _, @params, _ = @client.send(:parameterize, "router", "query_tags", @payload, "/tags/multi_add")
         @params.should_not have_key(:tags)
       end
     end
@@ -178,7 +178,7 @@ describe RightScale::ApiClient do
     context "otherwise" do
       before(:each) do
         @path, @params, @options = @client.send(:parameterize, "booter", "declare", @payload.merge(:r_s_version => @version),
-                                                "/api/right_net/booter/declare")
+                                                "/right_net/booter/declare")
       end
 
       it "adds account ID to parameters" do
@@ -317,7 +317,7 @@ describe RightScale::ApiClient do
 
   context :enable_use do
     it "makes API request to get links for setting instance href" do
-      flexmock(@client).should_receive(:make_request).with(:get, "/api/sessions/instance", {},
+      flexmock(@client).should_receive(:make_request).with(:get, "/sessions/instance", {},
           {:api_version => "1.5", :auth_header => @auth_header}).and_return(@links).once
       @client.instance_variable_get(:@instance_href).should == @instance_href
       @client.send(:enable_use).should be_true

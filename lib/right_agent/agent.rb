@@ -618,27 +618,68 @@ module RightScale
     # Handle events received by this agent
     #
     # === Parameters
-    # event(Push|Request):: Event received
+    # event(Hash):: Event received
     #
     # === Return
     # true:: Always return true
     def handle_event(event)
-      if event.is_a?(Request) || event.is_a?(Push)
-        # Use next_tick to ensure that on main reactor thread
-        # so that any data access is thread safe
-        EM.next_tick do
-          begin
-            Log.info("Received #{event.inspect}")
-            if (result = @dispatcher.dispatch(event)) && event.is_a?(Request)
-              @client.notify(result, "response")
+      if event.is_a?(Hash)
+        if ["Push", "Request"].include?(event[:type])
+          # Use next_tick to ensure that on main reactor thread
+          # so that any data access is thread safe
+          EM.next_tick do
+            begin
+              Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
+              if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
+                @client.notify(result, [result.to])
+              end
+            rescue Exception => e
+              Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
             end
-          rescue Exception => e
-            Log.error("Failed sending response for #{event.trace}", e, :trace)
           end
+        else
+          Log.error("Unrecognized event type #{event[:type]} from #{event[:from]}")
         end
       else
         Log.error("Unrecognized event: #{event.class}")
       end
+    end
+
+    # Convert event hash to packet
+    #
+    # === Parameters
+    # event(Hash):: Event to be converted
+    #
+    # === Return
+    # (Push|Request):: Packet
+    def event_to_packet(event)
+      packet = nil
+      case event[:type]
+      when "Push"
+        packet = Push.new(event[:path], event[:data], {:from => event[:from], :token => event[:uuid]})
+        packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
+      when "Request"
+        packet = Request.new(event[:path], event[:data], {:from => event[:from], :token => event[:uuid]})
+        packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
+      end
+      packet
+    end
+
+    # Convert result packet to event
+    #
+    # === Parameters
+    # result(Result):: Event to be converted
+    #
+    # === Return
+    # (Hash):: Event
+    def result_to_event(result)
+      { :type => "Result",
+        :from => result.from,
+        :data => {
+          :result => result.results,
+          :duration => result.duration,
+          :request_uuid => result.token,
+          :request_from => result.request_from } }
     end
 
     # Create dispatcher per queue for use in handling incoming requests
