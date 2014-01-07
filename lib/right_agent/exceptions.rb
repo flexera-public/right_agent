@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -21,21 +21,22 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 module RightScale
-  class Exceptions
-    # Capability not currently supported
-    class NotSupported < Exception; end
 
-    # Internal application error
-    class Application < RuntimeError
+  class Exceptions
+
+    # Base exception for use in nesting exceptions
+    class NestedException < StandardError
       attr_reader :nested_exception
+
+      # Exception message and optional nested exception or string
       def initialize(message, nested_exception = nil)
         @nested_exception = nested_exception
         super(message)
       end
     end
 
-    # Invalid command or method argument
-    class Argument < RuntimeError; end
+    # Internal application error
+    class Application < StandardError; end
 
     # Agent command IO error
     class IO < RuntimeError; end
@@ -43,30 +44,43 @@ module RightScale
     # Agent compute platform error
     class PlatformError < StandardError; end
 
-    # Cannot connect or lost connection to external resource
-    class ConnectivityFailure < RuntimeError
-      attr_reader :nested_exception
+    # Terminating service
+    class Terminating < RuntimeError; end
+
+    # Not authorized to make request
+    class Unauthorized < NestedException
       def initialize(message, nested_exception = nil)
-        @nested_exception = nested_exception
-        super(message)
+        super(message, nested_exception)
+      end
+    end
+
+    # Cannot connect to service, lost connection to it, or it is out of service or too busy to respond
+    class ConnectivityFailure < NestedException
+      def initialize(message, nested_exception = nil)
+        super(message, nested_exception)
       end
     end
 
     # Request failed but potentially will succeed if retried
-    class RetryableError < RuntimeError
-      attr_reader :nested_exception
+    class RetryableError < NestedException
       def initialize(message, nested_exception = nil)
-        @nested_exception = nested_exception
-        super(message)
+        super(message, nested_exception)
       end
     end
 
     # Database query failed
-    class QueryFailure < RuntimeError
-      attr_reader :nested_exception
+    class QueryFailure < NestedException
       def initialize(message, nested_exception = nil)
-        @nested_exception = nested_exception
-        super(message)
+        super(message, nested_exception)
+      end
+    end
+
+    # Error internal to specified server
+    class InternalServerError < NestedException
+      attr_reader :server
+      def initialize(message, server, nested_exception = nil)
+        @server = server
+        super(message, nested_exception)
       end
     end
   end

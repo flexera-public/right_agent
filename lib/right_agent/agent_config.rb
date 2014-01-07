@@ -44,10 +44,11 @@ module RightScale
   #
   # The certs directory contains the x.509 public certificate and keys needed
   # to sign and encrypt all outgoing messages as well as to check the signature
-  # and decrypt any incoming messages. This directory should contain at least:
+  # and decrypt any incoming messages. If AMQP is being used as the RightNet
+  # protocol, this directory should contain at least:
   #   <agent name>.key  - agent's' private key
   #   <agent name>.cert - agent's' public certificate
-  #   mapper.cert       - mapper's' public certificate
+  #   router.cert       - router's' public certificate
   #
   # The scripts directory at a minimum contains the following:
   #   install.sh - script for installing standard and agent specific tools in /usr/bin
@@ -63,7 +64,7 @@ module RightScale
   module AgentConfig
 
     # Current agent protocol version
-    PROTOCOL_VERSION = 22
+    PROTOCOL_VERSION = 23
 
     # Current agent protocol version
     #
@@ -456,7 +457,7 @@ module RightScale
     def self.all_dirs(type)
       dirs = []
       root_dirs.each do |d|
-        c = self.__send__(type, d)
+        c = self.send(type, d)
         dirs << c if File.directory?(c)
       end
       dirs
@@ -466,7 +467,7 @@ module RightScale
     def self.first_file(type, name)
       file = nil
       root_dirs.each do |d|
-        if File.exist?(f = File.join(self.__send__(type, d), name))
+        if File.exist?(f = File.join(self.send(type, d), name))
           file = f
           break
         end

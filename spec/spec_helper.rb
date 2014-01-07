@@ -29,7 +29,6 @@ require 'eventmachine'
 require 'fileutils'
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent'))
-require File.expand_path(File.join(File.dirname(__FILE__), 'results_mock'))
 
 RSpec.configure do |c|
   c.mock_with(:flexmock)
@@ -74,4 +73,30 @@ module RightScale
 
   end # Log
 
+end
+
+# Mock RestClient exceptions since cannot create directly without a
+# RestClient::Response, but need RestClient interface for error reporting
+class RestExceptionMock < RestClient::Exception
+  class Response
+    attr_reader :headers
+
+    def initialize(headers)
+      @headers = headers || {}
+    end
+  end
+
+  attr_accessor :message
+  attr_reader :http_code, :http_body, :response
+
+  def initialize(http_code, http_body = nil, response_headers = nil)
+    @message = "#{http_code} #{RestClient::STATUSES[http_code]}"
+    @http_code = http_code
+    @http_body = http_body
+    @response = Response.new(response_headers)
+  end
+
+  def inspect
+    "#{@message}: #{@http_body}"
+  end
 end

@@ -77,6 +77,7 @@ module RightScale
     #   :graceful_exits(Integer|nil):: Number of graceful terminations, if any
     #   :crashes(Integer|nil):: Number of crashes, if any
     #   :last_crash_time(Integer|nil):: Time in seconds in Unix-epoch when last crash occurred, if any
+    #   :crashed_last(Boolean):: Whether crashed last time it was started
     def analyze_service
       now = Time.now.to_i
       if @last_analysis && @last_event == @last_update
@@ -88,6 +89,7 @@ module RightScale
       else
         last_run = last_crash = @last_event = {:time => 0, :pid => 0, :event => nil}
         restarts = graceful_exits = crashes = accumulated_uptime = 0
+        crashed_last = false
         load.each do |event|
           event = SerializationHelper.symbolize_keys(event)
           case event[:event]
@@ -98,19 +100,23 @@ module RightScale
             when "start"
               crashes += 1
               last_crash = event
+              crashed_last = true
             when "run"
               crashes += 1
               last_crash = event
+              crashed_last = true
               # Accumulating uptime here although this will wrongly include recovery time
               accumulated_uptime += (event[:time] - @last_event[:time])
             end
           when "run"
             last_run = event
           when "stop"
+            crashed_last = false
             if @last_event[:event] == "run" && @last_event[:pid] == event[:pid]
               accumulated_uptime += (event[:time] - @last_event[:time])
             end
           when "graceful exit"
+            crashed_last = false
             graceful_exits += 1
           else
             next
@@ -129,6 +135,7 @@ module RightScale
         if crashes > 0
           @last_analysis[:crashes] = crashes
           @last_analysis[:last_crash_time] = last_crash[:time]
+          @last_analysis[:crashed_last] = crashed_last
         end
       end
       @last_analysis_time = now

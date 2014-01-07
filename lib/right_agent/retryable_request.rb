@@ -42,7 +42,7 @@ module RightScale
   # applied after the new :retry_delay_count is reached, and so on until :retry_delay
   # reaches :max_retry_delay which then is used as the interval until the default or
   # specified :timeout is reached. The default :timeout is 4 days.
-  class IdempotentRequest
+  class RetryableRequest
 
     include OperationResultHelper
     include EM::Deferrable
@@ -86,8 +86,8 @@ module RightScale
     # === Raises
     # ArgumentError:: If operation or payload not specified
     def initialize(operation, payload, options = {})
-      raise ArgumentError.new("operation is required") unless @operation = operation
-      raise ArgumentError.new("payload is required") unless @payload = payload
+      raise ArgumentError.new("operation is required") unless (@operation = operation)
+      raise ArgumentError.new("payload is required") unless (@payload = payload)
       @retry_on_error = options[:retry_on_error] || false
       @timeout = options[:timeout] || DEFAULT_TIMEOUT
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
@@ -105,7 +105,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def run
-      Sender.instance.send_retryable_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
+      Sender.instance.send_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
       if @cancel_timer.nil? && @timeout > 0
         @cancel_timer = EM::Timer.new(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
@@ -190,6 +190,6 @@ module RightScale
       targets[rand(0xffff) % targets.size] if targets
     end
 
-  end # IdempotentRequest
+  end # RetryableRequest
 
 end # RightScale

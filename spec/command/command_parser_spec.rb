@@ -25,7 +25,7 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 describe RightScale::CommandParser do
 
   it 'should detect missing block' do
-    lambda { RightScale::CommandParser.new }.should raise_error(RightScale::Exceptions::Argument)
+    lambda { RightScale::CommandParser.new }.should raise_error(ArgumentError)
   end
 
   it 'should parse' do

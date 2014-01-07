@@ -25,19 +25,11 @@ require 'tmpdir'
 
 describe RightScale::History do
 
-  # Mock Time.now with well-defined interval
-  def mock_time(size = 20, interval = 10)
-    now = Time.at(1000000)
-    list = []
-    size.times { list << (now += interval) }
-    flexmock(Time).should_receive(:now).and_return(*list)
-  end
-
   before(:each) do
     @identity = "rs-agent-1-1"
     @pid = Process.pid
-    @now = Time.at(1000000)
-    flexmock(Time).should_receive(:now).and_return(@now).by_default
+    now = Time.at(1000000)
+    flexmock(Time).should_receive(:now).and_return { now += 10 }
     FileUtils.mkdir_p(@test_dir = File.join(RightScale::Platform.filesystem.temp_dir, 'history_test'))
     RightScale::AgentConfig.pid_dir = @test_dir
     @history = RightScale::History.new(@identity)
@@ -51,15 +43,14 @@ describe RightScale::History do
 
     it "should store event in history file" do
       @history.update("some event").should be_true
-      @history.load.should == [{"time" => 1000000, "pid" => @pid, "event" => "some event"}]
+      @history.load.should == [{"time" => 1000010, "pid" => @pid, "event" => "some event"}]
     end
 
     it "should store event in history file following previous event" do
       @history.update("some event").should be_true
-      flexmock(Time).should_receive(:now).and_return(@now += 10)
       @history.update("another event").should be_true
-      @history.load.should == [{"time" => 1000000, "pid" => @pid, "event" => "some event"},
-                                          {"time" => 1000010, "pid" => @pid, "event" => "another event"}]
+      @history.load.should == [{"time" => 1000010, "pid" => @pid, "event" => "some event"},
+                               {"time" => 1000020, "pid" => @pid, "event" => "another event"}]
     end
 
   end
@@ -72,7 +63,7 @@ describe RightScale::History do
 
     it "should load events from history file" do
       @history.update("some event").should be_true
-      @history.load.should == [{"time" => 1000000, "pid" => @pid, "event" => "some event"}]
+      @history.load.should == [{"time" => 1000010, "pid" => @pid, "event" => "some event"}]
     end
 
   end
@@ -84,29 +75,27 @@ describe RightScale::History do
     end
 
     it "should indicate no uptime if not yet running" do
-      mock_time
       @history.update("start")
       @history.analyze_service.should == {:uptime => 0, :total_uptime => 0}
     end
 
     it "should measure uptime starting from last run time" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.analyze_service.should == {:uptime => 10, :total_uptime => 10}
-    end
-
-    it "should not count initial start as a restart" do
-      @history.update("start")
-      @history.update("run")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0}
     end
 
     it "should count restarts" do
       @history.update("start")
       @history.update("stop")
       @history.update("start")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0, :restarts => 1, :graceful_exits => 0}
+      @history.analyze_service[:restarts].should == 1
+    end
+
+    it "should not count initial start as a restart" do
+      @history.update("start")
+      @history.update("run")
+      @history.analyze_service[:restarts].should be_nil
     end
 
     it "should ignore repeated stops when counting restarts" do
@@ -114,7 +103,7 @@ describe RightScale::History do
       @history.update("stop")
       @history.update("stop")
       @history.update("start")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0, :restarts => 1, :graceful_exits => 0}
+      @history.analyze_service[:restarts].should == 1
     end
 
     it "should record number of graceful exits if there are restarts" do
@@ -130,11 +119,11 @@ describe RightScale::History do
       @history.update("graceful exit")
       @history.update("start")
       @history.update("run")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0, :restarts => 3, :graceful_exits => 2}
+      @history.analyze_service[:graceful_exits].should == 2
+      @history.analyze_service[:restarts].should == 3
     end
 
     it "should measure total uptime across restarts and include current uptime" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.update("stop")
@@ -153,18 +142,41 @@ describe RightScale::History do
     it "should count crashes" do
       @history.update("start")
       @history.update("start")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0, :crashes => 1, :last_crash_time => 1000000}
+      @history.analyze_service[:crashes].should == 1
+      @history.analyze_service[:last_crash_time].should == 1000020
+      @history.analyze_service[:crashed_last].should be_true
     end
 
     it "should record last crash age if there are crashes" do
-      mock_time
       @history.update("start")
       @history.update("start")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 0, :crashes => 1, :last_crash_time => 1000020}
+      @history.analyze_service[:crashed_last].should be_true
+    end
+
+    it "should determine whether crashed last time was started" do
+      @history.update("start")
+      @history.update("start")
+      @history.analyze_service[:crashed_last].should be_true
+      @history.update("run")
+      @history.analyze_service[:crashed_last].should be_true
+      @history.update("stop")
+      @history.analyze_service[:crashed_last].should be_false
+      @history.update("start")
+      @history.analyze_service[:crashed_last].should be_false
+      @history.update("stop")
+      @history.update("start")
+      @history.analyze_service[:crashed_last].should be_false
+      @history.update("run")
+      @history.update("stop")
+      @history.update("graceful exit")
+      @history.analyze_service[:crashed_last].should be_false
+      @history.update("start")
+      @history.analyze_service[:crashed_last].should be_false
+      @history.update("start")
+      @history.analyze_service[:crashed_last].should be_true
     end
 
     it "should count restarts and crashes" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.update("stop")
@@ -180,8 +192,10 @@ describe RightScale::History do
       @history.update("run")
       @history.update("start")
       @history.update("run")
-      @history.analyze_service.should == {:uptime => 10, :total_uptime => 40, :restarts => 3, :graceful_exits => 2,
-                                          :crashes => 2, :last_crash_time => 1000140}
+      @history.analyze_service[:crashes].should == 2
+      @history.analyze_service[:restarts].should == 3
+      @history.analyze_service[:last_crash_time].should == 1000140
+      @history.analyze_service[:crashed_last].should be_true
     end
 
     it "should ignore unrecognized events" do
@@ -195,7 +209,6 @@ describe RightScale::History do
     end
 
     it "should not re-analyze if there are no new events" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.analyze_service.should == {:uptime => 10, :total_uptime => 10}
@@ -204,7 +217,6 @@ describe RightScale::History do
     end
 
     it "should update uptime and total_uptime even if do not do re-analyze" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.update("start")
@@ -214,19 +226,19 @@ describe RightScale::History do
       @history.update("start")
       @history.update("run")
       @history.analyze_service.should == {:uptime => 10, :total_uptime => 30, :restarts => 1, :graceful_exits => 1,
-                                          :crashes => 1, :last_crash_time => 1000030}
+                                          :crashes => 1, :last_crash_time => 1000030, :crashed_last => false}
       @history.analyze_service.should == {:uptime => 20, :total_uptime => 40, :restarts => 1, :graceful_exits => 1,
-                                          :crashes => 1, :last_crash_time => 1000030}
+                                          :crashes => 1, :last_crash_time => 1000030, :crashed_last => false}
     end
 
     it "should re-analyze if there was a new event since last analysis" do
-      mock_time
       @history.update("start")
       @history.update("run")
       @history.analyze_service.should == {:uptime => 10, :total_uptime => 10}
       @history.instance_variable_set(:@pid, -1) # Simulate new process id following crash
       @history.update("start")
-      @history.analyze_service.should == {:uptime => 0, :total_uptime => 20, :crashes => 1, :last_crash_time => 1000040}
+      @history.analyze_service.should == {:uptime => 0, :total_uptime => 20, :crashes => 1, :last_crash_time => 1000040,
+                                          :crashed_last => true}
     end
 
   end

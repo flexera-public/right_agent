@@ -89,7 +89,7 @@ describe "RightScale::Dispatcher" do
     @registry = RightScale::ActorRegistry.new
     @registry.register(@actor, nil)
     @agent_id = "rs-agent-1-1"
-    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry).by_default
+    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry, :exception_callback => nil).by_default
     @cache = RightScale::DispatchedCache.new(@agent_id)
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
   end
@@ -218,7 +218,7 @@ describe "RightScale::Dispatcher" do
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-mapper-1-1", :expires_at => @now.to_i + 8}, [12, 13])
+      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-router-1-1", :expires_at => @now.to_i + 8}, [12, 13])
       flexmock(Time).should_receive(:now).and_return(@now += 10)
       res = @dispatcher.dispatch(req)
       res.results.error?.should be_true

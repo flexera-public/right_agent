@@ -43,7 +43,7 @@ module RightScale
     # Array(String):: names of RightNet agents capable of providing the document.
     # If nil, then no target should be specified when sending RightNet requests;
     # this is used to route requests to "trusted infrastructure" nodes at the
-    # discretion of the mapper. 
+    # discretion of the RightNet router.
     attr_accessor :targets
 
     # Initialize fields from given arguments
