@@ -45,31 +45,33 @@
 #    rnac [options]
 #
 #    options:
-#      --start, -s AGENT   Start agent named AGENT
-#      --stop, -p AGENT    Stop agent named AGENT
-#      --stop-agent ID     Stop agent with serialized identity ID
-#      --kill, -k PIDFILE  Kill process with given process id file
-#      --killall, -K       Stop all running agents
-#      --status, -U        List running agents on local machine
-#      --identity, -i ID   Use base id ID to build agent's identity
-#      --token, -t TOKEN   Use token TOKEN to build agent's identity
-#      --prefix, -x PREFIX Use prefix PREFIX to build agent's identity
-#      --type TYPE         Use agent type TYPE to build agent's' identity,98589
-#                          defaults to AGENT with any trailing '_[0-9]+' removed
-#      --list, -l          List all configured agents
-#      --user, -u USER     Set AMQP user
-#      --pass, -p PASS     Set AMQP password
-#      --vhost, -v VHOST   Set AMQP vhost
-#      --host, -h HOST     Set AMQP server hostname
-#      --port, -P PORT     Set AMQP server port
-#      --cfg-dir, -c DIR   Set directory containing configuration for all agents
-#      --pid-dir, -z DIR   Set directory containing agent process id files
-#      --log-dir DIR       Set log directory
-#      --log-level LVL     Log level (debug, info, warning, error or fatal)
-#      --foreground, -f    Run agent in foreground
-#      --interactive, -I   Spawn an irb console after starting agent
-#      --test              Use test settings
-#      --help              Display help
+#      --start, -s AGENT     Start agent named AGENT
+#      --stop, -p AGENT      Stop agent named AGENT
+#      --stop-agent ID       Stop agent with serialized identity ID
+#      --kill, -k PIDFILE    Kill process with given process id file
+#      --killall, -K         Stop all running agents
+#      --status, -U          List running agents on local machine
+#      --identity, -i ID     Use this as base ID to build agent's identity
+#      --token, -t TOKEN     Use this token to build agent's identity with it plugging
+#                            directly in unless --secure-identity is specified
+#      --secure-identity, -S Derive token used in agent identity from given TOKEN and ID
+#      --prefix, -x PREFIX   Use this prefix to build agent's identity
+#      --type TYPE           Use this agent type to build agent's' identity;
+#                            defaults to AGENT with any trailing '_[0-9]+' removed
+#      --list, -l            List all configured agents
+#      --user, -u USER       Set AMQP user
+#      --pass, -p PASS       Set AMQP password
+#      --vhost, -v VHOST     Set AMQP vhost
+#      --host, -h HOST       Set AMQP server hostname
+#      --port, -P PORT       Set AMQP server port
+#      --cfg-dir, -c DIR     Set directory containing configuration for all agents
+#      --pid-dir, -z DIR     Set directory containing agent process id files
+#      --log-dir DIR         Set log directory
+#      --log-level LVL       Log level (debug, info, warning, error or fatal)
+#      --foreground, -f      Run agent in foreground
+#      --interactive, -I     Spawn an irb console after starting agent
+#      --test                Use test settings
+#      --help                Display help
 
 require 'rubygems'
 require 'optparse'
@@ -333,7 +335,7 @@ module RightScale
       EM.error_handler do |e|
         Log.error("EM block execution failed with exception", e, :trace)
         Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
-        # Cannot rely on EM.stop at this point, so exit to give chance for monit restart
+        # Cannot rely on EM.stop at this point, so exit to give chance for monitor restart
         exit(1)
       end
 

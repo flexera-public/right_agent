@@ -140,7 +140,7 @@ module RightScale
       @reject_stats = RightSupport::Stats::Activity.new
       @request_stats = RightSupport::Stats::Activity.new
       @dispatch_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(@agent)
+      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @agent.exception_callback)
       true
     end
 
@@ -225,9 +225,9 @@ module RightScale
     def perform(request, actor, method, idempotent)
       @dispatched_cache.store(request.token) if @dispatched_cache && !idempotent
       if actor.method(method).arity.abs == 1
-        actor.__send__(method, request.payload)
+        actor.send(method, request.payload)
       else
-        actor.__send__(method, request.payload, request)
+        actor.send(method, request.payload, request)
       end
     rescue Exception => e
       @dispatch_failure_stats.update("#{request.type}->#{e.class.name}")

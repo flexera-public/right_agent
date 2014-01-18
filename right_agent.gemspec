@@ -25,8 +25,8 @@ require 'rbconfig'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '1.0.3'
-  spec.date      = '2013-11-22'
+  spec.version   = '2.0.0'
+  spec.date      = '2013-12-31'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
   spec.homepage  = 'https://github.com/rightscale/right_agent'
@@ -40,6 +40,8 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency('right_support', ['>= 2.4.1', '< 3.0'])
   spec.add_dependency('right_amqp', '~> 0.7')
+  spec.add_dependency('rest-client', '1.7.0.alpha')
+  spec.add_dependency('faye-websocket', '0.7.0')
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('net-ssh', '~> 2.0')
 
@@ -81,12 +83,16 @@ Gem::Specification.new do |spec|
 
   spec.description = <<-EOF
 RightAgent provides a foundation for running an agent on a server to interface
-in a secure fashion with other agents in the RightScale system. A RightAgent
-uses RabbitMQ as the message bus and the RightScale mapper as the routing node.
-Servers running a RightAgent establish a queue on startup for receiving packets
-routed to it via the mapper. The packets are structured to invoke services in
-the agent represented by actors and methods. The RightAgent may respond to these
-requests with a result packet that the mapper then routes to the originator.
+in a secure fashion with other agents in the RightScale system using RightNet,
+which operates in either HTTP or AMQP mode. When using HTTP, RightAgent
+makes requests to RightApi servers and receives requests using long-polling or
+WebSockets via the RightNet router. To respond to requests it posts to the
+HTTP router. When using AMQP, RightAgent uses RabbitMQ as the message bus and
+the RightNet router as the routing node to make requests; to receives requests
+routed to it by the RightNet router, it establishes a queue on startup. The
+packets are structured to invoke services in the agent represented by actors
+and methods. The RightAgent may respond to these requests with a result packet
+that the router then routes to the originator.
 EOF
 
   candidates = Dir.glob("{lib,spec}/**/*") +

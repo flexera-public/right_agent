@@ -53,7 +53,7 @@ class AgentManager
     success_result(:identity => @agent.options[:identity],
                    :hostname => Socket.gethostname,
                    :version  => RightScale::AgentConfig.protocol_version,
-                   :brokers  => @agent.broker.status,
+                   :client   => @agent.client.status,
                    :time     => Time.now.to_i)
   end
 

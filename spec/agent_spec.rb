@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2012 RightScale Inc
+# Copyright (c) 2009-2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -309,7 +309,7 @@ describe RightScale::Agent do
           @agent.instance_variable_get(:@remaining_queue_setup).should == {@identity => @broker_ids.last(1)}
           @sender.should_receive(:send_push).with("/registrar/connect", {:agent_identity => @identity, :host => "123",
                                                                          :port => 2, :id => 1, :priority => 1}).once
-          @agent.__send__(:check_status)
+          @agent.send(:check_status)
         end
       end
 
@@ -539,6 +539,38 @@ describe RightScale::Agent do
         end
       end
 
+      it "should sleep before an abnormal termination that is following a crash" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @broker.should_receive(:nil?).and_return(true)
+          @log.should_receive(:error).with(/Terminating because just because/, Exception, :trace).once
+          @log.should_receive(:info).with(/Delaying termination for 10 sec/).once.ordered
+          @log.should_receive(:info).with(/Terminating immediately/).once.ordered
+          now = Time.now
+          flexmock(Time).should_receive(:now).and_return(now)
+          flexmock(@agent.instance_variable_get(:@history)).should_receive(:analyze_service).
+              and_return({:last_crashed => true, :last_crash_time => now.to_i - 5}).once
+          flexmock(@agent).should_receive(:sleep).with(10).once
+          @agent.terminate("just because", Exception.new("error"))
+        end
+      end
+
+      it "should limit the sleep time before an abnormal termination" do
+        run_in_em do
+          @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @broker.should_receive(:nil?).and_return(true)
+          @log.should_receive(:error).with(/Terminating because just because/, Exception, :trace).once
+          @log.should_receive(:info).with(/Delaying termination for 60 min 0 sec/).once.ordered
+          @log.should_receive(:info).with(/Terminating immediately/).once.ordered
+          now = Time.now
+          flexmock(Time).should_receive(:now).and_return(now)
+          flexmock(@agent.instance_variable_get(:@history)).should_receive(:analyze_service).
+              and_return({:last_crashed => true, :last_crash_time => now.to_i - 1801}).once
+          flexmock(@agent).should_receive(:sleep).with(3600).once
+          @agent.terminate("just because", Exception.new("error"))
+        end
+      end
+
       it "should close unusable broker connections at start of termination" do
         @broker.should_receive(:unusable).and_return(["rs-broker-123-1"]).once
         @broker.should_receive(:close_one).with("rs-broker-123-1", false).once
@@ -611,11 +643,13 @@ describe RightScale::Agent do
         @broker.should_receive(:close).and_yield.once
         flexmock(EM::Timer).should_receive(:new).with(20, Proc).and_return(@timer).and_yield.once
         run_in_em do
+          called = 0
+          callback = lambda { called += 1}
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @agent.instance_variable_set(:@terminate_callback, callback)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
-          called = 0
-          @agent.terminate { called += 1 }
+          @agent.terminate
           called.should == 1
         end
       end
@@ -647,13 +681,15 @@ describe RightScale::Agent do
         @timer.should_receive(:cancel).once
         @periodic_timer.should_receive(:cancel).once
         run_in_em do
+          called = 0
+          callback = lambda { called += 1}
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
+          @agent.instance_variable_set(:@terminate_callback, callback)
           flexmock(@agent).should_receive(:load_actors).and_return(true)
           @agent.run
-          called = 0
-          @agent.terminate { called += 1 }
+          @agent.terminate
           called.should == 0
-          @agent.terminate { called += 1 }
+          @agent.terminate
           called.should == 1
         end
       end

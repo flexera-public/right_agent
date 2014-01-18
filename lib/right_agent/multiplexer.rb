@@ -83,7 +83,7 @@ module RightScale
     # === Return
     # res(Object):: Result of first target in list
     def method_missing(m, *args)
-      res = @targets.inject([]) { |res, t| res << t.__send__(m, *args) }
+      res = @targets.inject([]) { |res, t| res << t.send(m, *args) }
       res[0]
     end
 

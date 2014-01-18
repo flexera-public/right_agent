@@ -128,6 +128,7 @@ module RightScale
     
     # Symbolize keys of hash, use when retrieving hashes that use symbols
     # for keys as JSON and MessagePack serialization will produce strings instead
+    # Simply return any object that is not a hash as is
     #
     # === Parameters
     # hash(Hash):: Hash whose keys are to be symbolized
@@ -135,9 +136,13 @@ module RightScale
     # === Return
     # (Hash):: Hash with same values but symbol keys
     def self.symbolize_keys(hash)
-      hash.inject({}) do |h, (key, value)|
-        h[(key.to_sym rescue key) || key] = value
-        h
+      if hash.is_a?(Hash)
+        hash.inject({}) do |h, (key, value)|
+          h[(key.to_sym rescue key) || key] = value
+          h
+        end
+      else
+        hash
       end
     end
 

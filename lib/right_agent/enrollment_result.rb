@@ -6,7 +6,7 @@ require 'openssl'
 require 'base64'
 require 'json'
 
-# A response to a RightNet enrollment request containing the mapper's X509 cert,
+# A response to a RightNet enrollment request containing the router's X509 cert,
 # the instance (or other) agent's identity cert, and the agent's private key.
 # Responses are encrypted using a secret key shared between the instance and
 # the Certifying Authority (aka the RightScale core site) and integrity-protected
@@ -20,29 +20,30 @@ module RightScale
     class IntegrityFailure < Exception; end
     class VersionError < Exception; end
 
-    attr_reader :r_s_version, :timestamp, :mapper_cert, :id_cert, :id_key
+    attr_reader :r_s_version, :timestamp, :router_cert, :id_cert, :id_key
 
     # Create a new instance of this class
     #
     # === Parameters
     # timestamp(Time):: Timestamp associated with this result
-    # mapper_cert(String):: Arbitrary string
+    # router_cert(String):: Arbitrary string
     # id_cert(String):: Arbitrary string
     # id_key(String):: Arbitrary string
     # secret(String):: Shared secret with which the result is encrypted
     #
-    def initialize(r_s_version, timestamp, mapper_cert, id_cert, id_key, secret)
+    def initialize(r_s_version, timestamp, router_cert, id_cert, id_key, secret)
       @r_s_version = r_s_version
       @timestamp   = timestamp.utc
-      @mapper_cert = mapper_cert
+      @router_cert = router_cert
       @id_cert     = id_cert
       @id_key      = id_key
       @serializer  = Serializer.new((:json if r_s_version < 12))
 
+      cert_name = r_s_version < 23 ? 'mapper_cert' : 'router_cert'
       msg = @serializer.dump({
-        'mapper_cert' => @mapper_cert.to_s,
-        'id_cert'     => @id_cert,
-        'id_key'      => @id_key
+        cert_name => @router_cert.to_s,
+        'id_cert' => @id_cert,
+        'id_key'  => @id_key
       })
 
       key        = EnrollmentResult.derive_key(secret, @timestamp.to_i.to_s)
@@ -90,7 +91,7 @@ module RightScale
     # true|false:: Whether the objects' pertinent fields are identical
     #
     def ==(o)
-      self.mapper_cert == o.mapper_cert &&
+      self.router_cert == o.router_cert &&
       self.id_cert == o.id_cert &&
       self.id_key == o.id_key &&
       self.timestamp.to_i == o.timestamp.to_i
@@ -164,11 +165,11 @@ module RightScale
       raise IntegrityFailure.new("MAC mismatch: expected #{my_mac}, got #{mac}") unless (mac == my_mac)
 
       msg = serializer.load(plaintext)
-      mapper_cert = msg['mapper_cert']
+      router_cert = msg['router_cert'] || msg['mapper_cert']
       id_cert   = msg['id_cert']
       id_key    = msg['id_key']
 
-      self.new(r_s_version, timestamp, mapper_cert, id_cert, id_key, secret)
+      self.new(r_s_version, timestamp, router_cert, id_cert, id_key, secret)
     end
 
     protected

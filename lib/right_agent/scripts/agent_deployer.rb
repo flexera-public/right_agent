@@ -7,14 +7,6 @@
 #     <agent name>/config.yml
 #   in platform-specific RightAgent configuration directory
 #
-# === Examples:
-#   Build configuration for agent named AGENT with default options:
-#     rad AGENT
-#
-#   Build configuration for agent named AGENT so it uses given AMQP settings:
-#     rad AGENT --user USER --pass PASSWORD --vhost VHOST --port PORT --host HOST
-#     rad AGENT -u USER -p PASSWORD -v VHOST -P PORT -h HOST
-#
 # === Usage:
 #    rad AGENT [options]
 #
@@ -22,13 +14,18 @@
 #      --root-dir, -r DIR       Set agent root directory (containing init, actors, and certs subdirectories)
 #      --cfg-dir, -c DIR        Set directory where generated configuration files for all agents are stored
 #      --pid-dir, -z DIR        Set directory containing process id file
-#      --identity, -i ID        Use base id ID to build agent's identity
-#      --token, -t TOKEN        Use token TOKEN to build agent's identity
-#      --prefix, -x PREFIX      Use prefix PREFIX to build agent's identity
-#      --type TYPE              Use agent type TYPE to build agent's' identity,
+#      --identity, -i ID        Use this as base ID to build agent's identity
+#      --token, -t TOKEN        Use this token to build agent's identity with it plugging
+#                               directly in unless --secure-identity is specified
+#      --secure-identity, -S    Derive token used in agent identity from given TOKEN and ID
+#      --prefix, -x PREFIX      Use this prefix to build agent's identity
+#      --type TYPE              Use this agent type to build agent's' identity;
 #                               defaults to AGENT with any trailing '_[0-9]+' removed
-#      --secure-identity, -S    Derive actual token from given TOKEN and ID
-#      --url                    Set agent AMQP connection URL (host, port, user, pass, vhost)
+#      --api-url, -a URL        Set URL for HTTP access to RightApi
+#      --account, -A ID         Set identifier for account owning this agent
+#      --shard, -s ID           Set identifier for database shard in which this agent is operating
+#      --mode, -m MODE          Set communication mode this agent is to use: :http or :amqp
+#      --url URL                Set agent AMQP connection URL (host, port, user, pass, vhost)
 #      --user, -u USER          Set agent AMQP username
 #      --password, -p PASS      Set agent AMQP password
 #      --vhost, -v VHOST        Set agent AMQP virtual host
@@ -43,12 +40,11 @@
 #      --retry-interval SEC     Set number of seconds before initial request retry, increases exponentially
 #      --check-interval SEC     Set number of seconds between failed connection checks, increases exponentially
 #      --ping-interval SEC      Set minimum number of seconds since last message receipt for the agent
-#                               to ping the mapper to check connectivity, 0 means disable ping
-#      --reconnect-interval SEC Set number of seconds between broker reconnect attempts
+#                               to ping the RightNet router to check connectivity, 0 means disable ping
+#      --reconnect-interval SEC Set number of seconds between HTTP or AMQP reconnect attempts
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
 #      --options, -o KEY=VAL    Set options that act as final override for any persisted configuration settings
-#      --monit, -m              Generate monit configuration file
 #      --test                   Build test deployment using default test settings
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
@@ -96,9 +92,6 @@ module RightScale
 
       # Persist configuration
       persist(options, cfg)
-
-      # Setup agent monitoring
-      monitor(options) if options[:monit]
       true
     end
 
@@ -133,14 +126,6 @@ module RightScale
 
         opts.on('-z', '--pid-dir DIR') do |d|
           options[:pid_dir] = d
-        end
-
-        opts.on('-w', '--monit') do
-          options[:monit] = true
-        end
-
-        opts.on('-S', '--secure-identity') do
-          options[:secure_identity] = true
         end
 
         opts.on('--http-proxy PROXY') do |proxy|
@@ -185,6 +170,22 @@ module RightScale
 
         opts.on('--prefetch COUNT') do |count|
           options[:prefetch] = count.to_i
+        end
+
+        opts.on("-a", "--api-url URL") do |url|
+          options[:api_url] = url
+        end
+
+        opts.on('-A', '--account ID') do |id|
+          options[:account_id] = id.to_i
+        end
+
+        opts.on('-s', '--shard ID') do |id|
+          options[:shard_id] = id.to_i
+        end
+
+        opts.on('-m', '--mode MODE') do |mode|
+          options[:mode] = mode
         end
 
         opts.on('-b', '--heartbeat SEC') do |sec|
@@ -281,6 +282,11 @@ module RightScale
       cfg[:root_dir]           = AgentConfig.root_dir
       cfg[:pid_dir]            = AgentConfig.pid_dir
       cfg[:identity]           = options[:identity] if options[:identity]
+      cfg[:token]              = options[:token] if options[:token]
+      cfg[:api_url]            = options[:api_url] if options[:api_url]
+      cfg[:account_id]         = options[:account_id] if options[:account_id]
+      cfg[:shard_id]           = options[:shard_id] if options[:shard_id]
+      cfg[:mode]               = options[:mode] if options[:mode]
       cfg[:user]               = options[:user] if options[:user]
       cfg[:pass]               = options[:pass] if options[:pass]
       cfg[:vhost]              = options[:vhost] if options[:vhost]
@@ -316,31 +322,6 @@ module RightScale
       unless options[:quiet]
         puts "Generated configuration file for #{options[:agent_name]} agent: #{cfg_file}" unless options[:quiet]
       end
-      true
-    end
-
-    # Setup agent monitoring
-    #
-    # === Parameters
-    # options(Hash):: Command line options
-    #
-    # === Return
-    # true:: Always return true
-    def monitor(options)
-      agent_name = options[:agent_name]
-      identity = options[:identity]
-      pid_file = PidFile.new(identity)
-      cfg = <<-EOF
-check process #{agent_name}
-  with pidfile \"#{pid_file}\"
-  start program \"/opt/rightscale/bin/rnac --start #{agent_name}\"
-  stop program \"/opt/rightscale/bin/rnac --stop #{agent_name}\"
-  mode manual
-      EOF
-      cfg_file = File.join(AgentConfig.cfg_dir, agent_name, "#{identity}.conf")
-      File.open(cfg_file, 'w') { |f| f.puts(cfg) }
-      File.chmod(0600, cfg_file) # monit requires strict perms on this file
-      puts "  - agent monit config: #{cfg_file}" unless options[:quiet]
       true
     end
 

@@ -43,10 +43,10 @@ describe RightScale::AgentConfig do
     @actors = File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'right_agent', 'actors'))
     FileUtils.mkdir_p(@certs1 = File.join(@root_dir1, 'certs'))
     FileUtils.mkdir_p(@certs2 = File.join(@root_dir2, 'certs'))
-    FileUtils.touch([@mapper_cert1 = File.join(@certs1, 'mapper.cert')])
-    FileUtils.touch([@mapper_cert2 = File.join(@certs2, 'mapper.cert')])
+    FileUtils.touch([@router_cert1 = File.join(@certs1, 'router.cert')])
+    FileUtils.touch([@router_cert2 = File.join(@certs2, 'router.cert')])
     FileUtils.touch([@agent_cert2 = File.join(@certs2, 'agent.cert')])
-    FileUtils.touch([@mapper_key2 = File.join(@certs2, 'mapper.key')])
+    FileUtils.touch([@router_key2 = File.join(@certs2, 'router.key')])
     FileUtils.mkdir_p(@lib1 = File.join(@root_dir1, 'lib'))
     FileUtils.mkdir_p(@scripts3 = File.join(@root_dir3, 'scripts'))
     FileUtils.mkdir_p(@cfg_dir = File.join(@test_dir, 'cfg'))
@@ -150,15 +150,15 @@ describe RightScale::AgentConfig do
 
   it 'should return first certs file path found' do
     @agent_config.root_dir = [@root_dir1, @root_dir2, @root_dir3]
-    @agent_config.certs_file('mapper.cert').should == @mapper_cert1
-    @agent_config.certs_file('mapper.key').should == @mapper_key2
+    @agent_config.certs_file('router.cert').should == @router_cert1
+    @agent_config.certs_file('router.key').should == @router_key2
     @agent_config.certs_file('agent.key').should be_nil
   end
 
   it 'should return all certs file paths found without any duplicates and by root directory order' do
     @agent_config.root_dir = [@root_dir1, @root_dir2, @root_dir3]
-    @agent_config.certs_files('*.cert').should == [@mapper_cert1, @agent_cert2]
-    @agent_config.certs_files('*.key').should == [@mapper_key2]
+    @agent_config.certs_files('*.cert').should == [@router_cert1, @agent_cert2]
+    @agent_config.certs_files('*.key').should == [@router_key2]
     @agent_config.certs_files('*.abc').should == []
   end
 

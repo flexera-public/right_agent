@@ -58,6 +58,10 @@ module RightScale
         options[:token] = t
       end
 
+      opts.on("-S", "--secure-identity") do
+        options[:secure_identity] = true
+      end
+
       opts.on("-x", "--prefix PREFIX") do |p|
         options[:prefix] = p
       end
@@ -107,7 +111,7 @@ module RightScale
       true
     end
 
-    # Generate agent or mapper identity from options
+    # Generate agent identity from options
     # Build identity from base_id, token, prefix and agent name
     #
     # === Parameters
@@ -123,8 +127,11 @@ module RightScale
           puts "** Identity needs to be a positive integer"
           exit(1)
         end
-        token = options[:token]
-        token = RightScale::SecureIdentity.derive(base_id, options[:token]) if options[:secure_identity]
+        token = if options[:secure_identity]
+          RightScale::SecureIdentity.derive(base_id, options[:token])
+        else
+          options[:token]
+        end
         options[:identity] = AgentIdentity.new(options[:prefix] || 'rs', options[:agent_type], base_id, token).to_s
       end
     end

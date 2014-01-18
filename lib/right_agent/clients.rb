@@ -1,5 +1,5 @@
-#
-# Copyright (c) 2009-2011 RightScale Inc
+#--
+# Copyright (c) 2013 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -19,27 +19,13 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#++
 
-# Mock for request results
-module RightScale
+CLIENTS_BASE_DIR = File.join(File.dirname(__FILE__), 'clients')
 
-  class ResultsMock
-
-    def initialize
-      @agent_id = AgentIdentity.generate
-    end
-
-    # Build a valid request results with given content
-    def success_results(content = nil, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.success(content) }, @agent_id)
-    end
-
-    def error_results(content, reply_to = '*test*1')
-      Result.new(AgentIdentity.generate, reply_to,
-        { @agent_id => OperationResult.error(content) }, @agent_id)
-    end
-
-  end
-  
-end
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'balanced_http_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'base_retry_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'auth_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'api_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'router_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'right_http_client'))

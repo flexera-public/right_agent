@@ -24,6 +24,7 @@ module RightScale
 
   # Agent tags management
   class AgentTagManager
+
     include RightSupport::Ruby::EasySingleton
 
     # (Agent) Agent being managed
@@ -105,7 +106,7 @@ module RightScale
     # true always return true
     def add_tags(new_tags)
       new_tags = ensure_flat_array_value(new_tags) unless new_tags.nil? || new_tags.empty?
-      update_tags(new_tags, []) { |raw_response| yield raw_response if block_given? }
+      do_update(new_tags, []) { |raw_response| yield raw_response if block_given? }
     end
 
     # Remove given tags from agent
@@ -121,42 +122,7 @@ module RightScale
     # true always return true
     def remove_tags(old_tags)
       old_tags = ensure_flat_array_value(old_tags) unless old_tags.nil? || old_tags.empty?
-      update_tags([], old_tags) { |raw_response| yield raw_response if block_given? }
-    end
-
-    # Runs a tag update with a list of new and old tags.
-    #
-    # === Parameters
-    # new_tags(Array):: new tags to add or empty
-    # old_tags(Array):: old tags to remove or empty
-    # block(Block):: optional callback for update response
-    #
-    # === Block
-    # A block is optional. If provided, should take one argument which will be set with the
-    # raw response
-    #
-    # === Return
-    # true:: Always return true
-    def update_tags(new_tags, old_tags, &block)
-      agent_check
-      tags = @agent.tags
-      tags += (new_tags || [])
-      tags -= (old_tags || [])
-      tags.uniq!
-
-      payload = {:new_tags => new_tags, :obsolete_tags => old_tags}
-      request = RightScale::IdempotentRequest.new("/mapper/update_tags", payload)
-      if block
-        # always yield raw response
-        request.callback do |_|
-          # refresh agent's copy of tags on successful update
-          @agent.tags = tags
-          block.call(request.raw_response)
-        end
-        request.errback { |message| block.call(request.raw_response || message) }
-      end
-      request.run
-      true
+      do_update([], old_tags) { |raw_response| yield raw_response if block_given? }
     end
 
     # Clear all agent tags
@@ -167,13 +133,13 @@ module RightScale
     # === Return
     # true::Always return true
     def clear
-      update_tags([], @agent.tags) { |raw_response| yield raw_response }
+      do_update([], @agent.tags) { |raw_response| yield raw_response }
     end
 
     private
 
     def agent_check
-      raise ArgumentError, "Must set agent= before using tag manager" unless @agent
+      raise ArgumentError.new("Must set agent= before using tag manager") unless @agent
     end
 
     # Runs a tag query with an optional list of tags.
@@ -202,20 +168,59 @@ module RightScale
       payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       payload[:agent_ids] = ensure_flat_array_value(agent_ids) unless agent_ids.nil? || agent_ids.empty?
-      request = RightScale::IdempotentRequest.new("/mapper/query_tags",
-                                                  payload,
-                                                  request_options)
+      request = RightScale::RetryableRequest.new("/router/query_tags", payload, request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|
-        Log.error("Failed to query tags: #{message}")
+        Log.error("Failed to query tags (#{message})")
         yield((raw ? request.raw_response : nil) || message)
       end
       request.run
       true
     end
 
-    # Ensures value is a flat array, making an array from the single value if
-    # necessary.
+    # Runs a tag update with a list of new or old tags
+    #
+    # === Parameters
+    # new_tags(Array):: new tags to add or empty
+    # old_tags(Array):: old tags to remove or empty
+    # block(Block):: optional callback for update response
+    #
+    # === Block
+    # A block is optional. If provided, should take one argument which will be set with the
+    # raw response
+    #
+    # === Return
+    # true:: Always return true
+    def do_update(new_tags, old_tags, &block)
+      agent_check
+      raise ArgumentError.new("Cannot add and remove tags in same update") if new_tags.any? && old_tags.any?
+      tags = @agent.tags
+      tags += new_tags
+      tags -= old_tags
+      tags.uniq!
+
+      if new_tags.any?
+        request = RightScale::RetryableRequest.new("/router/add_tags", {:tags => new_tags})
+      elsif old_tags.any?
+        request = RightScale::RetryableRequest.new("/router/delete_tags", {:tags => old_tags})
+      else
+        return
+      end
+
+      if block
+        # Always yield raw response
+        request.callback do |_|
+          # Refresh agent's copy of tags on successful update
+          @agent.tags = tags
+          block.call(request.raw_response)
+        end
+        request.errback { |message| block.call(request.raw_response || message) }
+      end
+      request.run
+      true
+    end
+
+    # Ensures value is a flat array, making an array from the single value if necessary
     #
     # === Parameters
     # value(Object):: any kind of value
@@ -223,19 +228,9 @@ module RightScale
     # === Return
     # result(Array):: flat array value
     def ensure_flat_array_value(value)
-      if value.kind_of?(Array)
-        value.flatten!
-      else
-        value = [value]
-      end
-      value
+      value = Array(value).flatten.compact
     end
 
   end # AgentTagManager
-
-  # This class has been renamed as of RightAgent 0.9.6; provide an alias
-  # to the old typename
-  # TODO remove this alias for RightAgent 1.0
-  AgentTagsManager = AgentTagManager
 
 end # RightScale

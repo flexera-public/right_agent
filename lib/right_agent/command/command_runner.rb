@@ -55,7 +55,7 @@ module RightScale
     # cmd_options[:listen_port](Integer):: Command server listen port
     #
     # === Raise
-    # (RightScale::Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
+    # (Exceptions::Application):: If +start+ has already been called and +stop+ hasn't since
     def self.start(socket_port, identity, commands, fiber_pool = nil)
       cmd_options = nil
       @listen_port = socket_port

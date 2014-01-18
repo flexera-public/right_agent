@@ -49,4 +49,8 @@
 # 19: Allow array of targets for Push or Request
 # 20: Add CANCEL status to OperationResult
 # 21: Infrastructure agents gained HTTP transport in lieu of AMQP. Bumped version to distinguish RightLink v5.9 from v5.8 due to app-level behavioral differences.
-# 22: Bumped version to distinguish RightLink v6.0 from v5.9 due to app-level behavioral differences.
+# 22: Bumped version to distinguish RightLink 6.0 from 5.9 for app-level behavioral differences
+# 23: Changed default mode of communication with RightNet from AMQP to HTTP, although AMQP still supported
+#     Reduced send interface to :send_push and :send_request whose semantics are same as previous
+#     :send_persistent_push and :send_retryable_request
+#     Deprecated /mapper/update_tags in favor of /router/add_tags and /router/delete_tags

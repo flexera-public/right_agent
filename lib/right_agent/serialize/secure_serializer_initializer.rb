@@ -36,8 +36,8 @@ module RightScale
     def self.init(agent_type, agent_id)
       cert = Certificate.load(AgentConfig.certs_file("#{agent_type}.cert"))
       key = RsaKeyPair.load(AgentConfig.certs_file("#{agent_type}.key"))
-      mapper_cert = Certificate.load(AgentConfig.certs_file("mapper.cert"))
-      store = StaticCertificateStore.new(cert, key, mapper_cert, mapper_cert)
+      router_cert = Certificate.load(AgentConfig.certs_file("router.cert"))
+      store = StaticCertificateStore.new(cert, key, router_cert, router_cert)
       SecureSerializer.init(Serializer.new, agent_id, store)
       true
     end
