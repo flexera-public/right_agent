@@ -177,8 +177,10 @@ module RightScale
     # === Parameters
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, hash for selecting potentially multiple
-    #   targets, or nil if routing solely using type
+    # target(Hash|NilClass) Target for request, which may be a specific agent (using :agent_id),
+    #   potentially multiple targets (using :tags, :scope, :selector), or nil to route solely
+    #   using type:
+    #   :agent_id(String):: serialized identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
@@ -220,8 +222,10 @@ module RightScale
     # === Parameters
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(String|Hash):: Identity of specific target, hash for selecting targets of which one is picked
-    #   randomly, or nil if routing solely using type
+    # target(Hash|NilClass) Target for request, which may be a specific agent (using :agent_id),
+    #   one chosen randomly from potentially multiple targets (using :tags, :scope), or nil to
+    #   route solely using type:
+    #   :agent_id(String):: serialized identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
     #     :account(Integer):: Restrict to agents with this account id
@@ -250,7 +254,7 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(Hash|String):: Identity of specific target as string, or hash for selecting targets
+    # target(Hash|NilClass):: Identity of specific target as string, or hash for selecting targets
     #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
@@ -282,7 +286,7 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(Hash|String):: Identity of specific target as string, or hash for selecting targets
+    # target(Hash|NilClass):: Identity of specific target as string, or hash for selecting targets
     #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing

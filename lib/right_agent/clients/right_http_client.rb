@@ -57,7 +57,7 @@ module RightScale
     # @return [TrueClass] always true
     #
     # @raise [ArgumentError] no auth client
-    def init(auth_client, options)
+    def init(auth_client, options = {})
       raise ArgumentError, "No authorization client provided" unless auth_client.is_a?(AuthClient)
       @status = {}
       callback = lambda { |type, state| update_status(type, state) }

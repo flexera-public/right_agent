@@ -130,7 +130,6 @@ module RightScale
     #
     # @return [Object] result returned by receiver of request
     #
-    # @raise [Redirect] being told to redirect request to another location
     # @raise [NotResponding] server not responding, recommend retry
     def request(verb, path, params = {}, options = {})
       result = nil
