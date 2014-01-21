@@ -40,7 +40,7 @@ module RightScale
     # (String):: Access token that should be used to fetch the document
     attr_accessor :ticket
 
-    # Array(String):: names of RightNet agents capable of providing the document.
+    # Array(String):: Identities of RightNet agents capable of providing the document.
     # If nil, then no target should be specified when sending RightNet requests;
     # this is used to route requests to "trusted infrastructure" nodes at the
     # discretion of the RightNet router.
