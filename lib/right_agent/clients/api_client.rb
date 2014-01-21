@@ -65,11 +65,6 @@ module RightScale
       "/updater/update_inputs"             => [:post, "/right_net/scheduler/update_inputs"],
       "/vault/read_documents"              => [:get,  "/right_net/vault/read_documents"] }
 
-    # Request parameter name map
-    PARAM_NAME_MAP = {
-      :agent_identity => :agent_id,
-      :klass          => :class_name }
-
     # Symbols for audit request parameters whose values are to be hidden when logging
     AUDIT_FILTER_PARAMS = ["detail", "text"]
 
@@ -212,7 +207,8 @@ module RightScale
         params[:tags] = Array(payload[:tags]).flatten.compact if payload[:tags]
       else
         params[:account_id] = @auth_client.account_id
-        payload.each { |k, v| params[PARAM_NAME_MAP[k.to_sym] || k.to_sym] = v } if payload.is_a?(Hash)
+        # Can remove :agent_identity here since now carried in the authorization as the :agent
+        payload.each { |k, v| params[k.to_sym] = v if k.to_sym != :agent_identity } if payload.is_a?(Hash)
       end
       [path, params, options]
     end

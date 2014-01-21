@@ -45,6 +45,7 @@
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
 #      --options, -o KEY=VAL    Set options that act as final override for any persisted configuration settings
+#      --monit                  Generate monit configuration file
 #      --test                   Build test deployment using default test settings
 #      --quiet, -Q              Do not produce output
 #      --help                   Display help
@@ -92,6 +93,9 @@ module RightScale
 
       # Persist configuration
       persist(options, cfg)
+
+      # Setup agent monitoring
+      monitor(options) if options[:monit]
       true
     end
 
@@ -126,6 +130,10 @@ module RightScale
 
         opts.on('-z', '--pid-dir DIR') do |d|
           options[:pid_dir] = d
+        end
+
+        opts.on('--monit') do
+          options[:monit] = true
         end
 
         opts.on('--http-proxy PROXY') do |proxy|
@@ -324,6 +332,32 @@ module RightScale
       end
       true
     end
+
+    # Setup agent monitoring
+    #
+    # === Parameters
+    # options(Hash):: Command line options
+    #
+    # === Return
+    # true:: Always return true
+    def monitor(options)
+      agent_name = options[:agent_name]
+      identity = options[:identity]
+      pid_file = PidFile.new(identity)
+      cfg = <<-EOF
+check process #{agent_name}
+  with pidfile \"#{pid_file}\"
+  start program \"/opt/rightscale/bin/rnac --start #{agent_name}\"
+  stop program \"/opt/rightscale/bin/rnac --stop #{agent_name}\"
+  mode manual
+      EOF
+      cfg_file = File.join(AgentConfig.cfg_dir, agent_name, "#{identity}.conf")
+      File.open(cfg_file, 'w') { |f| f.puts(cfg) }
+      File.chmod(0600, cfg_file) # monit requires strict perms on this file
+      puts "  - agent monit config: #{cfg_file}" unless options[:quiet]
+      true
+    end
+
 
     # Print error on console and exit abnormally
     #

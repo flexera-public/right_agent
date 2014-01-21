@@ -58,8 +58,8 @@ describe RightScale::RetryableRequest do
 
     context 'when one target is specified' do
       it 'should send a targeted request' do
-        request = RightScale::RetryableRequest.new('type', 'payload', :targets => [1])
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', 1, Proc).
+        request = RightScale::RetryableRequest.new('type', 'payload', :targets => ["rs-agent-1-1"])
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', {:agent_id => "rs-agent-1-1"}, Proc).
             and_yield(RightScale::OperationResult.non_delivery('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -69,11 +69,11 @@ describe RightScale::RetryableRequest do
 
     context 'when many targets are specified' do
       it 'should choose a random target' do
-        request = RightScale::RetryableRequest.new('type', 'payload', :targets => [1, 2, 3])
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |type, payload, tgt, block|
+        request = RightScale::RetryableRequest.new('type', 'payload', :targets => ["rs-agent-1-1", "rs-agent-2-2", "rs-agent-3-3"])
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |type, payload, target, block|
           type.should == 'type'
           payload.should == 'payload'
-          [1, 2, 3].should include(tgt)
+          ["rs-agent-1-1", "rs-agent-2-2", "rs-agent-3-3"].should include(target[:agent_id])
           block.call(RightScale::OperationResult.non_delivery('test'))
         end
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
