@@ -72,7 +72,7 @@ module RightScale
     # operation(String):: Request operation (e.g., '/booter/get_boot_bundle')
     # payload(Hash):: Request payload
     # options(Hash):: Request options
-    #   :targets(Array):: Targets from which to randomly choose one
+    #   :targets(Array):: Target agent identities from which to randomly choose one
     #   :retry_on_error(Boolean):: Whether request should be retried if recipient returned an error
     #   :retry_delay(Fixnum):: Number of seconds delay before initial retry with -1 meaning no delay,
     #     defaults to DEFAULT_RETRY_DELAY
@@ -187,7 +187,7 @@ module RightScale
     end
     
     def retrieve_target(targets)
-      targets[rand(0xffff) % targets.size] if targets
+      {:agent_id => targets[rand(0xffff) % targets.size]} if targets && targets.any?
     end
 
   end # RetryableRequest
