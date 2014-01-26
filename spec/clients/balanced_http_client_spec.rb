@@ -209,14 +209,22 @@ describe RightScale::BalancedHttpClient do
       @client.send(:request, :post, @path).should be_nil
     end
 
+    it "returns location header for 201 response" do
+      @response.should_receive(:code).and_return(201).once
+      @response.should_receive(:body).and_return("").once
+      @response.should_receive(:headers).and_return({:status => "201 Created", :location => "/href"}).once
+      @balancer.should_receive(:request).and_return(@response).once
+      @client.send(:request, :get, @path).should == "/href"
+    end
+
     it "returns JSON decoded response" do
-      @response.should_receive(:body).and_return(@json_result).times(4)
+      @response.should_receive(:body).and_return(@json_result).once
       @balancer.should_receive(:request).and_return(@response).once
       @client.send(:request, :get, @path).should == @json_decoded_result
     end
 
     it "returns nil if response is empty" do
-      @response.should_receive(:body).and_return("").times(3)
+      @response.should_receive(:body).and_return("").once
       @balancer.should_receive(:request).and_return(@response).once
       @client.send(:request, :get, @path).should be_nil
     end
@@ -227,7 +235,7 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "returns nil if response status indicates no content" do
-      @response.should_receive(:code).and_return(204).twice
+      @response.should_receive(:code).and_return(204).once
       @balancer.should_receive(:request).and_return(@response).once
       @client.send(:request, :get, @path).should be_nil
     end
@@ -260,6 +268,13 @@ describe RightScale::BalancedHttpClient do
         @client.send(:request, :post, @path)
       end
 
+      it "logs using specified log level" do
+        @http_client.should_receive(:post).and_return(@response)
+        @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+        @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
+        @client.send(:request, :post, @path, {}, :log_level => :debug)
+      end
+
       it "logs response length using header :content_length if available" do
         @response.should_receive(:headers).and_return({:status => "200 OK", :content_length => 99})
         @http_client.should_receive(:post).and_return(@response)
@@ -290,7 +305,7 @@ describe RightScale::BalancedHttpClient do
           @log.should_receive(:level).and_return(Logger::DEBUG)
           @http_client.should_receive(:post).and_return(@response)
           @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar (#{@filtered_params})").once
-          @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes {\"out\"=>123}").once
+          @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
           @client.send(:request, :post, @path, @params, @options)
         end
 

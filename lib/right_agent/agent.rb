@@ -639,9 +639,8 @@ module RightScale
           # so that any data access is thread safe
           EM.next_tick do
             begin
-              Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
               if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
-                @client.notify(result, [result.to])
+                @client.notify(result_to_event(result), [result.to])
               end
             rescue Exception => e
               Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
@@ -653,6 +652,7 @@ module RightScale
       else
         Log.error("Unrecognized event: #{event.class}")
       end
+      true
     end
 
     # Convert event hash to packet
@@ -788,7 +788,7 @@ module RightScale
     def setup_status
       @status = {}
       if @mode == :http
-        @status = @client.status { |type, state| update_status(type, state) }
+        @status = @client.status { |type, state| update_status(type, state) }.dup
       else
         @client.connection_status { |state| update_status(:broker, state) }
         @status[:broker] = :connected
@@ -1010,6 +1010,8 @@ module RightScale
 
       begin
         publish_stats unless @terminating || @stats_routing_key.nil?
+      rescue Exceptions::ConnectivityFailure => e
+        Log.error("Failed publishing stats", e, :no_trace)
       rescue Exception => e
         Log.error("Failed publishing stats", e)
         @exception_stats.track("check status", e)
@@ -1033,7 +1035,7 @@ module RightScale
     def publish_stats
       s = stats({}).content
       if @mode == :http
-        @client.notify(s, "stats")
+        @client.notify({:type => "Stats", :from => @identity, :data => s}, nil)
       else
         exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
         @client.publish(exchange, Stats.new(s, @identity), :no_log => true,

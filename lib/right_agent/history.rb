@@ -81,11 +81,9 @@ module RightScale
     def analyze_service
       now = Time.now.to_i
       if @last_analysis && @last_event == @last_update
-        if @last_analysis[:uptime] > 0
-          delta = now - @last_analysis_time
-          @last_analysis[:uptime] += delta
-          @last_analysis[:total_uptime] += delta
-        end
+        delta = now - @last_analysis_time
+        @last_analysis[:uptime] += delta
+        @last_analysis[:total_uptime] += delta
       else
         last_run = last_crash = @last_event = {:time => 0, :pid => 0, :event => nil}
         restarts = graceful_exits = crashes = accumulated_uptime = 0

@@ -191,13 +191,13 @@ module RightScale
     # @yieldparam [Symbol] type of client reporting status change: :auth, :api, or :router
     # @yieldparam [Symbol] state of client
     #
-    # @return [TrueClass] always true
+    # @return [Hash] status of various clients
     #
     # @raise [RuntimeError] init was not called
     def status(&callback)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @status_callbacks = (@status_callbacks || []) << callback
-      true
+      @status_callbacks = (@status_callbacks || []) << callback if callback
+      @status
     end
 
     # Take any actions necessary to quiesce client interaction in preparation
@@ -222,9 +222,9 @@ module RightScale
     def stats(reset = false)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       stats = {}
-      stats["auth client stats"] = @auth.stats(reset)
-      stats["router client stats"] = @router.stats(reset)
-      stats["api client stats"] = @api.stats(reset) if @api
+      stats["auth stats"] = @auth.stats(reset)
+      stats["router stats"] = @router.stats(reset)
+      stats["api stats"] = @api.stats(reset) if @api
       stats
     end
 

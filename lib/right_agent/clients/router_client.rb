@@ -160,13 +160,12 @@ module RightScale
     def notify(event, routing_keys)
       event[:uuid] ||= RightSupport::Data::UUID.generate
       event[:version] ||= AgentConfig.protocol_version
-      params = {
-        :event => event,
-        :routing_keys => routing_keys }
+      params = {:event => event}
+      params[:routing_keys] = routing_keys if routing_keys
       if @websocket
         @websocket.send(JSON.dump(params))
       else
-        make_request(:post, "/notify", params, "notify")
+        make_request(:post, "/notify", params, "notify", event[:uuid], :filter_params => ["event"])
       end
       true
     end
@@ -195,6 +194,12 @@ module RightScale
       @connect_interval = WEBSOCKET_CONNECT_INTERVAL # instance variable needed for testing
       last_connect_time = Time.now - @connect_interval
 
+      # Proc for exponentially increasing WebSocket connect attempt interval when failing
+      adjust_interval = lambda do
+        last_connect_time = Time.now
+        @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
+      end
+
       until state == :closing do
         # Attempt to create a WebSocket if enabled and enough time has elapsed since last attempt
         # or if WebSocket connection has been lost
@@ -202,15 +207,22 @@ module RightScale
           if @websocket.nil? && (Time.now - last_connect_time) > @connect_interval
             begin
               @stats["reconnects"].update("websocket") unless @websocket
-              create_websocket(routing_keys, &handler)
-              sleep(@options[:listen_timeout])
+              @websocket = create_websocket(routing_keys, &handler)
+              [1, 1, 1, 1, 1, @options[:listen_timeout] - 5].each do |t|
+                # Allow for possibility of asynchronous handshake failure resulting in close
+                if @websocket.nil?
+                  adjust_interval.call
+                  break
+                end
+                sleep(t)
+              end
             rescue Exception => e
               Log.error("Failed creating WebSocket", e)
               @stats["exceptions"].track("websocket", e)
-              last_connect_time = Time.now
-              @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
+              adjust_interval.call
             end
-          else
+          elsif @websocket
+            @connect_interval = WEBSOCKET_CONNECT_INTERVAL
             sleep(@options[:listen_timeout])
           end
         end
@@ -219,9 +231,11 @@ module RightScale
         if @websocket.nil?
           begin
             long_poll(routing_keys, &handler)
+          rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
+            Log.error("Failed long-polling", e, :no_trace)
+            sleep(LONG_POLL_ERROR_DELAY)
           rescue Exception => e
-            trace = e.is_a?(Exceptions::ConnectivityFailure) ? :no_trace : :trace
-            Log.error("Failed long-polling", e, trace)
+            Log.error("Failed long-polling", e, :trace)
             @stats["exceptions"].track("long-polling", e)
             sleep(LONG_POLL_ERROR_DELAY)
           end
@@ -284,13 +298,14 @@ module RightScale
 
       # TODO figure out how to send routing_keys as parameter to connect
       options = {
-        :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.headers),
+        :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
       uri = @auth_client.router_url + "/connect"
+      Log.info("Creating WebSocket connection to #{uri}")
       @websocket = Faye::WebSocket::Client.new(uri, protocols = nil, options)
 
       @websocket.onerror = lambda do |event|
-        Log.error("WebSocket error (#{event.data})")
+        Log.error("WebSocket error (#{event.data})") if event.data
       end
 
       @websocket.onclose = lambda do |event|
@@ -324,6 +339,7 @@ module RightScale
     end
 
     # Make long-polling request to receive one or more events
+    # Limit logging unless in debug mode
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
@@ -339,9 +355,10 @@ module RightScale
 
       params = {
         :wait_time => @options[:listen_timeout] - 5,
-        :routing_keys => routing_keys,
         :timestamp => Time.now.to_f }
-      if (events = make_request(:get, "/listen", params, "listen", nil,
+      params[:routing_keys] = routing_keys if routing_keys
+
+      if (events = make_request(:get, "/listen", params, "listen", nil, :log_level => :debug,
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)

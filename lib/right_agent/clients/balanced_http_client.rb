@@ -114,7 +114,7 @@ module RightScale
     # Make request via request balancer
     # Encode request parameters and response using JSON
     # Apply configured authorization scheme
-    # Log request/response and for failure or in debug include filtered params
+    # Log request/response with filtered parameters included for failure or debug mode
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
@@ -127,6 +127,7 @@ module RightScale
     #   parameters whose values are to be hidden when logging in addition to the ones
     #   provided during object initialization
     # @option options [Hash] :headers to be added to request
+    # @option options [Symbol] :log_level to use when logging information about the request other than errors
     #
     # @return [Object] result returned by receiver of request
     #
@@ -137,8 +138,9 @@ module RightScale
       started_at = Time.now
       filter = @filter_params + (options[:filter_params] || []).map { |p| p.to_s }
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
+      log_level = options[:log_level] || :info
 
-      Log.info("Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
+      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
 
       begin
         request_options = {
@@ -172,21 +174,48 @@ module RightScale
         raise
       end
 
-      if response.nil? || response.code == 204 || (response.body.respond_to?(:empty?) && response.body.empty?) ||
-         (result = JSON.load(response.body)).nil? || (result.respond_to?(:empty?) && result.empty?)
-        result = nil
+      response(response, host_picked, path, request_uuid, started_at, log_level)
+    end
+
+    # Process HTTP response by extracting result and logging request completion
+    # Extract result from location header for 201 response
+    # JSON-decode body of other 2xx responses except for 204
+    #
+    # @param [RestClient::Response, NilClass] response received
+    # @param [String] host server URL where request was completed
+    # @param [String] path in URI for desired resource
+    # @param [String] request_uuid uniquely identifying request
+    # @param [Time] started_at time for request
+    # @param [Symbol] log_level to use when logging information about the request
+    #   other than errors
+    #
+    # @return [Object] JSON-decoded response body
+    def response(response, host, path, request_uuid, started_at, log_level)
+      result = nil
+      code = "nil"
+      length = "-"
+
+      if response
+        code = response.code
+        body = response.body
+        headers = response.headers
+        if (200..207).include?(code)
+          if code == 201
+            result = headers[:location]
+          elsif code == 204 || body.nil? || (body.respond_to?(:empty?) && body.empty?)
+            result = nil
+          else
+            result = JSON.load(body)
+            result = nil if result.respond_to?(:empty?) && result.empty?
+          end
+        end
+        length = headers[:content_length] || body.size
       end
 
-      status = response ? response.code : "nil"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      length =  if response
-        response.headers[:content_length] ? response.headers[:content_length] : response.body.size
-      else
-        "-"
-      end
-      display = "Completed <#{request_uuid}> in #{duration} | #{status} [#{host_picked}#{path}] | #{length} bytes"
-      display << " #{result.inspect}" if Log.level == Logger::DEBUG
-      Log.info(display)
+      completed = "Completed <#{request_uuid}> in #{duration} | #{code} [#{host}#{path}] | #{length} bytes"
+      completed << " | #{result.inspect}" if Log.level == Logger::DEBUG
+      Log.send(log_level, completed)
 
       result
     end
@@ -302,12 +331,12 @@ module RightScale
       when String
         exception
       when RestClient::Exception
-        if exception.http_body.nil? || exception.http_body.empty? || exception.http_body =~ /^<html>/
+        if exception.http_body.nil? || exception.http_body.empty? || exception.http_body =~ /^<html>| html /
           exception.message
         else
           exception.inspect
         end
-      when RightSupport::Net::NoResult
+      when RightSupport::Net::NoResult, NotResponding
         "#{exception.class}: #{exception.message}"
       when Exception
         backtrace = exception.backtrace ? " in\n" + exception.backtrace.join("\n") : ""

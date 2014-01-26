@@ -133,7 +133,7 @@ module RightScale
     def method_missing(m, *args)
       init unless @initialized
       @logger.level = level_from_sym(level) if @level_frozen
-      @logger.__send__(m, *args)
+      @logger.send(m, *args)
     end
 
     # Determine whether this object, or its method_missing proxy, responds
@@ -218,9 +218,9 @@ module RightScale
     # lvl(Constant):: One of Logger::DEBUG ... Logger::FATAL
     #
     # === Raise
-    # (RightScale::Exceptions::Argument):: if level symbol is invalid
+    # (ArgumentError):: if level symbol is invalid
     def level_from_sym(sym)
-      raise Exceptions::Argument, "Invalid log level symbol :#{sym}" unless LEVELS_MAP.include?(sym)
+      raise ArgumentError, "Invalid log level symbol :#{sym}" unless LEVELS_MAP.include?(sym)
       lvl = LEVELS_MAP[sym]
     end
 
@@ -233,10 +233,10 @@ module RightScale
     # sym(Symbol):: One of :debug, :info, :warn, :error or :fatal
     #
     # === Raise
-    # (RightScale::Exceptions::Argument):: if level is invalid
+    # (ArgumentError):: if level is invalid
     def level_to_sym(lvl)
       @@inverted_levels_map ||= LEVELS_MAP.invert
-      raise Exceptions::Argument, "Invalid log level: #{lvl}" unless @@inverted_levels_map.include?(lvl)
+      raise ArgumentError, "Invalid log level: #{lvl}" unless @@inverted_levels_map.include?(lvl)
       sym = @@inverted_levels_map[lvl]
     end
 
