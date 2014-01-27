@@ -85,10 +85,10 @@ module RightScale
       token = request.token
       actor, method, idempotent = route(request)
       received_at = @request_stats.update(method, (token if request.is_a?(Request)))
-      if dup = duplicate?(request, method, idempotent)
+      if (dup = duplicate?(request, method, idempotent))
         raise DuplicateRequest.new(dup)
       end
-      unless result = expired?(request, method)
+      unless (result = expired?(request, method))
         result = perform(request, actor, method, idempotent)
       end
       if request.is_a?(Request)
@@ -176,11 +176,11 @@ module RightScale
     # (String|nil):: Messaging describing who already serviced request if it is a duplicate, otherwise nil
     def duplicate?(request, method, idempotent)
       if !idempotent && @dispatched_cache
-        if serviced_by = @dispatched_cache.serviced_by(request.token)
+        if (serviced_by = @dispatched_cache.serviced_by(request.token))
           from_retry = ""
         else
           from_retry = "retry "
-          request.tries.each { |t| break if serviced_by = @dispatched_cache.serviced_by(t) }
+          request.tries.each { |t| break if (serviced_by = @dispatched_cache.serviced_by(t)) }
         end
         if serviced_by
           @reject_stats.update("#{from_retry}duplicate (#{method})")

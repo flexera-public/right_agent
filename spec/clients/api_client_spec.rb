@@ -43,8 +43,8 @@ describe RightScale::ApiClient do
     @http_client = flexmock("http client", :get => @links, :check_health => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @url = "http://test.com"
-    @headers = {"Authorization" => "Bearer <session>"}
-    @auth_client = AuthClientMock.new(@url, @headers, :authorized, @account_id, @agent_id)
+    @auth_header = {"Authorization" => "Bearer <session>"}
+    @auth_client = AuthClientMock.new(@url, @auth_header, :authorized, @account_id, @agent_id)
     @options = {}
     @client = RightScale::ApiClient.new(@auth_client, @options)
     @version = RightScale::AgentConfig.protocol_version
@@ -90,14 +90,14 @@ describe RightScale::ApiClient do
 
   context :request do
     it "makes mapped request" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
-          :account_id => @account_id, :r_s_version => @version}, "declare", @token, Hash).and_return(nil).once
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
+          "declare", @token, Hash).and_return(nil).once
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
     end
 
     it "does not require token" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
-          :account_id => @account_id, :r_s_version => @version}, "declare", nil, Hash).and_return(nil).once
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
+          "declare", nil, Hash).and_return(nil).once
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target).should be_nil
     end
   end
@@ -119,16 +119,40 @@ describe RightScale::ApiClient do
     end
 
     it "makes request" do
-      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:agent_id => @agent_id,
-          :account_id => @account_id, :r_s_version => @version}, "declare", @token, Hash).and_return(nil).once
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
+          "declare", @token, Hash).and_return(nil).once
       @client.send(:map_request, "/booter/declare", @payload.merge(:r_s_version => @version), @token).should be_nil
     end
 
-    it "converts audit entry href in result to an audit ID" do
+    it "returns mapped response" do
       flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries",
           {:audit_entry => {:auditee_href => @instance_href, :summary => "summary"}}, "create_entry", @token, Hash).
           and_return("/api/audit_entries/111").once
       @client.send(:map_request, "/auditor/create_entry", @payload.merge(:summary => "summary"), @token).should == "111"
+    end
+  end
+
+  context :map_response do
+    it "converts audit entry href in result to an audit ID" do
+      response = "/api/audit_entries/111"
+      @client.send(:map_response, response, "/audit_entries").should == "111"
+    end
+
+    it "converts tag query result to list of tags" do
+      response = [
+        { "actions" => [],
+          "tags" => [{"name" => "rs_agent_dev:log_level=debug"},
+                     {"name" => "rs_login:state=restricted"},
+                     {"name" => "rs_monitoring:state=active"}],
+          "links" => [{"rel" => "resource", "href"=>"/api/clouds/6/instances/CUPVAL7KUP7TF"}] },
+        { "actions" => [],
+          "tags" => [{"name" => "server:ready=now"},
+                     {"name" => "rs_agent_dev:log_level=debug"}],
+          "links" => [{"rel"=>"resource", "href"=>"/api/servers/20"}] }]
+      @client.send(:map_response, response, "/tags/by_resource").should == ["rs_agent_dev:log_level=debug",
+                                                                            "rs_login:state=restricted",
+                                                                            "rs_monitoring:state=active",
+                                                                            "server:ready=now"]
     end
   end
 
@@ -179,17 +203,7 @@ describe RightScale::ApiClient do
                                                 "/right_net/booter/declare")
       end
 
-      it "adds account ID to parameters" do
-        @params[:account_id].should == @account_id
-      end
-
-      it "converts all payload parameters" do
-        @params[:agent_id].should == @agent_id
-        @params[:r_s_version].should == @version
-      end
-
-      it "maps payload parameter names as needed" do
-        @params[:agent_id].should == @agent_id
+      it "removes :agent_identity parameter" do
         @params[:agent_identity].should be_nil
       end
     end
@@ -315,8 +329,7 @@ describe RightScale::ApiClient do
 
   context :enable_use do
     it "makes API request to get links for setting instance href" do
-      flexmock(@client).should_receive(:make_request).with(:get, "/sessions/instance", {},
-          {:api_version => "1.5", :headers => @headers}).and_return(@links).once
+      flexmock(@client).should_receive(:make_request).with(:get, "/sessions/instance", {}, "instance").and_return(@links).once
       @client.instance_variable_get(:@instance_href).should == @instance_href
       @client.send(:enable_use).should be_true
     end

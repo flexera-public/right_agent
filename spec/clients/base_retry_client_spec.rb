@@ -37,8 +37,8 @@ describe RightScale::BaseRetryClient do
     flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).by_default
     @http_client = flexmock("http client", :get => true, :check_health => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
-    @headers = {"Authorization" => "Bearer <session>"}
-    @auth_client = AuthClientMock.new(@url, @headers)
+    @auth_header = {"Authorization" => "Bearer <session>"}
+    @auth_client = AuthClientMock.new(@url, @auth_header)
     @client = RightScale::BaseRetryClient.new
     @options = {:api_version => "2.0"}
     @client.init(:test, @auth_client, @options)
@@ -394,7 +394,7 @@ describe RightScale::BaseRetryClient do
           on { |a| a[:open_timeout] == 2 &&
                    a[:request_timeout] == 35 &&
                    a[:request_uuid] == "uuid" &&
-                   a[:headers] == @headers }).once
+                   a[:headers] == @auth_header }).once
       @client.send(:make_request, :get, @path, @params, nil, "uuid")
     end
 
@@ -403,7 +403,7 @@ describe RightScale::BaseRetryClient do
           on { |a| a[:open_timeout] == 2 &&
                    a[:request_timeout] == 20 &&
                    a[:request_uuid] == "uuid" &&
-                   a[:headers] == @headers }).once
+                   a[:headers] == @auth_header }).once
       @client.send(:make_request, :get, @path, @params, nil, "uuid", {:request_timeout => 20})
     end
 

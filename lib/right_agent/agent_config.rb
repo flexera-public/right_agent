@@ -139,7 +139,7 @@ module RightScale
     # dir(String|Array):: Directory path or ordered list of directory paths to be searched
     #
     # === Return
-    # (String):: Ordered list of directory paths to be searched
+    # (Array):: Ordered list of directory paths to be searched
     def self.root_dir=(dir)
       @root_dirs = array(dir)
     end

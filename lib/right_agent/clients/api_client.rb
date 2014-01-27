@@ -168,7 +168,7 @@ module RightScale
     # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
     #
-    # @return [Result, NilClass] response from request
+    # @return [Object, NilClass] response from request
     #
     # @raise [Exceptions::Unauthorized] authorization failed
     # @raise [Exceptions::ConnectivityFailure] cannot connect to server, lost connection
@@ -181,10 +181,26 @@ module RightScale
       raise ArgumentError, "Unsupported request type: #{type}" if path.nil?
       actor, action = type.split("/")[1..-1]
       path, params, options = parameterize(actor, action, payload, path)
-      result = make_request(verb, path, params, action, token, options)
-      # Convert returned audit entry href to audit ID
-      result.sub!(/^.*\/api\/audit_entries\//, "") if result.is_a?(String)
-      result
+      map_response(make_request(verb, path, params, action, token, options), path)
+    end
+
+    # Convert response from request into required form where necessary
+    #
+    # @param [Object] response received
+    # @param [String] path in URI for desired resource
+    #
+    # @return [Object] converted response
+    def map_response(response, path)
+      case path
+      when "/audit_entries"
+        # Convert returned audit entry href to audit ID
+        response.sub!(/^.*\/api\/audit_entries\//, "") if response.is_a?(String)
+      when "/tags/by_resource"
+        # Extract tags array from response array with members of form
+        # {"actions" => [], "tags" => [{"name" => <tag>}, ...], "links" => <links>}
+        response = response.inject([]) { |tags, hash| tags << hash["tags"].map { |t| t["name"] } }.flatten.uniq
+      end
+      response
     end
 
     # Convert payload to HTTP parameters
@@ -206,7 +222,6 @@ module RightScale
         params[:resource_hrefs] = [@instance_href]
         params[:tags] = Array(payload[:tags]).flatten.compact if payload[:tags]
       else
-        params[:account_id] = @auth_client.account_id
         # Can remove :agent_identity here since now carried in the authorization as the :agent
         payload.each { |k, v| params[k.to_sym] = v if k.to_sym != :agent_identity } if payload.is_a?(Hash)
       end
@@ -287,10 +302,7 @@ module RightScale
     #
     # @return [TrueClass] always true
     def enable_use
-      options = {
-        :api_version => @options[:api_version],
-        :headers => @auth_client.headers }
-      result = make_request(:get, "/sessions/instance", {}, options)
+      result = make_request(:get, "/sessions/instance", {}, "instance")
       @instance_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
       true
     end

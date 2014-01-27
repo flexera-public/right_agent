@@ -51,12 +51,24 @@ module RightScale
     end
 
     # Headers to be added to HTTP request
+    # Include authorization header by default
     #
     # @return [Hash] headers to be added to request header
     #
     # @raise [Exceptions::Unauthorized] not authorized
     # @raise [Exceptions::RetryableError] authorization expired, but retry may succeed
     def headers
+      check_authorized
+      auth_header
+    end
+
+    # Authorization header to be added to HTTP request
+    #
+    # @return [Hash] authorization header
+    #
+    # @raise [Exceptions::Unauthorized] not authorized
+    # @raise [Exceptions::RetryableError] authorization expired, but retry may succeed
+    def auth_header
       check_authorized
       {"Authorization" => "Bearer #{@access_token}"}
     end

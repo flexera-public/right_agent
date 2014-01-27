@@ -89,7 +89,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
-      unless @terminating || @ping_timer || (id && !@sender.broker.connected?(id))
+      unless @terminating || @ping_timer || (id && !@sender.client.connected?(id))
         @ping_id = id
         @ping_timer = EM::Timer.new(PING_TIMEOUT) do
           if @ping_id
@@ -101,7 +101,7 @@ module RightScale
                 Log.error("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds and now " +
                           "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
                           "attempting to reconnect")
-                host, port, index, priority = @sender.broker.identity_parts(@ping_id)
+                host, port, index, priority = @sender.client.identity_parts(@ping_id)
                 @sender.agent.connect(host, port, index, priority, force = true)
               else
                 Log.warning("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds")
