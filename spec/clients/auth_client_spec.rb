@@ -86,6 +86,17 @@ describe RightScale::AuthClient do
     end
   end
 
+  context :auth_header do
+    it "raises if not authorized" do
+      lambda { @client.auth_header }.should raise_error(RightScale::Exceptions::Unauthorized)
+    end
+
+    it "returns authorization header" do
+      @client.send(:state=, :authorized)
+      @client.auth_header.should == {"Authorization" => "Bearer <test access token>"}
+    end
+  end
+
   context :account_id do
     it "raises if not authorized" do
       lambda { @client.account_id }.should raise_error(RightScale::Exceptions::Unauthorized)

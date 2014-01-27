@@ -28,9 +28,9 @@ require ::File.expand_path('../../spec_helper', __FILE__)
 class AuthClientMock < RightScale::AuthClient
   attr_reader :test_url, :expired_called, :redirect_location
 
-  def initialize(url, headers, state = nil, account_id = nil, identity = nil)
+  def initialize(url, auth_header, state = nil, account_id = nil, identity = nil)
     @test_url = @api_url = @router_url = url
-    @headers = headers
+    @auth_header = auth_header
     @account_id = account_id
     @identity = identity || "rs-agent-1-1"
     @state = :authorized if state
@@ -41,7 +41,11 @@ class AuthClientMock < RightScale::AuthClient
   end
 
   def headers
-    @headers
+    auth_header
+  end
+
+  def auth_header
+    @auth_header
   end
 
   def expired
