@@ -17,6 +17,8 @@ gem 'rest-client',
 
 gem "simple_uuid", "~> 0.2"
 
+gem "mime-types", "< 2.0"
+
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # Going forward to ruby 1.9 we can relax the constraint on the json gem.
 gem 'json', '~> 1.4'
