@@ -296,13 +296,14 @@ module RightScale
     def create_websocket(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      # TODO figure out how to send routing_keys as parameter to connect
       options = {
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
-      uri = @auth_client.router_url + "/connect"
-      Log.info("Creating WebSocket connection to #{uri}")
-      @websocket = Faye::WebSocket::Client.new(uri, protocols = nil, options)
+      url = URI.parse(@auth_client.router_url)
+      url.path = url.path + "/connect"
+      url.query = routing_keys.map { |k| "routing_keys[]=#{CGI.escape(k)}" }.join("&") if routing_keys && routing_keys.any?
+      Log.info("Creating WebSocket connection to #{url.to_s}")
+      @websocket = Faye::WebSocket::Client.new(url.to_s, protocols = nil, options)
 
       @websocket.onerror = lambda do |event|
         Log.error("WebSocket error (#{event.data})") if event.data
@@ -323,10 +324,10 @@ module RightScale
       @websocket.onmessage = lambda do |event|
         begin
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
-          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
+          Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
           @stats["events"].update(event[:type])
           if (result = handler.call(event))
-            Log.info("Sending #{event[:type]} event <#{event[:uuid]}> to #{event[:from]}")
+            Log.info("Sending #{event[:type]} #{event[:path]} event <#{event[:uuid]}> to #{event[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
           end
         rescue Exception => e
@@ -362,7 +363,7 @@ module RightScale
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
-          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
+          Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
           @stats["events"].update(event[:type])
           handler.call(event)
         end

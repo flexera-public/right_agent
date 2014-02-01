@@ -277,6 +277,12 @@ describe RightScale::RouterClient do
           @client.send(:create_websocket, @routing_keys) { |_| }
         end
 
+        it "adds routing keys as query parameters" do
+          url = @url + "/connect" + "?routing_keys[]=a%3Ab%3Dc"
+          flexmock(Faye::WebSocket::Client).should_receive(:new).with(url, nil, Hash).and_return(@websocket).once
+          @client.send(:create_websocket, ["a:b=c"]) { |_| }
+        end
+
         it "returns websocket" do
           flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@websocket).once
           @client.send(:create_websocket, @routing_keys) { |_| }.should == @websocket
@@ -294,8 +300,8 @@ describe RightScale::RouterClient do
 
         it "logs event" do
           @log.should_receive(:info).with("Creating WebSocket connection to http://test.com/connect").once.ordered
-          @log.should_receive(:info).with("Received Push event <uuid> from rs-agent-1-1").once.ordered
-          @log.should_receive(:info).with("Sending Push event <uuid> to rs-agent-1-1").once.ordered
+          @log.should_receive(:info).with("Received Push /foo/bar event <uuid> from rs-agent-1-1").once.ordered
+          @log.should_receive(:info).with("Sending Push /foo/bar event <uuid> to rs-agent-1-1").once.ordered
           event = nil
           @client.send(:create_websocket, @routing_keys) { |e| event = e }
           @websocket.onmessage(JSON.dump(@event))
@@ -382,7 +388,7 @@ describe RightScale::RouterClient do
       end
 
       it "logs event" do
-        @log.should_receive(:info).with("Received Push event <uuid> from rs-agent-1-1").once
+        @log.should_receive(:info).with("Received Push /foo/bar event <uuid> from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([@event])
         @client.send(:long_poll, @routing_keys) { |_| }
       end
@@ -396,7 +402,7 @@ describe RightScale::RouterClient do
 
       it "handles event keys that are strings" do
         event = {"uuid" => "uuid", "type" => "Push", "path" => "/foo/bar", "from" => "rs-agent-1-1", "data" => {}, "version" => @version}
-        @log.should_receive(:info).with("Received Push event <uuid> from rs-agent-1-1").once
+        @log.should_receive(:info).with("Received Push /foo/bar event <uuid> from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([event])
         event = nil
         @client.send(:long_poll, @routing_keys) { |e| event = e }
