@@ -231,7 +231,12 @@ describe RightScale::RouterClient do
         end
 
         it "uses long-polling" do
-          flexmock(@client).should_receive(:long_poll).and_return { @client.close }.once
+          flexmock(@client).should_receive(:long_poll).and_return { @client.close; ["uuid"] }.once
+          @client.listen(@routing_keys) { |_| }.should be_true
+        end
+
+        it "passes events to ack in long-polling request" do
+          flexmock(@client).should_receive(:long_poll).with(@routing_keys, [], Proc).and_return { @client.close; ["uuid"] }.once
           @client.listen(@routing_keys) { |_| }.should be_true
         end
 
@@ -291,10 +296,15 @@ describe RightScale::RouterClient do
       end
 
       context "when message received" do
+        before(:each) do
+          @json_event = JSON.dump(@event)
+          @json_ack = JSON.dump({:ack => "uuid"})
+        end
+
         it "presents JSON-decoded event to the specified handler" do
           event = nil
           @client.send(:create_websocket, @routing_keys) { |e| event = e }
-          @websocket.onmessage(JSON.dump(@event))
+          @websocket.onmessage(@json_event)
           event.should == @event
         end
 
@@ -304,21 +314,27 @@ describe RightScale::RouterClient do
           @log.should_receive(:info).with("Sending Push /foo/bar event <uuid> to rs-agent-1-1").once.ordered
           event = nil
           @client.send(:create_websocket, @routing_keys) { |e| event = e }
-          @websocket.onmessage(JSON.dump(@event))
+          @websocket.onmessage(@json_event)
           event.should == @event
         end
 
-        it "sends response to event using websocket" do
+        it "acknowledges event" do
+          @client.send(:create_websocket, @routing_keys) { |_| nil }
+          @websocket.onmessage(@json_event)
+          @websocket.sent.should == @json_ack
+        end
+
+        it "sends event response using websocket" do
           result = {:uuid => "uuid2", :type => "Result", :from => "rs-agent-2-2", :data => {}, :version => @version}
           @client.send(:create_websocket, @routing_keys) { |_| result }
-          @websocket.onmessage(JSON.dump(@event))
-          @websocket.sent.should == JSON.dump({:event => result, :routing_keys => ["rs-agent-1-1"]})
+          @websocket.onmessage(@json_event)
+          @websocket.sent.should == [@json_ack, JSON.dump({:event => result, :routing_keys => ["rs-agent-1-1"]})]
         end
 
         it "only sends non-nil responses" do
           @client.send(:create_websocket, @routing_keys) { |_| nil }
-          @websocket.onmessage(JSON.dump(@event))
-          @websocket.sent.should be_nil
+          @websocket.onmessage(@json_event)
+          @websocket.sent.should == @json_ack
         end
 
         it "logs failures" do
@@ -370,33 +386,37 @@ describe RightScale::RouterClient do
     end
 
     context :long_poll do
+      before(:each) do
+        @ack = []
+      end
+
       it "raises if block missing" do
-        lambda { @client.send(:long_poll, @routing_keys) }.should raise_error(ArgumentError, "Block missing")
+        lambda { @client.send(:long_poll, @routing_keys, @ack) }.should raise_error(ArgumentError, "Block missing")
       end
 
       it "makes listen request to router" do
         flexmock(@client).should_receive(:make_request).with(:get, "/listen",
             on { |a| a[:wait_time].should == 55 && !a.key?(:routing_keys) &&
             a[:timestamp] == @later.to_f }, "listen", nil, Hash).and_return([@event]).once
-        @client.send(:long_poll, @routing_keys) { |_| }
+        @client.send(:long_poll, @routing_keys, @ack) { |_| }
       end
 
       it "uses listen timeout for request" do
         flexmock(@client).should_receive(:make_request).with(:get, "/listen", Hash, "listen", nil,
             {:request_timeout => 60, :log_level => :debug}).and_return([@event]).once
-        @client.send(:long_poll, @routing_keys) { |_| }
+        @client.send(:long_poll, @routing_keys, @ack) { |_| }
       end
 
       it "logs event" do
         @log.should_receive(:info).with("Received Push /foo/bar event <uuid> from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([@event])
-        @client.send(:long_poll, @routing_keys) { |_| }
+        @client.send(:long_poll, @routing_keys, @ack) { |_| }
       end
 
       it "presents event to handler" do
         flexmock(@client).should_receive(:make_request).and_return([@event])
         event = nil
-        @client.send(:long_poll, @routing_keys) { |e| event = e }
+        @client.send(:long_poll, @routing_keys, @ack) { |e| event = e }
         event.should == @event
       end
 
@@ -405,16 +425,21 @@ describe RightScale::RouterClient do
         @log.should_receive(:info).with("Received Push /foo/bar event <uuid> from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([event])
         event = nil
-        @client.send(:long_poll, @routing_keys) { |e| event = e }
+        @client.send(:long_poll, @routing_keys, @ack) { |e| event = e }
         event.should == @event
       end
 
       it "does nothing if no event is returned" do
         flexmock(@client).should_receive(:make_request).and_return(nil)
         event = nil
-        @client.send(:long_poll, @routing_keys) { |e| event = e }
+        @client.send(:long_poll, @routing_keys, @ack) { |e| event = e }
         event.should be_nil
       end
+
+      it "returns event UUIDs" do
+        flexmock(@client).should_receive(:make_request).and_return([@event])
+        @client.send(:long_poll, @routing_keys, @ack) { |_| }.should == ["uuid"]
+       end
     end
   end
 

@@ -73,7 +73,7 @@ class WebSocketClientMock
   attr_reader :sent, :closed
 
   def send(event)
-    @sent = event
+    @sent = @sent.nil? ? event : (@sent.is_a?(Array) ? @sent << event : [@sent, event])
   end
 
   def close

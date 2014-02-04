@@ -200,6 +200,7 @@ module RightScale
         @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
       end
 
+      uuids = []
       until state == :closing do
         # Attempt to create a WebSocket if enabled and enough time has elapsed since last attempt
         # or if WebSocket connection has been lost
@@ -230,7 +231,7 @@ module RightScale
         # Resort to long-polling if a WebSocket cannot be created
         if @websocket.nil?
           begin
-            long_poll(routing_keys, &handler)
+            uuids = long_poll(routing_keys, uuids, &handler)
           rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
             Log.error("Failed long-polling", e, :no_trace)
             sleep(LONG_POLL_ERROR_DELAY)
@@ -323,9 +324,15 @@ module RightScale
 
       @websocket.onmessage = lambda do |event|
         begin
+          # Receive event
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
           Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
           @stats["events"].update(event[:type])
+
+          # Acknowledge event
+          @websocket.send(JSON.dump({:ack => event[:uuid]}))
+
+          # Send response, if any
           if (result = handler.call(event))
             Log.info("Sending #{event[:type]} #{event[:path]} event <#{event[:uuid]}> to #{event[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
@@ -344,31 +351,35 @@ module RightScale
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
+    # @param [Array] ack UUIDs for events received on previous poll
     #
     # @yield [event] required block called for each event received
     # @yieldparam [Object] event received
     #
-    # @return [TrueClass] always true
+    # @return [Array] UUIDs of events received
     #
     # @raise [ArgumentError] block missing
-    def long_poll(routing_keys, &handler)
+    def long_poll(routing_keys, ack, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
       params[:routing_keys] = routing_keys if routing_keys
+      params[:ack] = ack if ack && ack.any?
 
+      uuids = []
       if (events = make_request(:get, "/listen", params, "listen", nil, :log_level => :debug,
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
           Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
           @stats["events"].update(event[:type])
+          uuids << event[:uuid]
           handler.call(event)
         end
       end
-      true
+      uuids
     end
 
   end # RouterClient
