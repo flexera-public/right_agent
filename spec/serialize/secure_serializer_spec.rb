@@ -74,8 +74,9 @@ describe RightScale::SecureSerializer do
     lambda { RightScale::SecureSerializer.load(YAML.dump(data)) }.should raise_error(RightScale::Serializer::SerializationError)
   end
 
-  # Test with protocol version 11 and 12 since that is the boundary where msgpack was first supported
-  [[:msgpack, 12, JSON], [:json, 11, MessagePack]].each do |type, version, other_class|
+  # Test with protocol versions on the boundary where msgpack was first supported
+  [[:msgpack, version_can_handle_msgpack_result, JSON],
+   [:json, version_cannot_handle_msgpack_result, MessagePack]].each do |type, version, other_class|
 
     context "using #{type.inspect}" do
 

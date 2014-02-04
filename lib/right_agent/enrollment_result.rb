@@ -14,6 +14,9 @@ require 'json'
 module RightScale
 
   class EnrollmentResult
+
+    include ProtocolVersionMixin
+
     # Versions 5 and above use an identical format for the enrollment result
     SUPPORTED_VERSIONS = 5..AgentConfig.protocol_version
     
@@ -37,9 +40,9 @@ module RightScale
       @router_cert = router_cert
       @id_cert     = id_cert
       @id_key      = id_key
-      @serializer  = Serializer.new((:json if r_s_version < 12))
+      @serializer  = Serializer.new(can_handle_msgpack_result?(r_s_version) ? :msgpack : :json)
 
-      cert_name = r_s_version < 23 ? 'mapper_cert' : 'router_cert'
+      cert_name = can_handle_http?(r_s_version) ? 'router_cert' : 'mapper_cert'
       msg = @serializer.dump({
         cert_name => @router_cert.to_s,
         'id_cert' => @id_cert,

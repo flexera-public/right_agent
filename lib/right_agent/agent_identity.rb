@@ -25,6 +25,8 @@ module RightScale
   # Agent identity management
   class AgentIdentity
 
+    include ProtocolVersionMixin
+
     # Cutover time at which agents began using new separator
     SEPARATOR_EPOCH = Time.at(1256702400) unless defined?(SEPARATOR_EPOCH) # Tue Oct 27 21:00:00 -0700 2009
 
@@ -48,7 +50,7 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: Invalid argument
-    def initialize(prefix, agent_type, base_id, token=nil, separator=nil)
+    def initialize(prefix, agent_type, base_id, token = nil, separator = nil)
       err = "Prefix cannot contain '#{ID_SEPARATOR}'" if prefix && prefix.include?(ID_SEPARATOR)
       err = "Prefix cannot contain '#{ID_SEPARATOR_OLD}'" if prefix && prefix.include?(ID_SEPARATOR_OLD)
       err = "Agent type cannot contain '#{ID_SEPARATOR}'" if agent_type.include?(ID_SEPARATOR)
@@ -116,11 +118,11 @@ module RightScale
     #
     # === Return
     # serialized_id(String):: Compatible serialized agent identity
-    def self.compatible_serialized(serialized_id, version = 10)
-      if version < 10
-        serialized_id = "nanite-#{serialized_id}" if self.valid_parts?(serialized_id)
-      else
+    def self.compatible_serialized(serialized_id, version = nil)
+      if version.nil? || ProtocolVersionMixin.can_handle_non_nanite_ids?(version)
         serialized_id = serialized_id[7..-1] if serialized_id =~ /^nanite-|^mapper-|^router-/
+      else
+        serialized_id = "nanite-#{serialized_id}" if self.valid_parts?(serialized_id)
       end
       serialized_id
     end
