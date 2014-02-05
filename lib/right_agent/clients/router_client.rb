@@ -163,6 +163,9 @@ module RightScale
       params = {:event => event}
       params[:routing_keys] = routing_keys if routing_keys
       if @websocket
+        path = event[:path] ? "#{event[:path]} " : ""
+        to = routing_keys ? " to #{routing_keys.inspect}" : ""
+        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]} #{path}#{to}")
         @websocket.send(JSON.dump(params))
       else
         make_request(:post, "/notify", params, "notify", event[:uuid], :filter_params => ["event"])
@@ -201,7 +204,7 @@ module RightScale
       end
 
       uuids = []
-      until state == :closing do
+      until [:closing, :closed].include?(state) do
         # Attempt to create a WebSocket if enabled and enough time has elapsed since last attempt
         # or if WebSocket connection has been lost
         unless @options[:long_polling_only]
@@ -248,8 +251,11 @@ module RightScale
     # Take any actions necessary to quiesce client interaction in preparation
     # for agent termination but allow any active requests to complete
     #
+    # @param [Symbol] scope of close action: :receive for just receive side
+    #   of client, :all for both receive and send side; defaults to :all
+    #
     # @return [TrueClass] always true
-    def close
+    def close(scope = :all)
       super
       @websocket.close if @websocket
     end
@@ -290,6 +296,8 @@ module RightScale
     #
     # @yield [event] required block called when event received
     # @yieldparam [Object] event received
+    # @yieldreturn [Hash, NilClass] event this is response to event received,
+    #   or nil meaning no response
     #
     # @return [Faye::WebSocket] WebSocket created
     #
@@ -326,7 +334,7 @@ module RightScale
         begin
           # Receive event
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
-          Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update(event[:type])
 
           # Acknowledge event
@@ -334,7 +342,7 @@ module RightScale
 
           # Send response, if any
           if (result = handler.call(event))
-            Log.info("Sending #{event[:type]} #{event[:path]} event <#{event[:uuid]}> to #{event[:from]}")
+            Log.info("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
           end
         rescue Exception => e
@@ -373,7 +381,7 @@ module RightScale
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
-          Log.info("Received #{event[:type]} #{event[:path]} event <#{event[:uuid]}> from #{event[:from]}")
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update(event[:type])
           uuids << event[:uuid]
           handler.call(event)

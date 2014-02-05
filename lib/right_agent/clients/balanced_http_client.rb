@@ -214,7 +214,7 @@ module RightScale
 
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
       completed = "Completed <#{request_uuid}> in #{duration} | #{code} [#{host}#{path}] | #{length} bytes"
-      completed << " | #{result.inspect}" if Log.level == Logger::DEBUG
+      completed << " | #{result.inspect}" if Log.level == :debug
       Log.send(log_level, completed)
 
       result
@@ -285,8 +285,8 @@ module RightScale
     #
     # @return [String] Log text
     def log_text(path, params, filter, host = nil, exception = nil)
-      filtered_params = (exception || Log.level == Logger::DEBUG) ? filter(params, filter).inspect : nil
-      text = filtered_params ? "#{path} (#{filtered_params})" : path
+      filtered_params = (exception || Log.level == :debug) ? filter(params, filter).inspect : nil
+      text = filtered_params ? "#{path} #{filtered_params}" : path
       text = "[#{host}#{text}]" if host
       text << " | #{self.class.exception_text(exception)}" if exception
       text

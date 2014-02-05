@@ -302,9 +302,9 @@ describe RightScale::BalancedHttpClient do
         end
 
         it "logs request with filtered params if in debug mode" do
-          @log.should_receive(:level).and_return(Logger::DEBUG)
+          @log.should_receive(:level).and_return(:debug)
           @http_client.should_receive(:post).and_return(@response)
-          @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar (#{@filtered_params})").once
+          @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar #{@filtered_params}").once
           @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
           @client.send(:request, :post, @path, @params, @options)
         end
@@ -312,7 +312,7 @@ describe RightScale::BalancedHttpClient do
         it "logs response failure including filtered params" do
           @http_client.should_receive(:post).and_raise(RestExceptionMock.new(400, "bad data")).once
           @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
-          @log.should_receive(:error).with("Failed <random uuid> in 10ms | 400 [http://my.com/foo/bar (#{@filtered_params})] | 400 Bad Request: bad data").once
+          @log.should_receive(:error).with("Failed <random uuid> in 10ms | 400 [http://my.com/foo/bar #{@filtered_params}] | 400 Bad Request: bad data").once
           lambda { @client.send(:request, :post, @path, @params, @options) }.should raise_error(RuntimeError)
         end
       end
@@ -394,17 +394,17 @@ describe RightScale::BalancedHttpClient do
 
     it "logs exception" do
       exception = RestExceptionMock.new(400, "bad data")
-      @log.should_receive(:error).with("Failed <uuid> in 10ms | 400 [http://my.com/foo/bar (\"params\")] | 400 Bad Request: bad data").once
+      @log.should_receive(:error).with("Failed <uuid> in 10ms | 400 [http://my.com/foo/bar \"params\"] | 400 Bad Request: bad data").once
       @client.send(:report_failure, @url, @path, "params", [], "uuid", @started_at, exception)
     end
 
     it "logs error string" do
-      @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar (\"params\")] | bad data").once
+      @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar \"params\"] | bad data").once
       @client.send(:report_failure, @url, @path, "params", [], "uuid", @started_at, "bad data")
     end
 
     it "filters params" do
-      @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar ({:secret=>\"<hidden>\"})] | bad data").once
+      @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar {:secret=>\"<hidden>\"}] | bad data").once
       @client.send(:report_failure, @url, @path, {:secret => "data"}, ["secret"], "uuid", @started_at, "bad data")
     end
   end
@@ -432,9 +432,9 @@ describe RightScale::BalancedHttpClient do
 
       context "and in debug mode" do
         it "generates text containing containing host, path, and filtered params" do
-          @log.should_receive(:level).and_return(Logger::DEBUG)
+          @log.should_receive(:level).and_return(:debug)
           text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url)
-          text.should == "[http://my.com/foo/bar ({:some=>\"data\", :secret=>\"<hidden>\"})]"
+          text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]"
         end
       end
     end
@@ -442,13 +442,13 @@ describe RightScale::BalancedHttpClient do
     context "when exception" do
       it "includes params regardless of mode" do
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, "failed")
-        text.should == "[http://my.com/foo/bar ({:some=>\"data\", :secret=>\"<hidden>\"})] | failed"
+        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | failed"
       end
 
       it "includes exception text" do
         exception = RestExceptionMock.new(400, "bad data")
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, exception)
-        text.should == "[http://my.com/foo/bar ({:some=>\"data\", :secret=>\"<hidden>\"})] | 400 Bad Request: bad data"
+        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | 400 Bad Request: bad data"
       end
     end
   end

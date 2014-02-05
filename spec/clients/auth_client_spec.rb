@@ -163,9 +163,9 @@ describe RightScale::AuthClient do
   end
 
   context :close do
-    it "should set state to :closing" do
+    it "should set state to :closed" do
       @client.close.should be_true
-      @client.state.should == :closing
+      @client.state.should == :closed
     end
   end
 
@@ -221,7 +221,7 @@ describe RightScale::AuthClient do
       lambda { @client.send(:state=, :expired) }.should raise_error(ArgumentError, "Invalid state transition: :pending -> :expired")
     end
 
-    [:pending, :closing].each do |state|
+    [:pending, :closed].each do |state|
       context state do
         it "stores new state" do
           @client.send(:state=, state)

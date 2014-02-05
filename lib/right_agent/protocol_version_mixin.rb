@@ -28,8 +28,8 @@ module RightScale
     # Test whether given version of agent has the protocol version embedded in each
     # packet (this is generally inferred by the version in the received packet not being
     # Packet::DEFAULT_VERSION, which is true of all with version >= 12)
-    def can_put_version_in_packet?(version);      version && version != Packet::DEFAULT_VERSION end
-    def self.can_put_version_in_packet?(version); version && version != Packet::DEFAULT_VERSION end
+    def can_put_version_in_packet?(version);      version && version != 0 end
+    def self.can_put_version_in_packet?(version); version && version != 0 end
 
     # Test whether given version of agent uses /mapper/query_tags rather than the
     # deprecated TagQuery packet

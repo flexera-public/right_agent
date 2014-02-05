@@ -631,7 +631,7 @@ module RightScale
     # event(Hash):: Event received
     #
     # === Return
-    # true:: Always return true
+    # nil:: Always return nil indicating no response since handled separately via notify
     def handle_event(event)
       if event.is_a?(Hash)
         if ["Push", "Request"].include?(event[:type])
@@ -652,7 +652,7 @@ module RightScale
       else
         Log.error("Unrecognized event: #{event.class}")
       end
-      true
+      nil
     end
 
     # Convert event hash to packet

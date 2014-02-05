@@ -204,10 +204,13 @@ module RightScale
     # for agent termination but allow any active requests to complete
     # Only router and api clients are closed, not auth client
     #
+    # @param [Symbol] scope of close action: :receive for just closing receive side
+    #   of client, :all for closing both receive and send side; defaults to :all
+    #
     # @return [TrueClass] always true
-    def close
-      @router.close if @router
-      @api.close if @api
+    def close(scope = :all)
+      @router.close(scope) if @router
+      @api.close(scope) if @api
       true
     end
 

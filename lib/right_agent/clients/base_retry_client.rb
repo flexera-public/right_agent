@@ -49,15 +49,16 @@ module RightScale
     DEFAULT_RETRY_INTERVALS = [4, 12, 36]
     DEFAULT_RETRY_TIMEOUT = 25
 
-    # State of this client: :pending, :connected, :disconnected, :failed, :closing
+    # State of this client: :pending, :connected, :disconnected, :failed, :closing, :closed
     attr_reader :state
 
     PERMITTED_STATE_TRANSITIONS = {
-      :pending      => [:pending, :connected, :disconnected, :failed, :closing],
-      :connected    => [:connected, :disconnected, :failed, :closing],
-      :disconnected => [:connected, :disconnected, :failed, :closing],
-      :failed       => [:failed, :closing],
-      :closing      => [:closing] }
+      :pending      => [:pending, :connected, :disconnected, :failed, :closed],
+      :connected    => [:connected, :disconnected, :failed, :closing, :closed],
+      :disconnected => [:connected, :disconnected, :failed, :closed],
+      :failed       => [:failed, :closed],
+      :closing      => [:closing, :closed],
+      :closed       => [:closed] }
 
     # Set configuration of this client and initialize HTTP access
     #
@@ -117,11 +118,18 @@ module RightScale
     # Take any actions necessary to quiesce client interaction in preparation
     # for agent termination but allow any active requests to complete
     #
+    # @param [Symbol] scope of close action: :receive for just closing receive side
+    #   of client, :all for closing both receive and send side; defaults to :all
+    #
     # @return [TrueClass] always true
-    def close
-      self.state = :closing
-      @reconnect_timer.cancel if @reconnect_timer
-      @reconnect_timer = nil
+    def close(scope = :all)
+      if scope == :receive && state == :connected
+        self.state = :closing
+      else
+        self.state = :closed
+        @reconnect_timer.cancel if @reconnect_timer
+        @reconnect_timer = nil
+      end
       true
     end
 
@@ -161,7 +169,7 @@ module RightScale
 
     # Update state of this client
     # If state has changed, make external callbacks to notify of change
-    # Do not update state once set to :closing
+    # Do not update state once set to :closed
     #
     # @param [Hash] value for new state
     #
@@ -169,13 +177,13 @@ module RightScale
     #
     # @raise [ArgumentError] invalid state transition
     def state=(value)
-      if @state != :closing
+      if @state != :closed
         unless PERMITTED_STATE_TRANSITIONS[@state].include?(value)
           raise ArgumentError, "Invalid state transition: #{@state.inspect} -> #{value.inspect}"
         end
 
         case value
-        when :pending, :closing
+        when :pending, :closing, :closed
           @stats["state"].update(value.to_s)
           @state = value
         when :connected, :disconnected, :failed
@@ -309,7 +317,7 @@ module RightScale
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
     def make_request(verb, path, params = {}, type = nil, request_uuid = nil, options = {})
-      raise Exceptions::Terminating if state == :closing
+      raise Exceptions::Terminating if state == :closed
       request_uuid ||= RightSupport::Data::UUID.generate
       started_at = Time.now
       attempts = 0
@@ -322,7 +330,7 @@ module RightScale
             :request_timeout => @options[:request_timeout],
             :request_uuid => request_uuid,
             :headers => @auth_client.headers }
-          raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless state == :connected
+          raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless [:connected, :closing].include?(state)
           result = @http_client.send(verb, path, params, http_options.merge(options))
         rescue StandardError => e
           request_uuid = handle_exception(e, type || path, request_uuid, started_at, attempts)
@@ -389,7 +397,7 @@ module RightScale
     # @raise [Exceptions::RetryableError] request redirected but if retried may succeed
     # @raise [Exceptions::InternalServerError] no redirect location provided
     def handle_redirect(redirect, type, request_uuid)
-      Log.info("Received redirect #{redirect} response for #{type} request <#{request_uuid}>")
+      Log.info("Received REDIRECT #{redirect} for #{type} request <#{request_uuid}>")
       if redirect.respond_to?(:response) && (location = redirect.response.headers[:location]) && !location.empty?
         Log.info("Requesting auth client to handle redirect to #{location.inspect}")
         @stats["reconnects"].update("redirect")

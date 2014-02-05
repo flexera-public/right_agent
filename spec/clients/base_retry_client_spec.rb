@@ -132,15 +132,20 @@ describe RightScale::BaseRetryClient do
   end
 
   context :close do
-    it "sets state to :closing" do
+    it "sets state to :closed by default" do
       @client.close
-      @client.state.should == :closing
+      @client.state.should == :closed
     end
 
     it "cancels reconnect timer" do
       @client.send(:reconnect)
       @timer.should_receive(:cancel).once
       @client.close
+    end
+
+    it "sets state to :closing if only closing for receiving" do
+      @client.close(:receive)
+      @client.state.should == :closing
     end
   end
 
@@ -154,7 +159,7 @@ describe RightScale::BaseRetryClient do
       lambda { @client.send(:state=, :pending) }.should raise_error(ArgumentError, "Invalid state transition: :connected -> :pending")
     end
 
-    [:pending, :closing].each do |state|
+    [:pending, :closed].each do |state|
       context state do
         it "stores new state" do
           @client.send(:state=, state)
@@ -199,10 +204,10 @@ describe RightScale::BaseRetryClient do
           @client.send(:state=, state)
         end
 
-        it "does nothing if current state is :closing" do
+        it "does nothing if current state is :closed" do
           flexmock(@client.instance_variable_get(:@stats)["state"]).should_receive(:update).once
-          @client.send(:state=, :closing)
-          @client.send(:state=, state).should == :closing
+          @client.send(:state=, :closed)
+          @client.send(:state=, state).should == :closed
         end
 
         it "does nothing if current state is the same" do
@@ -512,7 +517,7 @@ describe RightScale::BaseRetryClient do
       it "initiates redirect by notifying auth client and raising retryable error" do
         location = "http://somewhere.com"
         e = RestExceptionMock.new(301, "moved permanently", {:location => location})
-        @log.should_receive(:info).with(/Received redirect/).once.ordered
+        @log.should_receive(:info).with(/Received REDIRECT/).once.ordered
         @log.should_receive(:info).with("Requesting auth client to handle redirect to #{location.inspect}").once.ordered
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
             raise_error(RightScale::Exceptions::RetryableError, "moved permanently")
@@ -521,7 +526,7 @@ describe RightScale::BaseRetryClient do
 
       it "raises internal error if no redirect location is provided" do
         e = RestExceptionMock.new(301, "moved permanently")
-        @log.should_receive(:info).with(/Received redirect/).once
+        @log.should_receive(:info).with(/Received REDIRECT/).once
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
             raise_error(RightScale::Exceptions::InternalServerError, "No redirect location provided")
       end
