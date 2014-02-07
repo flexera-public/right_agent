@@ -23,6 +23,19 @@
 
 require 'faye/websocket'
 
+# Monkey patch WebSocket close method so that can specify status code and reason
+# Valid status codes are defined in RFC6455 section 7.4.1
+module Faye
+  class WebSocket
+    module API
+      def close(code = nil, reason = nil)
+        @ready_state = CLOSING if @ready_state == OPEN
+        @driver.close(reason, code)
+      end
+    end
+  end
+end
+
 module RightScale
 
   # HTTP interface to RightNet router
@@ -34,11 +47,26 @@ module RightScale
     # Initial interval between attempts to create a WebSocket
     WEBSOCKET_CONNECT_INTERVAL = 30
 
-    # Backoff factor for WebSocket connect interval
-    WEBSOCKET_BACKOFF_FACTOR = 2
-
     # Maximum interval between attempts to create a WebSocket
     MAX_WEBSOCKET_CONNECT_INTERVAL = 60 * 60 * 24
+
+    # Initial interval between attempts to create a WebSocket when router is not responding
+    WEBSOCKET_RECONNECT_INTERVAL = 2
+
+    # Maximum interval between attempts to create a WebSocket when router is not responding
+    MAX_WEBSOCKET_RECONNECT_INTERVAL = 60
+
+    # Backoff factor for WebSocket connect and reconnect intervals
+    WEBSOCKET_BACKOFF_FACTOR = 2
+
+    # WebSocket close status codes
+    WEBSOCKET_NORMAL_CLOSE = 1000
+    WEBSOCKET_SHUTDOWN_CLOSE = 1001
+    WEBSOCKET_PROTOCOL_ERROR_CLOSE = 1002
+    WEBSOCKET_UNEXPECTED_ERROR_CLOSE = 1011
+
+    # Sleep interval between checks for lost WebSocket connection
+    WEBSOCKET_RETRY_DELAY = 5
 
     # Sleep interval after long-polling error before re-polling to give RightNet chance to recover
     LONG_POLL_ERROR_DELAY = 5
@@ -163,9 +191,9 @@ module RightScale
       params = {:event => event}
       params[:routing_keys] = routing_keys if routing_keys
       if @websocket
-        path = event[:path] ? "#{event[:path]} " : ""
+        path = event[:path] ? " #{event[:path]}" : ""
         to = routing_keys ? " to #{routing_keys.inspect}" : ""
-        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]} #{path}#{to}")
+        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
         @websocket.send(JSON.dump(params))
       else
         make_request(:post, "/notify", params, "notify", event[:uuid], :filter_params => ["event"])
@@ -182,7 +210,7 @@ module RightScale
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
-    # @return [TrueClass] always true, although normally never returns
+    # @return [TrueClass] always true, although only returns when closing
     #
     # @raise [ArgumentError] block missing
     # @raise [Exceptions::Unauthorized] authorization failed
@@ -196,42 +224,52 @@ module RightScale
 
       @connect_interval = WEBSOCKET_CONNECT_INTERVAL # instance variable needed for testing
       last_connect_time = Time.now - @connect_interval
+      @reconnect_interval = WEBSOCKET_RECONNECT_INTERVAL # instance variable needed for testing
 
       # Proc for exponentially increasing WebSocket connect attempt interval when failing
-      adjust_interval = lambda do
+      adjust_connect_interval = lambda do
         last_connect_time = Time.now
         @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
       end
 
+      # Proc for exponentially increasing WebSocket reconnect attempt interval when router not responding
+      adjust_reconnect_interval = lambda do
+        @reconnect_interval = [@reconnect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_RECONNECT_INTERVAL].min
+      end
+
       uuids = []
       until [:closing, :closed].include?(state) do
-        # Attempt to create a WebSocket if enabled and enough time has elapsed since last attempt
-        # or if WebSocket connection has been lost
-        unless @options[:long_polling_only]
-          if @websocket.nil? && (Time.now - last_connect_time) > @connect_interval
-            begin
-              @stats["reconnects"].update("websocket") unless @websocket
-              @websocket = create_websocket(routing_keys, &handler)
-              [1, 1, 1, 1, 1, @options[:listen_timeout] - 5].each do |t|
-                # Allow for possibility of asynchronous handshake failure resulting in close
-                if @websocket.nil?
-                  adjust_interval.call
-                  break
+        if @websocket
+          @connect_interval = WEBSOCKET_CONNECT_INTERVAL
+          @reconnect_interval = WEBSOCKET_RECONNECT_INTERVAL
+          sleep(WEBSOCKET_RETRY_DELAY)
+          next
+        elsif retry_connect?(last_connect_time, @connect_interval)
+          begin
+            @websocket_close_code = @websocket_close_reason = nil
+            @stats["reconnects"].update("websocket") unless @websocket
+            @websocket = connect(routing_keys, &handler)
+            WEBSOCKET_RETRY_DELAY.times do
+              # Allow for possibility of asynchronous handshake failure resulting in close
+              if @websocket.nil?
+                if router_not_responding?
+                  sleep(adjust_reconnect_interval.call)
+                else
+                  adjust_connect_interval.call
                 end
-                sleep(t)
+                break
               end
-            rescue Exception => e
-              Log.error("Failed creating WebSocket", e)
-              @stats["exceptions"].track("websocket", e)
-              adjust_interval.call
+              sleep(1)
             end
-          elsif @websocket
-            @connect_interval = WEBSOCKET_CONNECT_INTERVAL
-            sleep(@options[:listen_timeout])
+            next if @websocket.nil?
+          rescue Exception => e
+            Log.error("Failed creating WebSocket", e)
+            @stats["exceptions"].track("websocket", e)
+            adjust_connect_interval.call
           end
         end
 
-        # Resort to long-polling if a WebSocket cannot be created
+        # Resort to long-polling given if WebSocket not usable
         if @websocket.nil?
           begin
             uuids = long_poll(routing_keys, uuids, &handler)
@@ -257,7 +295,7 @@ module RightScale
     # @return [TrueClass] always true
     def close(scope = :all)
       super
-      @websocket.close if @websocket
+      @websocket.close(WEBSOCKET_SHUTDOWN_CLOSE, "Agent terminating") if @websocket
     end
 
     # Current statistics for this client
@@ -289,6 +327,36 @@ module RightScale
       true
     end
 
+    # Determine whether should retry creation of WebSocket connection
+    # Should only retry if (1) WebSocket is enabled, (2) there is none currently,
+    # (3) previous closure was for acceptable reasons (normal, router shutdown,
+    # router inaccessible), or (4) enough time has elapsed to make another attempt
+    #
+    # @param [Time] last_connect_time when attempted WebSocket connection
+    # @param [Integer] connect_interval minimum time between connect attempts
+    #
+    # @return [Boolean] true if should try, otherwise false
+    def retry_connect?(last_connect_time, connect_interval)
+      unless @options[:long_polling_only]
+        if @websocket.nil?
+          if (Time.now - last_connect_time) > connect_interval
+            true
+          elsif [WEBSOCKET_NORMAL_CLOSE, WEBSOCKET_SHUTDOWN_CLOSE].include?(@websocket_close_code)
+            true
+          elsif router_not_responding?
+            true
+          end
+        end
+      end
+    end
+
+    # Determine whether WebSocket attempts are failing because router not responding
+    #
+    # @return [Boolean] true if router not responding, otherwise false
+    def router_not_responding?
+      @websocket_close_code == WEBSOCKET_PROTOCOL_ERROR_CLOSE && @websocket_close_reason =~ /502|503/
+    end
+
     # Connect to RightNet router using WebSocket for receiving events
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
@@ -302,7 +370,7 @@ module RightScale
     # @return [Faye::WebSocket] WebSocket created
     #
     # @raise [ArgumentError] block missing
-    def create_websocket(routing_keys, &handler)
+    def connect(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       options = {
@@ -320,6 +388,8 @@ module RightScale
 
       @websocket.onclose = lambda do |event|
         begin
+          @websocket_close_code = event.code.to_i
+          @websocket_close_reason = event.reason
           msg = "WebSocket closed (#{event.code}"
           msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
           Log.info(msg)
