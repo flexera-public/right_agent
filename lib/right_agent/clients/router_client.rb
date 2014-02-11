@@ -44,32 +44,29 @@ module RightScale
     # RightNet router API version for use in X-API-Version header
     API_VERSION = "2.0"
 
-    # Initial interval between attempts to create a WebSocket
-    WEBSOCKET_CONNECT_INTERVAL = 30
+    # Initial interval between attempts to make a WebSocket connection
+    CONNECT_INTERVAL = 30
 
-    # Maximum interval between attempts to create a WebSocket
-    MAX_WEBSOCKET_CONNECT_INTERVAL = 60 * 60 * 24
+    # Maximum interval between attempts to make a WebSocket connection
+    MAX_CONNECT_INTERVAL = 60 * 60 * 24
 
-    # Initial interval between attempts to create a WebSocket when router is not responding
-    WEBSOCKET_RECONNECT_INTERVAL = 2
+    # Initial interval between attempts to reconnect or long-poll when router is not responding
+    RECONNECT_INTERVAL = 2
 
-    # Maximum interval between attempts to create a WebSocket when router is not responding
-    MAX_WEBSOCKET_RECONNECT_INTERVAL = 60
+    # Maximum interval between attempts to reconnect or long-poll when router is not responding
+    MAX_RECONNECT_INTERVAL = 60
 
-    # Backoff factor for WebSocket connect and reconnect intervals
-    WEBSOCKET_BACKOFF_FACTOR = 2
+    # Interval between checks for lost WebSocket connection
+    CHECK_INTERVAL = 5
+
+    # Backoff factor for connect and reconnect intervals
+    BACKOFF_FACTOR = 2
 
     # WebSocket close status codes
-    WEBSOCKET_NORMAL_CLOSE = 1000
-    WEBSOCKET_SHUTDOWN_CLOSE = 1001
-    WEBSOCKET_PROTOCOL_ERROR_CLOSE = 1002
-    WEBSOCKET_UNEXPECTED_ERROR_CLOSE = 1011
-
-    # Sleep interval between checks for lost WebSocket connection
-    WEBSOCKET_RETRY_DELAY = 5
-
-    # Sleep interval after long-polling error before re-polling to give RightNet chance to recover
-    LONG_POLL_ERROR_DELAY = 5
+    NORMAL_CLOSE = 1000
+    SHUTDOWN_CLOSE = 1001
+    PROTOCOL_ERROR_CLOSE = 1002
+    UNEXPECTED_ERROR_CLOSE = 1011
 
     # Default time to wait for an event or to ping WebSocket
     DEFAULT_LISTEN_TIMEOUT = 60
@@ -222,66 +219,27 @@ module RightScale
     def listen(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      @connect_interval = WEBSOCKET_CONNECT_INTERVAL # instance variable needed for testing
-      last_connect_time = Time.now - @connect_interval
-      @reconnect_interval = WEBSOCKET_RECONNECT_INTERVAL # instance variable needed for testing
+      @connect_interval = CONNECT_INTERVAL
+      @last_connect_time = Time.now - @connect_interval
+      @reconnect_interval = RECONNECT_INTERVAL
 
-      # Proc for exponentially increasing WebSocket connect attempt interval when failing
-      adjust_connect_interval = lambda do
-        last_connect_time = Time.now
-        @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
-      end
-
-      # Proc for exponentially increasing WebSocket reconnect attempt interval when router not responding
-      adjust_reconnect_interval = lambda do
-        @reconnect_interval = [@reconnect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_RECONNECT_INTERVAL].min
-      end
-
-      uuids = []
+      uuids = nil
+      retries = 0
       until [:closing, :closed].include?(state) do
         if @websocket
-          @connect_interval = WEBSOCKET_CONNECT_INTERVAL
-          @reconnect_interval = WEBSOCKET_RECONNECT_INTERVAL
-          sleep(WEBSOCKET_RETRY_DELAY)
+          @connect_interval = CONNECT_INTERVAL
+          @reconnect_interval = RECONNECT_INTERVAL
+          sleep(CHECK_INTERVAL)
           next
-        elsif retry_connect?(last_connect_time, @connect_interval)
-          begin
-            @websocket_close_code = @websocket_close_reason = nil
-            @stats["reconnects"].update("websocket") unless @websocket
-            @websocket = connect(routing_keys, &handler)
-            WEBSOCKET_RETRY_DELAY.times do
-              # Allow for possibility of asynchronous handshake failure resulting in close
-              if @websocket.nil?
-                if router_not_responding?
-                  sleep(adjust_reconnect_interval.call)
-                else
-                  adjust_connect_interval.call
-                end
-                break
-              end
-              sleep(1)
-            end
-            next if @websocket.nil?
-          rescue Exception => e
-            Log.error("Failed creating WebSocket", e)
-            @stats["exceptions"].track("websocket", e)
-            adjust_connect_interval.call
-          end
+        elsif retry_connect?
+          @last_connect_time = Time.now
+          @close_code = @close_reason = nil
+          @stats["reconnects"].update("websocket") if (retries += 1) > 1
+          next if try_connect(routing_keys, &handler)
         end
 
-        # Resort to long-polling given if WebSocket not usable
-        if @websocket.nil?
-          begin
-            uuids = long_poll(routing_keys, uuids, &handler)
-          rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
-            Log.error("Failed long-polling", e, :no_trace)
-            sleep(LONG_POLL_ERROR_DELAY)
-          rescue Exception => e
-            Log.error("Failed long-polling", e, :trace)
-            @stats["exceptions"].track("long-polling", e)
-            sleep(LONG_POLL_ERROR_DELAY)
-          end
-        end
+        # Resort to long-polling if WebSocket not usable
+        uuids = try_long_poll(routing_keys, uuids, &handler) if @websocket.nil?
       end
       true
     end
@@ -295,7 +253,7 @@ module RightScale
     # @return [TrueClass] always true
     def close(scope = :all)
       super
-      @websocket.close(WEBSOCKET_SHUTDOWN_CLOSE, "Agent terminating") if @websocket
+      @websocket.close(SHUTDOWN_CLOSE, "Agent terminating") if @websocket
     end
 
     # Current statistics for this client
@@ -332,16 +290,13 @@ module RightScale
     # (3) previous closure was for acceptable reasons (normal, router shutdown,
     # router inaccessible), or (4) enough time has elapsed to make another attempt
     #
-    # @param [Time] last_connect_time when attempted WebSocket connection
-    # @param [Integer] connect_interval minimum time between connect attempts
-    #
     # @return [Boolean] true if should try, otherwise false
-    def retry_connect?(last_connect_time, connect_interval)
+    def retry_connect?
       unless @options[:long_polling_only]
         if @websocket.nil?
-          if (Time.now - last_connect_time) > connect_interval
+          if (Time.now - @last_connect_time) > @connect_interval
             true
-          elsif [WEBSOCKET_NORMAL_CLOSE, WEBSOCKET_SHUTDOWN_CLOSE].include?(@websocket_close_code)
+          elsif [NORMAL_CLOSE, SHUTDOWN_CLOSE].include?(@close_code)
             true
           elsif router_not_responding?
             true
@@ -350,11 +305,36 @@ module RightScale
       end
     end
 
-    # Determine whether WebSocket attempts are failing because router not responding
+    # Try to create WebSocket connection
     #
-    # @return [Boolean] true if router not responding, otherwise false
-    def router_not_responding?
-      @websocket_close_code == WEBSOCKET_PROTOCOL_ERROR_CLOSE && @websocket_close_reason =~ /502|503/
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [Boolean] true if should not try long-polling, otherwise false
+    def try_connect(routing_keys, &handler)
+      begin
+        connect(routing_keys, &handler)
+        CHECK_INTERVAL.times do
+          # Allow for possibility of asynchronous handshake failure resulting in close
+          if @websocket.nil?
+            if router_not_responding?
+              sleep(backoff_reconnect_interval)
+            else
+              backoff_connect_interval
+            end
+            break
+          end
+          sleep(1)
+        end
+        @websocket.nil?
+      rescue Exception => e
+        Log.error("Failed creating WebSocket", e)
+        @stats["exceptions"].track("websocket", e)
+        backoff_connect_interval
+        false
+      end
     end
 
     # Connect to RightNet router using WebSocket for receiving events
@@ -388,8 +368,8 @@ module RightScale
 
       @websocket.onclose = lambda do |event|
         begin
-          @websocket_close_code = event.code.to_i
-          @websocket_close_reason = event.reason
+          @close_code = event.code.to_i
+          @close_reason = event.reason
           msg = "WebSocket closed (#{event.code}"
           msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
           Log.info(msg)
@@ -405,7 +385,7 @@ module RightScale
           # Receive event
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
           Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
-          @stats["events"].update(event[:type])
+          @stats["events"].update("#{event[:type]} #{event[:path]}")
 
           # Acknowledge event
           @websocket.send(JSON.dump({:ack => event[:uuid]}))
@@ -424,17 +404,42 @@ module RightScale
       @websocket
     end
 
+    # Try to make long-polling request to receive events
+    #
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] uuids for events received on previous poll
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [Array, NilClass] UUIDs of events received, or nil if none
+    def try_long_poll(routing_keys, uuids, &handler)
+      result = nil
+      begin
+        result = long_poll(routing_keys, uuids, &handler)
+        @reconnect_interval = RECONNECT_INTERVAL
+      rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
+        Log.error("Failed long-polling", e, :no_trace)
+        sleep(backoff_reconnect_interval)
+      rescue Exception => e
+        Log.error("Failed long-polling", e, :trace)
+        @stats["exceptions"].track("long-polling", e)
+        sleep(backoff_reconnect_interval)
+      end
+      result
+    end
+
     # Make long-polling request to receive one or more events
     # Limit logging unless in debug mode
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
-    # @param [Array] ack UUIDs for events received on previous poll
+    # @param [Array, NilClass] ack UUIDs for events received on previous poll
     #
     # @yield [event] required block called for each event received
     # @yieldparam [Object] event received
     #
-    # @return [Array] UUIDs of events received
+    # @return [Array, NilClass] UUIDs of events received, or nil if none
     #
     # @raise [ArgumentError] block missing
     def long_poll(routing_keys, ack, &handler)
@@ -452,12 +457,33 @@ module RightScale
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
           Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
-          @stats["events"].update(event[:type])
+          @stats["events"].update("#{event[:type]} #{event[:path]}")
           uuids << event[:uuid]
           handler.call(event)
         end
       end
-      uuids
+      uuids if uuids.any?
+    end
+
+    # Exponentially increase WebSocket connect attempt interval after failing to connect
+    #
+    # @return [Integer] new interval
+    def backoff_connect_interval
+      @connect_interval = [@connect_interval * BACKOFF_FACTOR, MAX_CONNECT_INTERVAL].min
+    end
+
+    # Exponentially increase reconnect attempt interval when router not responding
+    #
+    # @return [Integer] new interval
+    def backoff_reconnect_interval
+      @reconnect_interval = [@reconnect_interval * BACKOFF_FACTOR, MAX_RECONNECT_INTERVAL].min
+    end
+
+    # Determine whether WebSocket attempts are failing because router not responding
+    #
+    # @return [Boolean] true if router not responding, otherwise false
+    def router_not_responding?
+      @close_code == PROTOCOL_ERROR_CLOSE && @close_reason =~ /502|503/
     end
 
   end # RouterClient
