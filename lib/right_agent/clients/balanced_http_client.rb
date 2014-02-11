@@ -53,6 +53,9 @@ module RightScale
     # Text used for filtered parameter value
     FILTERED_PARAM_VALUE = "<hidden>"
 
+    # Environment variables to examine for proxy settings, in order
+    PROXY_ENVIRONMENT_VARIABLES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY']
+
     # Create client for making HTTP REST requests
     #
     # @param [Array, String] urls of server being accessed as array or comma-separated string
@@ -80,6 +83,12 @@ module RightScale
           :timeout => HEALTH_CHECK_TIMEOUT }
         check_options[:headers] = {"X-API-Version" => @api_version} if @api_version
         RightSupport::Net::HTTPClient.new.get(uri.to_s, check_options)
+      end
+
+      # Initialize use of proxy if defined
+      if (proxy_var = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
+        proxy = ENV[proxy_var].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[proxy_var]) : URI.parse("http://" + ENV[proxy_var])
+        RestClient.proxy = proxy.to_s if proxy
       end
 
       # Initialize request balancer

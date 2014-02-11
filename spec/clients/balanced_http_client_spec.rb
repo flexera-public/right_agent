@@ -39,6 +39,24 @@ describe RightScale::BalancedHttpClient do
   end
 
   context :initialize do
+    ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY'].each do |proxy|
+      it "initializes use of proxy if #{proxy} defined in environment" do
+        ENV[proxy] = "https://my.proxy.com"
+        flexmock(RightSupport::Net::RequestBalancer).should_receive(:new).and_return(@balancer)
+        flexmock(RestClient).should_receive(:proxy=).with("https://my.proxy.com").once
+        RightScale::BalancedHttpClient.new(@urls)
+        ENV.delete(proxy)
+      end
+
+      it "prepends scheme to proxy address if #{proxy} defined in environment" do
+        ENV[proxy] = "1.2.3.4"
+        flexmock(RightSupport::Net::RequestBalancer).should_receive(:new).and_return(@balancer)
+        flexmock(RestClient).should_receive(:proxy=).with("http://1.2.3.4").once
+        RightScale::BalancedHttpClient.new(@urls)
+        ENV.delete(proxy)
+      end
+    end
+
     it "creates request balancer with health checker" do
       flexmock(RightSupport::Net::RequestBalancer).should_receive(:new).
           with(@urls, hsh(:policy => RightSupport::Net::LB::HealthCheck)).and_return(@balancer).once
