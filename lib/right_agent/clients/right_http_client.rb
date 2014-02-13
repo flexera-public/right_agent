@@ -184,6 +184,13 @@ module RightScale
       @router.listen(routing_keys, &handler)
     end
 
+    # Resource href associated with the user of this client
+    #
+    # @return [String, NilClass] href or nil if unknown
+    def href
+      @api.href if @api
+    end
+
     # Record callback to be notified of status changes
     # Multiple callbacks are supported
     #

@@ -255,6 +255,13 @@ module RightScale
       @registry.register(actor, prefix)
     end
 
+    # Resource href associated with this agent, if any
+    #
+    # @return [String, NilClass] href or nil if unknown
+    def href
+      @client.href if @client && @mode == :http
+    end
+
     # Record callback to be notified of agent status changes
     # Multiple callbacks are supported
     #

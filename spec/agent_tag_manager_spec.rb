@@ -29,11 +29,11 @@ describe RightScale::AgentTagManager do
   before(:each) do
     @log = flexmock(RightScale::Log)
     @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    @identity = "rs-agent-0-0"
-    @agent = flexmock("agent", :identity => @identity)
-    @agent_id1 = "rs-agent-1-1"
-    @agent_id2 = "rs-agent-2-2"
-    @agent_ids = [@agent_id2, @agent_id2]
+    @identity = "rs-agent-1-1"
+    @agent_href = "/api/clouds/1/instances/1"
+    @agent_href2 = "/api/clouds/2/instances/2"
+    @agent = flexmock("agent", :href => @agent_href, :identity => @identity)
+    @hrefs = [@agent_href, @agent_href2]
     @manager = RightScale::AgentTagManager.instance
     @manager.agent = @agent
     @request = flexmock("request", :run => true)
@@ -51,11 +51,11 @@ describe RightScale::AgentTagManager do
 
     before(:each) do
       @retryable_request.should_receive(:new).with("/router/query_tags",
-          {:agent_identity => @identity, :agent_ids => [@identity]}, {}).and_return(@request).once.by_default
+          {:agent_identity => @identity, :hrefs => [@agent_href]}, {}).and_return(@request).once.by_default
     end
 
     it "retrieves current agent tags" do
-      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}}).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => [@tag]}}).once
       @manager.tags { |r| @result = r }
       @result.should == [@tag]
     end
@@ -81,8 +81,8 @@ describe RightScale::AgentTagManager do
 
     it "forwards timeout option" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
-          {:agent_identity => @identity, :agent_ids => [@identity]}, {:timeout => 9}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}}).once
+          {:agent_identity => @identity, :hrefs => [@agent_href]}, {:timeout => 9}).and_return(@request).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => [@tag]}}).once
       @manager.tags(:timeout => 9) { |r| @result = r }
       @result.should == [@tag]
     end
@@ -101,17 +101,17 @@ describe RightScale::AgentTagManager do
     it "queries for agents having individual tag" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
+      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_href => {"tags" => [@tag]}}).once
       @manager.query_tags(@tag) { |r| @result = r }
-      @result.should == {@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}
+      @result.should == {@identity => {"tags" => [@tag]}, @agent_href => {"tags" => [@tag]}}
     end
 
     it "queries for agents having multiple tags" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => @tags}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => @tags}}).once
       @manager.query_tags(@tags) { |r| @result = r }
-      @result.should == {@agent_id1 => {"tags" => @tags}}
+      @result.should == {@agent_href => {"tags" => @tags}}
     end
 
     it "forwards options" do
@@ -143,7 +143,7 @@ describe RightScale::AgentTagManager do
     it "always yields raw response" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
+      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_href => {"tags" => [@tag]}}).once
       @manager.query_tags_raw(@tag) { |r| @result = r }
       @result.should == "raw response"
     end
@@ -151,7 +151,7 @@ describe RightScale::AgentTagManager do
     it "queries for agents having individual tag and always yields raw response" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => [@tag]}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_id1 => {"tags" => [@tag]}}).once
+      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_href => {"tags" => [@tag]}}).once
       @manager.query_tags_raw(@tag) { |r| @result = r }
       @result.should == "raw response"
     end
@@ -159,16 +159,16 @@ describe RightScale::AgentTagManager do
     it "queries for agents having multiple tags always yields raw response" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => @tags}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => @tags}}).once
       @manager.query_tags_raw(@tags) { |r| @result = r }
       @result.should == "raw response"
     end
 
     it "queries for selected agents" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
-          {:agent_identity => @identity, :agent_ids => @agent_ids, :tags => @tags}, {}).and_return(@request).once
-      @request.should_receive(:callback).and_yield({@agent_id1 => {"tags" => @tags}}).once
-      @manager.query_tags_raw(@tags, @agent_ids) { |r| @result = r }
+          {:agent_identity => @identity, :hrefs => @hrefs, :tags => @tags}, {}).and_return(@request).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => @tags}}).once
+      @manager.query_tags_raw(@tags, @hrefs) { |r| @result = r }
       @result.should == "raw response"
     end
 

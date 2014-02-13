@@ -38,8 +38,9 @@ describe RightScale::ApiClient do
     flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield.by_default
     @account_id = 123
     @agent_id = "rs-instance-1-1"
-    @instance_href = "/api/clouds/1/instances/11"
-    @links = {"links" => [{"rel" => "self", "href" => @instance_href}]}
+    @agent_href = "/api/clouds/1/instances/1"
+    @agent_href2 = "/api/clouds/2/instances/2"
+    @links = {"links" => [{"rel" => "self", "href" => @agent_href}]}
     @http_client = flexmock("http client", :get => @links, :check_health => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @url = "http://test.com"
@@ -95,6 +96,12 @@ describe RightScale::ApiClient do
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
     end
 
+    it "maps query_tags request" do
+      flexmock(@client).should_receive(:map_query_tags).with(:post, {:tags => ["a:b=c"]}, "query_tags", @token, Hash).
+          and_return({}).once
+      @client.request("/router/query_tags", @payload.merge(:tags => ["a:b=c"]), @target, @token).should == {}
+    end
+
     it "does not require token" do
       flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
           "declare", nil, Hash).and_return(nil).once
@@ -126,7 +133,7 @@ describe RightScale::ApiClient do
 
     it "returns mapped response" do
       flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries",
-          {:audit_entry => {:auditee_href => @instance_href, :summary => "summary"}}, "create_entry", @token, Hash).
+          {:audit_entry => {:auditee_href => @agent_href, :summary => "summary"}}, "create_entry", @token, Hash).
           and_return("/api/audit_entries/111").once
       @client.send(:map_request, "/auditor/create_entry", @payload.merge(:summary => "summary"), @token).should == "111"
     end
@@ -138,21 +145,92 @@ describe RightScale::ApiClient do
       @client.send(:map_response, response, "/audit_entries").should == "111"
     end
 
-    it "converts tag query result to list of tags" do
+    it "converts tag query result to list of tags for resource" do
       response = [
         { "actions" => [],
-          "tags" => [{"name" => "rs_agent_dev:log_level=debug"},
-                     {"name" => "rs_login:state=restricted"},
-                     {"name" => "rs_monitoring:state=active"}],
-          "links" => [{"rel" => "resource", "href"=>"/api/clouds/6/instances/CUPVAL7KUP7TF"}] },
+          "links" =>   [{"rel" => "resource", "href" => "/api/clouds/6/instances/CUPVAL7KUP7TF"}],
+          "tags" =>    [{"name" => "rs_agent_dev:log_level=debug"},
+                        {"name" => "rs_login:state=restricted"},
+                        {"name" => "rs_monitoring:state=active"}] },
         { "actions" => [],
-          "tags" => [{"name" => "server:ready=now"},
-                     {"name" => "rs_agent_dev:log_level=debug"}],
-          "links" => [{"rel"=>"resource", "href"=>"/api/servers/20"}] }]
-      @client.send(:map_response, response, "/tags/by_resource").should == ["rs_agent_dev:log_level=debug",
-                                                                            "rs_login:state=restricted",
-                                                                            "rs_monitoring:state=active",
-                                                                            "server:ready=now"]
+          "links" =>   [{"rel" => "resource", "href" => "/api/servers/20"}],
+          "tags" =>    [{"name" => "server:ready=now"},
+                        {"name" => "rs_agent_dev:log_level=debug"}] } ]
+      @client.send(:map_response, response, "/tags/by_resource").should ==
+          { "/api/clouds/6/instances/CUPVAL7KUP7TF" => { "tags" => ["rs_agent_dev:log_level=debug",
+                                                                    "rs_login:state=restricted",
+                                                                    "rs_monitoring:state=active"] } }
+    end
+  end
+
+  context "query tags" do
+    before(:each) do
+      @action = "query_tags"
+      @options = {}
+      @tags = ["a:b=c"]
+      @hrefs = [@agent_href2]
+      @response = [
+        { "actions" => [],
+          "links" =>   [{"rel" => "resource", "href" => @agent_href}],
+          "tags" =>    [{"name" => "a:b=c"}, {"name" => "x:y=z"}] } ]
+    end
+
+    context :map_query_tags do
+      it "retrieves resource hrefs for specified tags" do
+        params = {:tags => @tags}
+        params2 = params.merge(:match_all => false, :resource_type => "instances")
+        flexmock(@client).should_receive(:query_by_resource).never
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", params2, @action, @token, @options).and_return({}).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {}
+      end
+
+      it "appends retrieved hrefs to any specified resource hrefs" do
+        params = {:tags => @tags, :resource_hrefs => @hrefs}
+        params2 = {:resource_hrefs => [@agent_href2, @agent_href]}
+        flexmock(@client).should_receive(:query_by_tag).with(:post, @tags, @action, @token, @options).and_return([@agent_href]).once
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params2, @action, @token, @options).and_return({}).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {}
+      end
+
+      it "queries for tags for each resource href" do
+        params = {:resource_hrefs => @hrefs}
+        flexmock(@client).should_receive(:query_by_tag).never
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params, @action, @token, @options).and_return(@response).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
+      end
+    end
+
+    context :query_by_tag do
+      before(:each) do
+        @params = {:tags => @tags}
+        @params2 = @params.merge(:match_all => false, :resource_type => "instances")
+      end
+
+      it "queries for tags using specified tags" do
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token, @options).and_return({}).once
+        @client.send(:query_by_tag, :post, @tags, @action, @token, @options).should == []
+      end
+
+      it "maps response" do
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token, @options).and_return(@response).once
+        @client.send(:query_by_tag, :post, @tags, @action, @token, @options).should == [@agent_href]
+      end
+    end
+
+    context :query_by_resource do
+      before(:each) do
+        @params = {:resource_hrefs => @hrefs}
+      end
+
+      it "queries for tags using specified hrefs" do
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token, @options).and_return({}).once
+        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @options).should == {}
+      end
+
+      it "maps response" do
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token, @options).and_return(@response).once
+        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @options).should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
+      end
     end
   end
 
@@ -179,12 +257,20 @@ describe RightScale::ApiClient do
 
     context "for tags" do
       before(:each) do
-        @path, @params, @options = @client.send(:parameterize, "router", "add_tags", @payload.merge(:tags => ["a:b=c", nil, [nil, "x:y=z"]]),
+        tags = ["a:b=c", nil, [nil, "x:y=z"]]
+        @path, @params, @options = @client.send(:parameterize, "router", "add_tags", @payload.merge(:tags => tags),
                                                 "/tags/multi_add")
       end
 
-      it "adds resource hrefs to parameters" do
-        @params[:resource_hrefs].should == [@instance_href]
+      it "adds default resource href to parameters" do
+        @params[:resource_hrefs].should == [@agent_href]
+      end
+
+      it "adds specified resource hrefs to parameters" do
+        hrefs = [@agent_href, @agent_href2]
+        _, @params, _ = @client.send(:parameterize, "router", "query_tags", @payload.merge(:hrefs => hrefs),
+                                     "/tags/by_resource")
+        @params[:resource_hrefs].should == hrefs
       end
 
       it "ensures that tags parameter is properly formed" do
@@ -213,7 +299,7 @@ describe RightScale::ApiClient do
 
     context "create_entry" do
       it "stores instance href" do
-        @client.send(:parameterize_audit, "create_entry", @payload)[:audit_entry][:auditee_href].should == @instance_href
+        @client.send(:parameterize_audit, "create_entry", @payload)[:audit_entry][:auditee_href].should == @agent_href
       end
 
       context "summary" do
@@ -330,7 +416,7 @@ describe RightScale::ApiClient do
   context :enable_use do
     it "makes API request to get links for setting instance href" do
       flexmock(@client).should_receive(:make_request).with(:get, "/sessions/instance", {}, "instance").and_return(@links).once
-      @client.instance_variable_get(:@instance_href).should == @instance_href
+      @client.instance_variable_get(:@href).should == @agent_href
       @client.send(:enable_use).should be_true
     end
   end
