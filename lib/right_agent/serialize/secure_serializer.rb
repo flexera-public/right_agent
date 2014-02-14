@@ -26,6 +26,8 @@ module RightScale
   # X.509 certificate signing
   class SecureSerializer
 
+    include ProtocolVersionMixin
+
     class MissingPrivateKey < Exception; end
     class MissingCertificate < Exception; end
     class InvalidSignature < Exception; end
@@ -90,7 +92,7 @@ module RightScale
     # Exception:: If certificate identity, certificate store, certificate, or private key missing
     def dump(obj, encrypt = nil)
       must_encrypt = encrypt || @encrypt
-      serialize_format = if obj.respond_to?(:send_version) && obj.send_version >= 12
+      serialize_format = if obj.respond_to?(:send_version) && can_handle_msgpack_result?(obj.send_version)
         @serializer.format
       else
         :json

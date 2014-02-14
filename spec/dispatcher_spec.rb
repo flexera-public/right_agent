@@ -218,7 +218,8 @@ describe "RightScale::Dispatcher" do
       flexmock(Time).should_receive(:now).and_return(Time.at(1000000)).by_default
       @log.should_receive(:info).once.with(on {|arg| arg =~ /REJECT EXPIRED/})
       @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
-      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-router-1-1", :expires_at => @now.to_i + 8}, [12, 13])
+      req = RightScale::Request.new('/foo/bar', 'you', {:reply_to => "rs-router-1-1", :expires_at => @now.to_i + 8},
+                                    [version_cannot_handle_non_delivery_result, RightScale::AgentConfig.protocol_version])
       flexmock(Time).should_receive(:now).and_return(@now += 10)
       res = @dispatcher.dispatch(req)
       res.results.error?.should be_true

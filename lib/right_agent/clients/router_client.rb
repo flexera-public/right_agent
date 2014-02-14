@@ -23,6 +23,19 @@
 
 require 'faye/websocket'
 
+# Monkey patch WebSocket close method so that can specify status code and reason
+# Valid status codes are defined in RFC6455 section 7.4.1
+module Faye
+  class WebSocket
+    module API
+      def close(code = nil, reason = nil)
+        @ready_state = CLOSING if @ready_state == OPEN
+        @driver.close(reason, code)
+      end
+    end
+  end
+end
+
 module RightScale
 
   # HTTP interface to RightNet router
@@ -31,17 +44,29 @@ module RightScale
     # RightNet router API version for use in X-API-Version header
     API_VERSION = "2.0"
 
-    # Initial interval between attempts to create a WebSocket
-    WEBSOCKET_CONNECT_INTERVAL = 30
+    # Initial interval between attempts to make a WebSocket connection
+    CONNECT_INTERVAL = 30
 
-    # Backoff factor for WebSocket connect interval
-    WEBSOCKET_BACKOFF_FACTOR = 2
+    # Maximum interval between attempts to make a WebSocket connection
+    MAX_CONNECT_INTERVAL = 60 * 60 * 24
 
-    # Maximum interval between attempts to create a WebSocket
-    MAX_WEBSOCKET_CONNECT_INTERVAL = 60 * 60 * 24
+    # Initial interval between attempts to reconnect or long-poll when router is not responding
+    RECONNECT_INTERVAL = 2
 
-    # Sleep interval after long-polling error before re-polling to give RightNet chance to recover
-    LONG_POLL_ERROR_DELAY = 5
+    # Maximum interval between attempts to reconnect or long-poll when router is not responding
+    MAX_RECONNECT_INTERVAL = 60
+
+    # Interval between checks for lost WebSocket connection
+    CHECK_INTERVAL = 5
+
+    # Backoff factor for connect and reconnect intervals
+    BACKOFF_FACTOR = 2
+
+    # WebSocket close status codes
+    NORMAL_CLOSE = 1000
+    SHUTDOWN_CLOSE = 1001
+    PROTOCOL_ERROR_CLOSE = 1002
+    UNEXPECTED_ERROR_CLOSE = 1011
 
     # Default time to wait for an event or to ping WebSocket
     DEFAULT_LISTEN_TIMEOUT = 60
@@ -163,6 +188,9 @@ module RightScale
       params = {:event => event}
       params[:routing_keys] = routing_keys if routing_keys
       if @websocket
+        path = event[:path] ? " #{event[:path]}" : ""
+        to = routing_keys ? " to #{routing_keys.inspect}" : ""
+        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
         @websocket.send(JSON.dump(params))
       else
         make_request(:post, "/notify", params, "notify", event[:uuid], :filter_params => ["event"])
@@ -179,7 +207,7 @@ module RightScale
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
-    # @return [TrueClass] always true, although normally never returns
+    # @return [TrueClass] always true, although only returns when closing
     #
     # @raise [ArgumentError] block missing
     # @raise [Exceptions::Unauthorized] authorization failed
@@ -191,55 +219,27 @@ module RightScale
     def listen(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      @connect_interval = WEBSOCKET_CONNECT_INTERVAL # instance variable needed for testing
-      last_connect_time = Time.now - @connect_interval
+      @connect_interval = CONNECT_INTERVAL
+      @last_connect_time = Time.now - @connect_interval
+      @reconnect_interval = RECONNECT_INTERVAL
 
-      # Proc for exponentially increasing WebSocket connect attempt interval when failing
-      adjust_interval = lambda do
-        last_connect_time = Time.now
-        @connect_interval = [@connect_interval * WEBSOCKET_BACKOFF_FACTOR, MAX_WEBSOCKET_CONNECT_INTERVAL].min
-      end
-
-      until state == :closing do
-        # Attempt to create a WebSocket if enabled and enough time has elapsed since last attempt
-        # or if WebSocket connection has been lost
-        unless @options[:long_polling_only]
-          if @websocket.nil? && (Time.now - last_connect_time) > @connect_interval
-            begin
-              @stats["reconnects"].update("websocket") unless @websocket
-              @websocket = create_websocket(routing_keys, &handler)
-              [1, 1, 1, 1, 1, @options[:listen_timeout] - 5].each do |t|
-                # Allow for possibility of asynchronous handshake failure resulting in close
-                if @websocket.nil?
-                  adjust_interval.call
-                  break
-                end
-                sleep(t)
-              end
-            rescue Exception => e
-              Log.error("Failed creating WebSocket", e)
-              @stats["exceptions"].track("websocket", e)
-              adjust_interval.call
-            end
-          elsif @websocket
-            @connect_interval = WEBSOCKET_CONNECT_INTERVAL
-            sleep(@options[:listen_timeout])
-          end
+      uuids = nil
+      retries = 0
+      until [:closing, :closed].include?(state) do
+        if @websocket
+          @connect_interval = CONNECT_INTERVAL
+          @reconnect_interval = RECONNECT_INTERVAL
+          sleep(CHECK_INTERVAL)
+          next
+        elsif retry_connect?
+          @last_connect_time = Time.now
+          @close_code = @close_reason = nil
+          @stats["reconnects"].update("websocket") if (retries += 1) > 1
+          next if try_connect(routing_keys, &handler)
         end
 
-        # Resort to long-polling if a WebSocket cannot be created
-        if @websocket.nil?
-          begin
-            long_poll(routing_keys, &handler)
-          rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
-            Log.error("Failed long-polling", e, :no_trace)
-            sleep(LONG_POLL_ERROR_DELAY)
-          rescue Exception => e
-            Log.error("Failed long-polling", e, :trace)
-            @stats["exceptions"].track("long-polling", e)
-            sleep(LONG_POLL_ERROR_DELAY)
-          end
-        end
+        # Resort to long-polling if WebSocket not usable
+        uuids = try_long_poll(routing_keys, uuids, &handler) if @websocket.nil?
       end
       true
     end
@@ -247,10 +247,13 @@ module RightScale
     # Take any actions necessary to quiesce client interaction in preparation
     # for agent termination but allow any active requests to complete
     #
+    # @param [Symbol] scope of close action: :receive for just receive side
+    #   of client, :all for both receive and send side; defaults to :all
+    #
     # @return [TrueClass] always true
-    def close
+    def close(scope = :all)
       super
-      @websocket.close if @websocket
+      @websocket.close(SHUTDOWN_CLOSE, "Agent terminating") if @websocket
     end
 
     # Current statistics for this client
@@ -282,6 +285,58 @@ module RightScale
       true
     end
 
+    # Determine whether should retry creation of WebSocket connection
+    # Should only retry if (1) WebSocket is enabled, (2) there is none currently,
+    # (3) previous closure was for acceptable reasons (normal, router shutdown,
+    # router inaccessible), or (4) enough time has elapsed to make another attempt
+    #
+    # @return [Boolean] true if should try, otherwise false
+    def retry_connect?
+      unless @options[:long_polling_only]
+        if @websocket.nil?
+          if (Time.now - @last_connect_time) > @connect_interval
+            true
+          elsif [NORMAL_CLOSE, SHUTDOWN_CLOSE].include?(@close_code)
+            true
+          elsif router_not_responding?
+            true
+          end
+        end
+      end
+    end
+
+    # Try to create WebSocket connection
+    #
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [Boolean] true if should not try long-polling, otherwise false
+    def try_connect(routing_keys, &handler)
+      begin
+        connect(routing_keys, &handler)
+        CHECK_INTERVAL.times do
+          # Allow for possibility of asynchronous handshake failure resulting in close
+          if @websocket.nil?
+            if router_not_responding?
+              sleep(backoff_reconnect_interval)
+            else
+              backoff_connect_interval
+            end
+            break
+          end
+          sleep(1)
+        end
+        @websocket.nil?
+      rescue Exception => e
+        Log.error("Failed creating WebSocket", e)
+        @stats["exceptions"].track("websocket", e)
+        backoff_connect_interval
+        false
+      end
+    end
+
     # Connect to RightNet router using WebSocket for receiving events
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
@@ -289,20 +344,24 @@ module RightScale
     #
     # @yield [event] required block called when event received
     # @yieldparam [Object] event received
+    # @yieldreturn [Hash, NilClass] event this is response to event received,
+    #   or nil meaning no response
     #
     # @return [Faye::WebSocket] WebSocket created
     #
     # @raise [ArgumentError] block missing
-    def create_websocket(routing_keys, &handler)
+    def connect(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      # TODO figure out how to send routing_keys as parameter to connect
       options = {
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
-      uri = @auth_client.router_url + "/connect"
-      Log.info("Creating WebSocket connection to #{uri}")
-      @websocket = Faye::WebSocket::Client.new(uri, protocols = nil, options)
+      url = URI.parse(@auth_client.router_url)
+      url.scheme = url.scheme == "https" ? "wss" : "ws"
+      url.path = url.path + "/connect"
+      url.query = routing_keys.map { |k| "routing_keys[]=#{CGI.escape(k)}" }.join("&") if routing_keys && routing_keys.any?
+      Log.info("Creating WebSocket connection to #{url.to_s}")
+      @websocket = Faye::WebSocket::Client.new(url.to_s, protocols = nil, options)
 
       @websocket.onerror = lambda do |event|
         Log.error("WebSocket error (#{event.data})") if event.data
@@ -310,6 +369,8 @@ module RightScale
 
       @websocket.onclose = lambda do |event|
         begin
+          @close_code = event.code.to_i
+          @close_reason = event.reason
           msg = "WebSocket closed (#{event.code}"
           msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
           Log.info(msg)
@@ -322,11 +383,17 @@ module RightScale
 
       @websocket.onmessage = lambda do |event|
         begin
+          # Receive event
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
-          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
-          @stats["events"].update(event[:type])
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          @stats["events"].update("#{event[:type]} #{event[:path]}")
+
+          # Acknowledge event
+          @websocket.send(JSON.dump({:ack => event[:uuid]}))
+
+          # Send response, if any
           if (result = handler.call(event))
-            Log.info("Sending #{event[:type]} event <#{event[:uuid]}> to #{event[:from]}")
+            Log.info("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
           end
         rescue Exception => e
@@ -338,36 +405,86 @@ module RightScale
       @websocket
     end
 
+    # Try to make long-polling request to receive events
+    #
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] uuids for events received on previous poll
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [Array, NilClass] UUIDs of events received, or nil if none
+    def try_long_poll(routing_keys, uuids, &handler)
+      result = nil
+      begin
+        result = long_poll(routing_keys, uuids, &handler)
+        @reconnect_interval = RECONNECT_INTERVAL
+      rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
+        Log.error("Failed long-polling", e, :no_trace)
+        sleep(backoff_reconnect_interval)
+      rescue Exception => e
+        Log.error("Failed long-polling", e, :trace)
+        @stats["exceptions"].track("long-polling", e)
+        sleep(backoff_reconnect_interval)
+      end
+      result
+    end
+
     # Make long-polling request to receive one or more events
     # Limit logging unless in debug mode
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
+    # @param [Array, NilClass] ack UUIDs for events received on previous poll
     #
     # @yield [event] required block called for each event received
     # @yieldparam [Object] event received
     #
-    # @return [TrueClass] always true
+    # @return [Array, NilClass] UUIDs of events received, or nil if none
     #
     # @raise [ArgumentError] block missing
-    def long_poll(routing_keys, &handler)
+    def long_poll(routing_keys, ack, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
       params[:routing_keys] = routing_keys if routing_keys
+      params[:ack] = ack if ack && ack.any?
 
+      uuids = []
       if (events = make_request(:get, "/listen", params, "listen", nil, :log_level => :debug,
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
-          Log.info("Received #{event[:type]} event <#{event[:uuid]}> from #{event[:from]}")
-          @stats["events"].update(event[:type])
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          @stats["events"].update("#{event[:type]} #{event[:path]}")
+          uuids << event[:uuid]
           handler.call(event)
         end
       end
-      true
+      uuids if uuids.any?
+    end
+
+    # Exponentially increase WebSocket connect attempt interval after failing to connect
+    #
+    # @return [Integer] new interval
+    def backoff_connect_interval
+      @connect_interval = [@connect_interval * BACKOFF_FACTOR, MAX_CONNECT_INTERVAL].min
+    end
+
+    # Exponentially increase reconnect attempt interval when router not responding
+    #
+    # @return [Integer] new interval
+    def backoff_reconnect_interval
+      @reconnect_interval = [@reconnect_interval * BACKOFF_FACTOR, MAX_RECONNECT_INTERVAL].min
+    end
+
+    # Determine whether WebSocket attempts are failing because router not responding
+    #
+    # @return [Boolean] true if router not responding, otherwise false
+    def router_not_responding?
+      @close_code == PROTOCOL_ERROR_CLOSE && @close_reason =~ /502|503/
     end
 
   end # RouterClient

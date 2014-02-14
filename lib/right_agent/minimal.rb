@@ -39,6 +39,7 @@ end
 # requires are oriented toward that. any additional use cases may require a
 # rethink of minimal loading.
 require ::File.normalize_path('agent_config', RIGHT_AGENT_BASE_DIR)
+require ::File.normalize_path('protocol_version_mixin', RIGHT_AGENT_BASE_DIR)
 require ::File.normalize_path('command', RIGHT_AGENT_BASE_DIR)
 require ::File.normalize_path('log', RIGHT_AGENT_BASE_DIR)
 require ::File.normalize_path('pid_file', RIGHT_AGENT_BASE_DIR)

@@ -26,16 +26,16 @@ module RightScale
   # Abstract base class for authorization client
   class AuthClient
 
-    # State of authorization: :pending, :authorized, :unauthorized, :expired, :failed, :closing
+    # State of authorization: :pending, :authorized, :unauthorized, :expired, :failed, :closed
     attr_reader :state
 
     PERMITTED_STATE_TRANSITIONS = {
-      :pending      => [:pending, :authorized, :unauthorized, :failed, :closing],
-      :authorized   => [:authorized, :unauthorized, :expired, :failed, :closing],
-      :unauthorized => [:authorized, :unauthorized, :failed, :closing],
-      :expired      => [:authorized, :unauthorized, :expired, :failed, :closing],
-      :failed       => [:failed, :closing],
-      :closing      => [:closing] }
+      :pending      => [:pending, :authorized, :unauthorized, :failed, :closed],
+      :authorized   => [:authorized, :unauthorized, :expired, :failed, :closed],
+      :unauthorized => [:authorized, :unauthorized, :failed, :closed],
+      :expired      => [:authorized, :unauthorized, :expired, :failed, :closed],
+      :failed       => [:failed, :closed],
+      :closed      => [:closed] }
 
     # Initialize client
     # Derived classes need to call reset_stats
@@ -137,7 +137,7 @@ module RightScale
     #
     # @return [TrueClass] always true
     def close
-      self.state = :closing
+      self.state = :closed
       true
     end
 
@@ -206,7 +206,7 @@ module RightScale
 
     # Update authorization state
     # If state has changed, make external callbacks to notify of change
-    # Do not update state once set to :closing
+    # Do not update state once set to :closed
     #
     # @param [Hash] value for new state
     #
@@ -214,13 +214,13 @@ module RightScale
     #
     # @raise [ArgumentError] invalid state transition
     def state=(value)
-      return if @state == :closing
+      return if @state == :closed
       unless PERMITTED_STATE_TRANSITIONS[@state].include?(value)
         raise ArgumentError, "Invalid state transition: #{@state.inspect} -> #{value.inspect}"
       end
 
       case value
-      when :pending, :closing
+      when :pending, :closed
         @stats["state"].update(value.to_s)
         @state = value
       when :authorized, :unauthorized, :expired, :failed

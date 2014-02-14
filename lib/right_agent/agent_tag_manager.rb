@@ -44,7 +44,8 @@ module RightScale
     # === Return
     # true:: Always return true
     def tags(options = {})
-      do_query(nil, @agent.identity, options) do |result|
+      # TODO remove use of agent identity when fully drop AMQP
+      do_query(nil, @agent.self_href || @agent.identity, options) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
         else
@@ -78,7 +79,7 @@ module RightScale
     #
     # === Parameters
     # tags(String, Array):: Tag or tags to query or empty
-    # agent_ids(Array):: agent IDs to query or empty or nil
+    # hrefs(Array):: hrefs of resources to query with empty or nil meaning all instances in deployment
     # options(Hash):: Request options
     #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
@@ -87,10 +88,10 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def query_tags_raw(tags, agent_ids = nil, options = {})
+    def query_tags_raw(tags, hrefs = nil, options = {})
       tags = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
       options = options.merge(:raw => true)
-      do_query(tags, agent_ids, options) { |raw_response| yield raw_response }
+      do_query(tags, hrefs, options) { |raw_response| yield raw_response }
     end
 
     # Add given tags to agent
@@ -146,7 +147,7 @@ module RightScale
     #
     # === Parameters
     # tags(Array):: Tags to query or empty or nil
-    # agent_ids(Array):: IDs of agents to query with empty or nil meaning all agents in deployment
+    # hrefs(Array):: hrefs of resources to query with empty or nil meaning all instances in deployment
     # options(Hash):: Request options
     #   :raw(Boolean):: true to yield raw tag response instead of unserialized tags
     #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
@@ -157,8 +158,8 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def do_query(tags = nil, agent_ids = nil, options = {})
-      raw = options[:raw] || false
+    def do_query(tags = nil, hrefs = nil, options = {})
+      raw = options[:raw]
       timeout = options[:timeout]
 
       request_options = {}
@@ -167,7 +168,7 @@ module RightScale
       agent_check
       payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
-      payload[:agent_ids] = ensure_flat_array_value(agent_ids) unless agent_ids.nil? || agent_ids.empty?
+      payload[:hrefs] = ensure_flat_array_value(hrefs) unless hrefs.nil? || hrefs.empty?
       request = RightScale::RetryableRequest.new("/router/query_tags", payload, request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|

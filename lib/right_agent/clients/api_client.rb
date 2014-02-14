@@ -50,12 +50,12 @@ module RightScale
       "/booter/get_decommission_bundle"    => [:get,  "/right_net/booter/get_decommission_bundle"],
       "/booter/get_missing_attributes"     => [:get,  "/right_net/booter/get_missing_attributes"],
       "/booter/get_login_policy"           => [:get,  "/right_net/booter/get_login_policy"],
-      "/forwarder/schedule_right_script"   => [:post, "/right_net/scheduler/schedule_right_script"],
-      "/forwarder/schedule_recipe"         => [:post, "/right_net/scheduler/schedule_recipe"],
+      "/forwarder/schedule_right_script"   => [:post, "/right_net/scheduler/bundle_right_script"],
+      "/forwarder/schedule_recipe"         => [:post, "/right_net/scheduler/bundle_recipe"],
       "/forwarder/shutdown"                => [:post, "/right_net/scheduler/shutdown"],
       "/key_server/retrieve_public_keys"   => [:get,  "/right_net/key_server/retrieve_public_keys"],
       "/router/ping"                       => [:post, "/health-check"],
-      "/router/query_tags"                 => [:post, "/tags/by_resource"],
+      "/router/query_tags"                 => [:post, "/tags/by_tag"],
       "/router/add_tags"                   => [:post, "/tags/multi_add"],
       "/router/delete_tags"                => [:post, "/tags/multi_delete"],
       "/state_recorder/record"             => [:put,  "/right_net/state_recorder/record"],
@@ -67,6 +67,9 @@ module RightScale
 
     # Symbols for audit request parameters whose values are to be hidden when logging
     AUDIT_FILTER_PARAMS = ["detail", "text"]
+
+    # Resource href for this agent
+    attr_reader :self_href
 
     # Create RightApi client of specified type
     #
@@ -181,7 +184,11 @@ module RightScale
       raise ArgumentError, "Unsupported request type: #{type}" if path.nil?
       actor, action = type.split("/")[1..-1]
       path, params, options = parameterize(actor, action, payload, path)
-      map_response(make_request(verb, path, params, action, token, options), path)
+      if action == "query_tags"
+        map_query_tags(verb, params, action, token, options)
+      else
+        map_response(make_request(verb, path, params, action, token, options), path)
+      end
     end
 
     # Convert response from request into required form where necessary
@@ -195,12 +202,72 @@ module RightScale
       when "/audit_entries"
         # Convert returned audit entry href to audit ID
         response.sub!(/^.*\/api\/audit_entries\//, "") if response.is_a?(String)
-      when "/tags/by_resource"
-        # Extract tags array from response array with members of form
-        # {"actions" => [], "tags" => [{"name" => <tag>}, ...], "links" => <links>}
-        response = response.inject([]) { |tags, hash| tags << hash["tags"].map { |t| t["name"] } }.flatten.uniq
+      when "/tags/by_resource", "/tags/by_tag"
+        # Extract tags for each instance resource from response array with members of form
+        # {"actions" => [], "links" => [{"rel" => "resource", "href" => <href>}, ...]}, "tags" => [{"name" => <tag>}, ...]
+        tags = {}
+        if response
+          response.each do |hash|
+            r = {}
+            hash["links"].each { |l| r[l["href"]] = {"tags" => []} if l["href"] =~ /instances/ }
+            hash["tags"].each { |t| r.each_key { |k| r[k]["tags"] << t["name"] } } if r.any?
+            tags.merge!(r)
+          end
+        end
+        response = tags
       end
       response
+    end
+
+    # Convert tag query request into one or more API requests and then convert responses
+    # Currently only retrieving "instances" resources
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [Hash] params for HTTP request
+    # @param [String] action from request type
+    # @param [String, NilClass] token uniquely identifying this request;
+    #   defaults to randomly generated ID
+    # @param [Hash] options augmenting or overriding default options for HTTP request
+    #
+    # @return [Hash] tags retrieved with resource href as key and tags array as value
+    def map_query_tags(verb, params, action, token, options)
+      response = {}
+      hrefs = params[:resource_hrefs] || []
+      hrefs.concat(query_by_tag(verb, params[:tags], action, token, options)) if params[:tags]
+      response = query_by_resource(verb, hrefs, action, token, options) if hrefs.any?
+      response
+    end
+
+    # Query API for resources with specified tags
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [Array] tags that all resources retrieved must have
+    # @param [String] action from request type
+    # @param [String, NilClass] token uniquely identifying this request;
+    #   defaults to randomly generated ID
+    # @param [Hash] options augmenting or overriding default options for HTTP request
+    #
+    # @return [Array] resource hrefs
+    def query_by_tag(verb, tags, action, token, options)
+      path = "/tags/by_tag"
+      params = {:tags => tags, :match_all => false, :resource_type => "instances"}
+      map_response(make_request(verb, path, params, action, token, options), path).keys
+    end
+
+    # Query API for tags associated with a set of resources
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [Array] hrefs for resources whose tags are to be retrieved
+    # @param [String] action from request type
+    # @param [String, NilClass] token uniquely identifying this request;
+    #   defaults to randomly generated ID
+    # @param [Hash] options augmenting or overriding default options for HTTP request
+    #
+    # @return [Hash] tags retrieved with resource href as key and tags array as value
+    def query_by_resource(verb, hrefs, action, token, options)
+      path = "/tags/by_resource"
+      params = {:resource_hrefs => hrefs}
+      map_response(make_request(verb, path, params, action, token, options), path)
     end
 
     # Convert payload to HTTP parameters
@@ -219,7 +286,11 @@ module RightScale
         params = parameterize_audit(action, payload)
         options = {:filter_params => AUDIT_FILTER_PARAMS}
       elsif actor == "router" && action =~ /_tags/
-        params[:resource_hrefs] = [@instance_href]
+        if action != "query_tags"
+          params[:resource_hrefs] = [@self_href]
+        else
+          params[:resource_hrefs] = Array(payload[:hrefs]).flatten.compact if payload[:hrefs]
+        end
         params[:tags] = Array(payload[:tags]).flatten.compact if payload[:tags]
       else
         # Can remove :agent_identity here since now carried in the authorization as the :agent
@@ -243,7 +314,7 @@ module RightScale
       detail = non_blank(payload[:detail])
       case action
       when "create_entry"
-        params[:audit_entry] = {:auditee_href => @instance_href}
+        params[:audit_entry] = {:auditee_href => @self_href}
         params[:audit_entry][:summary] = truncate(summary, MAX_AUDIT_SUMMARY_LENGTH) if summary
         params[:audit_entry][:detail] = detail if detail
         if (user_email = non_blank(payload[:user_email]))
@@ -303,7 +374,7 @@ module RightScale
     # @return [TrueClass] always true
     def enable_use
       result = make_request(:get, "/sessions/instance", {}, "instance")
-      @instance_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
+      @self_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
       true
     end
 

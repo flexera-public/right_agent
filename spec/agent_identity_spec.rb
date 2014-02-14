@@ -70,8 +70,9 @@ describe RightScale::AgentIdentity do
 
   it 'should prefix with nanite to make backward compatible' do
     id = RightScale::AgentIdentity.new('prefix', 'agent_type', 1, 'token')
-    RightScale::AgentIdentity.compatible_serialized(id.to_s, 10).should == "prefix-agent_type-token-1"
-    RightScale::AgentIdentity.compatible_serialized(id.to_s, 9).should == "nanite-prefix-agent_type-token-1"
+    RightScale::AgentIdentity.compatible_serialized(id.to_s, version_can_handle_non_nanite_ids).should == "prefix-agent_type-token-1"
+    RightScale::AgentIdentity.compatible_serialized(id.to_s, version_cannot_handle_non_nanite_ids).should == "nanite-prefix-agent_type-token-1"
+    RightScale::AgentIdentity.compatible_serialized(id.to_s).should == "prefix-agent_type-token-1"
   end
 
 end

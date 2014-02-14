@@ -100,3 +100,31 @@ class RestExceptionMock < RestClient::Exception
     "#{@message}: #{@http_body}"
   end
 end
+
+# Functions for setting version per ProtocolVersionMixin
+def version_cannot_put_version_in_packet; RightScale::Packet::DEFAULT_VERSION end
+def version_can_put_version_in_packet; 12 end
+
+def version_cannot_use_mapper_query_tags; 7 end
+def version_can_use_mapper_query_tags; 8 end
+
+def version_cannot_handle_request_retries; 8 end
+def version_can_handle_request_retries; 9 end
+
+def version_cannot_route_to_response_queue; 9 end
+def version_can_route_to_response_queue; 10 end
+
+def version_cannot_handle_non_nanite_ids; 9 end
+def version_can_handle_non_nanite_ids; 10 end
+
+def version_cannot_handle_multicast_result; 9 end
+def version_can_handle_multicast_result; 10 end
+
+def version_cannot_handle_msgpack_result; 11 end
+def version_can_handle_msgpack_result; 12 end
+
+def version_cannot_handle_non_delivery_result; 12 end
+def version_can_handle_non_delivery_result; 13 end
+
+def version_cannot_handle_http_result; 22 end
+def version_can_handle_http_result; 23 end

@@ -70,13 +70,15 @@ end
 
 # Mock of WebSocket so that can call on methods
 class WebSocketClientMock
-  attr_reader :sent, :closed
+  attr_reader :sent, :closed, :code, :reason
 
   def send(event)
-    @sent = event
+    @sent = @sent.nil? ? event : (@sent.is_a?(Array) ? @sent << event : [@sent, event])
   end
 
-  def close
+  def close(code = nil, reason = nil)
+    @code = code
+    @reason = reason
     @closed = true
   end
 

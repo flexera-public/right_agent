@@ -53,6 +53,9 @@ module RightScale
     # Text used for filtered parameter value
     FILTERED_PARAM_VALUE = "<hidden>"
 
+    # Environment variables to examine for proxy settings, in order
+    PROXY_ENVIRONMENT_VARIABLES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY']
+
     # Create client for making HTTP REST requests
     #
     # @param [Array, String] urls of server being accessed as array or comma-separated string
@@ -80,6 +83,12 @@ module RightScale
           :timeout => HEALTH_CHECK_TIMEOUT }
         check_options[:headers] = {"X-API-Version" => @api_version} if @api_version
         RightSupport::Net::HTTPClient.new.get(uri.to_s, check_options)
+      end
+
+      # Initialize use of proxy if defined
+      if (proxy_var = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
+        proxy = ENV[proxy_var].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[proxy_var]) : URI.parse("http://" + ENV[proxy_var])
+        RestClient.proxy = proxy.to_s if proxy
       end
 
       # Initialize request balancer
@@ -214,7 +223,7 @@ module RightScale
 
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
       completed = "Completed <#{request_uuid}> in #{duration} | #{code} [#{host}#{path}] | #{length} bytes"
-      completed << " | #{result.inspect}" if Log.level == Logger::DEBUG
+      completed << " | #{result.inspect}" if Log.level == :debug
       Log.send(log_level, completed)
 
       result
@@ -285,8 +294,8 @@ module RightScale
     #
     # @return [String] Log text
     def log_text(path, params, filter, host = nil, exception = nil)
-      filtered_params = (exception || Log.level == Logger::DEBUG) ? filter(params, filter).inspect : nil
-      text = filtered_params ? "#{path} (#{filtered_params})" : path
+      filtered_params = (exception || Log.level == :debug) ? filter(params, filter).inspect : nil
+      text = filtered_params ? "#{path} #{filtered_params}" : path
       text = "[#{host}#{text}]" if host
       text << " | #{self.class.exception_text(exception)}" if exception
       text

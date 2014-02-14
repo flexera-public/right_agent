@@ -255,6 +255,13 @@ module RightScale
       @registry.register(actor, prefix)
     end
 
+    # Resource href associated with this agent, if any
+    #
+    # @return [String, NilClass] href or nil if unknown
+    def self_href
+      @client.self_href if @client && @mode == :http
+    end
+
     # Record callback to be notified of agent status changes
     # Multiple callbacks are supported
     #
@@ -631,7 +638,7 @@ module RightScale
     # event(Hash):: Event received
     #
     # === Return
-    # true:: Always return true
+    # nil:: Always return nil indicating no response since handled separately via notify
     def handle_event(event)
       if event.is_a?(Hash)
         if ["Push", "Request"].include?(event[:type])
@@ -652,7 +659,7 @@ module RightScale
       else
         Log.error("Unrecognized event: #{event.class}")
       end
-      true
+      nil
     end
 
     # Convert event hash to packet

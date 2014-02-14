@@ -25,6 +25,8 @@ module RightScale
   # Dispatching of payload to specified actor
   class Dispatcher
 
+    include ProtocolVersionMixin
+
     class InvalidRequestType < Exception; end
     class DuplicateRequest < Exception; end
 
@@ -157,10 +159,10 @@ module RightScale
         @reject_stats.update("expired (#{method})")
         Log.info("REJECT EXPIRED <#{request.token}> from #{request.from} TTL #{RightSupport::Stats.elapsed(now - expires_at)} ago")
         # For agents that do not know about non-delivery, use error result
-        if request.recv_version < 13
-          OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
-        else
+        if can_handle_non_delivery_result?(request.recv_version)
           OperationResult.non_delivery(OperationResult::TTL_EXPIRATION)
+        else
+          OperationResult.error("Could not deliver request (#{OperationResult::TTL_EXPIRATION})")
         end
       end
     end
