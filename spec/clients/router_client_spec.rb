@@ -40,6 +40,7 @@ describe RightScale::RouterClient do
     flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@websocket).by_default
     @auth_header = {"Authorization" => "Bearer <session>"}
     @url = "http://test.com"
+    @ws_url = "ws://test.com"
     @auth_client = AuthClientMock.new(@url, @auth_header, :authorized)
     @routing_keys = nil
     @options = {}
@@ -320,7 +321,16 @@ describe RightScale::RouterClient do
 
       context "when creating connection" do
         it "connects to router" do
-          flexmock(Faye::WebSocket::Client).should_receive(:new).with(@url + "/connect", nil, Hash).and_return(@websocket).once
+          flexmock(Faye::WebSocket::Client).should_receive(:new).with(@ws_url + "/connect", nil, Hash).and_return(@websocket).once
+          @client.send(:connect, @routing_keys) { |_| }
+        end
+
+        it "chooses scheme based on scheme in router URL" do
+          @url = "https://test.com"
+          @ws_url = "wss://test.com"
+          @auth_client = AuthClientMock.new(@url, @auth_header, :authorized)
+          @client = RightScale::RouterClient.new(@auth_client, @options)
+          flexmock(Faye::WebSocket::Client).should_receive(:new).with(@ws_url + "/connect", nil, Hash).and_return(@websocket).once
           @client.send(:connect, @routing_keys) { |_| }
         end
 
@@ -336,7 +346,7 @@ describe RightScale::RouterClient do
         end
 
         it "adds routing keys as query parameters" do
-          url = @url + "/connect" + "?routing_keys[]=a%3Ab%3Dc"
+          url = @ws_url + "/connect" + "?routing_keys[]=a%3Ab%3Dc"
           flexmock(Faye::WebSocket::Client).should_receive(:new).with(url, nil, Hash).and_return(@websocket).once
           @client.send(:connect, ["a:b=c"]) { |_| }
         end
@@ -362,7 +372,7 @@ describe RightScale::RouterClient do
         end
 
         it "logs event" do
-          @log.should_receive(:info).with("Creating WebSocket connection to http://test.com/connect").once.ordered
+          @log.should_receive(:info).with("Creating WebSocket connection to ws://test.com/connect").once.ordered
           @log.should_receive(:info).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once.ordered
           @log.should_receive(:info).with("Sending EVENT <uuid> Push /foo/bar to rs-agent-1-1").once.ordered
           event = nil
@@ -400,7 +410,7 @@ describe RightScale::RouterClient do
 
       context "on close" do
         it "logs info" do
-          @log.should_receive(:info).with("Creating WebSocket connection to http://test.com/connect").once.ordered
+          @log.should_receive(:info).with("Creating WebSocket connection to ws://test.com/connect").once.ordered
           @log.should_receive(:info).with("WebSocket closed (1000)").once.ordered
           @client.send(:connect, @routing_keys) { |_| }
           @websocket.onclose(1000)
@@ -408,14 +418,14 @@ describe RightScale::RouterClient do
         end
 
         it "logged info includes reason if available" do
-          @log.should_receive(:info).with("Creating WebSocket connection to http://test.com/connect").once.ordered
+          @log.should_receive(:info).with("Creating WebSocket connection to ws://test.com/connect").once.ordered
           @log.should_receive(:info).with("WebSocket closed (1001: Going Away)").once.ordered
           @client.send(:connect, @routing_keys) { |_| }
           @websocket.onclose(1001, "Going Away")
         end
 
         it "logs unexpected exceptions" do
-          @log.should_receive(:info).with("Creating WebSocket connection to http://test.com/connect").once.ordered
+          @log.should_receive(:info).with("Creating WebSocket connection to ws://test.com/connect").once.ordered
           @log.should_receive(:info).and_raise(RuntimeError).once.ordered
           @log.should_receive(:error).with("Failed closing WebSocket", RuntimeError, :trace).once
           @client.send(:connect, @routing_keys) { |_| }

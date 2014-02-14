@@ -357,6 +357,7 @@ module RightScale
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
       url = URI.parse(@auth_client.router_url)
+      url.scheme = url.scheme == "https" ? "wss" : "ws"
       url.path = url.path + "/connect"
       url.query = routing_keys.map { |k| "routing_keys[]=#{CGI.escape(k)}" }.join("&") if routing_keys && routing_keys.any?
       Log.info("Creating WebSocket connection to #{url.to_s}")
