@@ -187,8 +187,8 @@ module RightScale
     # Resource href associated with the user of this client
     #
     # @return [String, NilClass] href or nil if unknown
-    def href
-      @api.href if @api
+    def self_href
+      @api.self_href if @api
     end
 
     # Record callback to be notified of status changes

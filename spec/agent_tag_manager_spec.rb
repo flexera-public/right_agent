@@ -32,7 +32,7 @@ describe RightScale::AgentTagManager do
     @identity = "rs-agent-1-1"
     @agent_href = "/api/clouds/1/instances/1"
     @agent_href2 = "/api/clouds/2/instances/2"
-    @agent = flexmock("agent", :href => @agent_href, :identity => @identity)
+    @agent = flexmock("agent", :self_href => @agent_href, :identity => @identity)
     @hrefs = [@agent_href, @agent_href2]
     @manager = RightScale::AgentTagManager.instance
     @manager.agent = @agent

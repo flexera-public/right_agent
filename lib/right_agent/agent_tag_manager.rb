@@ -45,7 +45,7 @@ module RightScale
     # true:: Always return true
     def tags(options = {})
       # TODO remove use of agent identity when fully drop AMQP
-      do_query(nil, @agent.href || @agent.identity, options) do |result|
+      do_query(nil, @agent.self_href || @agent.identity, options) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
         else

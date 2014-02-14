@@ -416,7 +416,7 @@ describe RightScale::ApiClient do
   context :enable_use do
     it "makes API request to get links for setting instance href" do
       flexmock(@client).should_receive(:make_request).with(:get, "/sessions/instance", {}, "instance").and_return(@links).once
-      @client.instance_variable_get(:@href).should == @agent_href
+      @client.instance_variable_get(:@self_href).should == @agent_href
       @client.send(:enable_use).should be_true
     end
   end

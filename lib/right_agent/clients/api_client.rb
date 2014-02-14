@@ -69,7 +69,7 @@ module RightScale
     AUDIT_FILTER_PARAMS = ["detail", "text"]
 
     # Resource href for this agent
-    attr_reader :href
+    attr_reader :self_href
 
     # Create RightApi client of specified type
     #
@@ -287,7 +287,7 @@ module RightScale
         options = {:filter_params => AUDIT_FILTER_PARAMS}
       elsif actor == "router" && action =~ /_tags/
         if action != "query_tags"
-          params[:resource_hrefs] = [@href]
+          params[:resource_hrefs] = [@self_href]
         else
           params[:resource_hrefs] = Array(payload[:hrefs]).flatten.compact if payload[:hrefs]
         end
@@ -314,7 +314,7 @@ module RightScale
       detail = non_blank(payload[:detail])
       case action
       when "create_entry"
-        params[:audit_entry] = {:auditee_href => @href}
+        params[:audit_entry] = {:auditee_href => @self_href}
         params[:audit_entry][:summary] = truncate(summary, MAX_AUDIT_SUMMARY_LENGTH) if summary
         params[:audit_entry][:detail] = detail if detail
         if (user_email = non_blank(payload[:user_email]))
@@ -374,7 +374,7 @@ module RightScale
     # @return [TrueClass] always true
     def enable_use
       result = make_request(:get, "/sessions/instance", {}, "instance")
-      @href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
+      @self_href = result["links"].select { |link| link["rel"] == "self" }.first["href"]
       true
     end
 
