@@ -354,6 +354,7 @@ module RightScale
       raise ArgumentError, "Block missing" unless block_given?
 
       options = {
+        # Limit to .auth_header here (rather than .headers) to keep WebSockets happy
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
       url = URI.parse(@auth_client.router_url)
