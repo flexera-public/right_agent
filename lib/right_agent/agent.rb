@@ -563,7 +563,7 @@ module RightScale
       @agent_type = parsed_identity.agent_type
       @agent_name = @options[:agent_name]
       @request_queue = "request"
-      @request_queue << "_#{@options[:shard_id].to_i}" if @options[:shard_id].to_i != 0
+      @request_queue << "-#{@options[:shard_id].to_i}" if @options[:shard_id].to_i != 0
       @mode = @options[:mode].to_sym
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
       @terminate_callback = TERMINATE_BLOCK
