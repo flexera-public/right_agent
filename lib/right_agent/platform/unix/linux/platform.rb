@@ -184,7 +184,7 @@ module RightScale
 
       # Overrides base Controller#reboot
       def reboot
-        execute('init 6 2>&1')
+        execute('reboot -f 2>&1')
         true
       end
 
