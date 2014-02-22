@@ -1108,7 +1108,11 @@ module RightScale
           request_count, request_age = @sender.terminate
           Log.info("[stop] The following #{request_count} requests initiated as recently as #{request_age} " +
                    "seconds ago are being dropped:\n  " + @sender.dump_requests.join("\n  ")) if request_age
-          @client.close { @terminate_callback.call } unless @mode == :http
+          if @mode == :http
+            @terminate_callback.call
+          else
+            @client.close { @terminate_callback.call }
+          end
         end
 
         if (wait_time = [timeout - (request_age || timeout), 0].max) > 0

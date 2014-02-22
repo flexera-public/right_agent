@@ -155,7 +155,7 @@ describe RightScale::Platform do
 
       context '#reboot' do
         it 'should call init 6 under unix' do
-          platform_class.should_receive(:execute).with('reboot -f 2>&1', {}).and_return('')
+          platform_class.should_receive(:execute).with('init 6 2>&1', {}).and_return('')
           subject.reboot.should be_true
         end
       end # reboot
