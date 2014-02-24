@@ -230,15 +230,16 @@ module RightScale
       true
     end
 
-    # Check health of RightApi
-    # No check is done if HTTP client does not exist
+    # Check health of RightApi directly without applying RequestBalancer
+    # Do not check whether HTTP client exists
     #
     # @return [Symbol] RightApi client state
     def check_health
       begin
         @http_client.check_health
         self.state = :connected
-      rescue BalancedHttpClient::NotResponding
+      rescue BalancedHttpClient::NotResponding => e
+        Log.error("Failed #{@options[:server_name]} health check", e.nested_exception)
         self.state = :disconnected
       rescue Exception => e
         Log.error("Failed #{@options[:server_name]} health check", e)

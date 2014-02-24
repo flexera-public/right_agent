@@ -115,7 +115,15 @@ module RightScale
     end
 
     def check_health(host = nil)
-      @health_check_proc.call(host || @urls.first)
+      begin
+        @health_check_proc.call(host || @urls.first)
+      rescue StandardError => e
+        if e.respond_to?(:http_code) && RETRY_STATUS_CODES.include?(e.http_code)
+          raise NotResponding.new("#{@server_name || host} not responding", e)
+        else
+          raise
+        end
+      end
     end
 
     protected

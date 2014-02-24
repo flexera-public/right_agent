@@ -87,6 +87,13 @@ describe RightScale::BalancedHttpClient do
       @http_client.should_receive(:get).with("http://my1.com/health-check", Hash).once
       @client.check_health("http://my1.com")
     end
+
+    RightScale::BalancedHttpClient::RETRY_STATUS_CODES.each do |code|
+      it "raises NotResponding for #{code}" do
+        @http_client.should_receive(:get).and_raise(RestExceptionMock.new(code))
+        lambda { @client.check_health("http://my1.com") }.should raise_error(RightScale::BalancedHttpClient::NotResponding)
+      end
+    end
   end
 
   context :request do
