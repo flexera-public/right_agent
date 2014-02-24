@@ -194,11 +194,14 @@ module RightScale
     # Do this asynchronously to allow for agents to respond to requests
     # Once all in-memory requests have been flushed, switch off offline mode
     #
+    # === Parameters
+    # again(Boolean):: Whether being called in a loop
+    #
     # === Return
     # true:: Always return true
-    def flush
+    def flush(again = false)
       if @state == :flushing
-        Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless @mode == :initializing
+        Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless again || @mode == :initializing
         if @queue.any?
           r = @queue.shift
           if r[:callback]
@@ -212,7 +215,7 @@ module RightScale
           @mode = :online
           @state = :running
         else
-          EM.next_tick { flush }
+          EM.next_tick { flush(true) }
         end
       end
       true

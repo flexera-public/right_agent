@@ -103,7 +103,9 @@ describe RightScale::BaseRetryClient do
 
     it "sets up for reconnect if not connected" do
       flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).once
-      @http_client.should_receive(:check_health).and_raise(RightScale::BalancedHttpClient::NotResponding, "not responding").once
+      e = RightScale::BalancedHttpClient::NotResponding.new(nil, RestExceptionMock.new(503))
+      @http_client.should_receive(:check_health).and_raise(e)
+      @log.should_receive(:error)
       flexmock(@client).should_receive(:enable_use).never
       flexmock(@client).should_receive(:reconnect).once
       @client.init(:test, @auth_client, @options).should be_false
@@ -274,8 +276,10 @@ describe RightScale::BaseRetryClient do
       @client.send(:check_health).should == :connected
     end
 
-    it "sets state to :disconnected if server not responding" do
-      @http_client.should_receive(:check_health).and_raise(RightScale::BalancedHttpClient::NotResponding, "out of service").once
+    it "sets state to :disconnected and logs if server not responding" do
+      e = RightScale::BalancedHttpClient::NotResponding.new("not responding", RestExceptionMock.new(503))
+      @http_client.should_receive(:check_health).and_raise(e).once
+      @log.should_receive(:error).with("Failed test health check", RestExceptionMock).once
       @client.send(:check_health).should == :disconnected
       @client.state.should == :disconnected
     end

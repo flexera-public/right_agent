@@ -399,6 +399,28 @@ module RightScale
       res
     end
 
+    # Update agent's persisted configuration
+    # Note that @options are frozen and therefore not updated
+    #
+    # === Parameters
+    # opts(Hash):: Options being updated
+    #
+    # === Return
+    # (Boolean):: true if successful, otherwise false
+    def update_configuration(opts)
+      if (cfg = AgentConfig.load_cfg(@agent_name))
+        opts.each { |k, v| cfg[k] = v }
+        AgentConfig.store_cfg(@agent_name, cfg)
+        true
+      else
+        Log.error("Could not access configuration file #{AgentConfig.cfg_file(@agent_name).inspect} for update")
+        false
+      end
+    rescue Exception => e
+      Log.error("Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e, :trace)
+      false
+    end
+
     # Gracefully terminate execution by allowing unfinished tasks to complete
     # Immediately terminate if called a second time
     # Report reason for termination if it is abnormal
@@ -574,28 +596,6 @@ module RightScale
       @history = History.new(@identity)
     end
 
-    # Update agent's persisted configuration
-    # Note that @options are frozen and therefore not updated
-    #
-    # === Parameters
-    # opts(Hash):: Options being updated
-    #
-    # === Return
-    # (Boolean):: true if successful, otherwise false
-    def update_configuration(opts)
-      if (cfg = AgentConfig.load_cfg(@agent_name))
-        opts.each { |k, v| cfg[k] = v }
-        AgentConfig.store_cfg(@agent_name, cfg)
-        true
-      else
-        Log.error("Could not access configuration file #{AgentConfig.cfg_file(@agent_name).inspect} for update")
-        false
-      end
-    rescue Exception => e
-      Log.error("Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e, :trace)
-      false
-    end
-
     # Start service
     #
     # === Return
@@ -676,7 +676,7 @@ module RightScale
         packet = RightScale::Push.new(event[:path], event[:data], {:from => event[:from], :token => event[:uuid]})
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
       when "Request"
-        options = {:from => event[:from], :token => event[:uuid], :reply_to => event[:reply_to]}
+        options = {:from => event[:from], :token => event[:uuid], :reply_to => event[:reply_to], :tries => event[:tries]}
         packet = RightScale::Request.new(event[:path], event[:data], options)
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
       end

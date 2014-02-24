@@ -115,7 +115,15 @@ module RightScale
     end
 
     def check_health(host = nil)
-      @health_check_proc.call(host || @urls.first)
+      begin
+        @health_check_proc.call(host || @urls.first)
+      rescue StandardError => e
+        if e.respond_to?(:http_code) && RETRY_STATUS_CODES.include?(e.http_code)
+          raise NotResponding.new("#{@server_name || host} not responding", e)
+        else
+          raise
+        end
+      end
     end
 
     protected
@@ -160,6 +168,7 @@ module RightScale
             :accept => "application/json" } }
         request_options[:headers]["X-API-Version"] = @api_version if @api_version
         request_options[:headers].merge!(options[:headers]) if options[:headers]
+        request_options[:headers]["X-DEBUG"] = true if Log.level == :debug
 
         if [:get, :delete].include?(verb)
           request_options[:query] = params if params.is_a?(Hash) && params.any?
