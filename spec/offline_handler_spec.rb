@@ -258,6 +258,10 @@ describe RightScale::OfflineHandler do
         @sender.should_receive(:send_push).with(@type, @payload, @target).once.ordered
         @sender.should_receive(:send_request).with(@type, @payload, @target, Proc).and_yield("result").once.ordered
         flexmock(EM).should_receive(:add_timer).and_yield.once
+        log = flexmock(RightScale::Log)
+        log.should_receive(:info).with(/Connection to RightNet re-established/).once.ordered
+        log.should_receive(:info).with(/Starting to flush request queue/).once.ordered
+        log.should_receive(:info).with(/Request queue flushed/).once.ordered
         @handler.disable.should be_true
       end
 
