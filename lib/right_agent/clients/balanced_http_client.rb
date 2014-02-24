@@ -160,6 +160,7 @@ module RightScale
             :accept => "application/json" } }
         request_options[:headers]["X-API-Version"] = @api_version if @api_version
         request_options[:headers].merge!(options[:headers]) if options[:headers]
+        request_options[:headers]["X-DEBUG"] = true if Log.level == :debug
 
         if [:get, :delete].include?(verb)
           request_options[:query] = params if params.is_a?(Hash) && params.any?
