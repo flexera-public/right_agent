@@ -54,7 +54,7 @@ module RightScale
       "/forwarder/schedule_recipe"         => [:post, "/right_net/scheduler/bundle_recipe"],
       "/forwarder/shutdown"                => [:post, "/right_net/scheduler/shutdown"],
       "/key_server/retrieve_public_keys"   => [:get,  "/right_net/key_server/retrieve_public_keys"],
-      "/router/ping"                       => [:post, "/health-check"],
+      "/router/ping"                       => [:get,  "/health-check"],
       "/router/query_tags"                 => [:post, "/tags/by_tag"],
       "/router/add_tags"                   => [:post, "/tags/multi_add"],
       "/router/delete_tags"                => [:post, "/tags/multi_delete"],
