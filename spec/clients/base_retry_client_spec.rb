@@ -133,6 +133,16 @@ describe RightScale::BaseRetryClient do
     end
   end
 
+  context :communicated do
+    it "stores callback" do
+      callback = lambda { |_, _| }
+      @client.instance_variable_get(:@communicated_callbacks).size.should == 0
+      @client.communicated(&callback)
+      @client.instance_variable_get(:@communicated_callbacks).size.should == 1
+      @client.instance_variable_get(:@communicated_callbacks)[0].should == callback
+    end
+  end
+
   context :close do
     it "sets state to :closed by default" do
       @client.close
@@ -419,6 +429,14 @@ describe RightScale::BaseRetryClient do
     it "makes request using HTTP client" do
       @http_client.should_receive(:get).with(@path, @params, Hash).once
       @client.send(:make_request, :get, @path, @params)
+    end
+
+    it "makes communicated callbacks" do
+      @http_client.should_receive(:get).once
+      called = 0
+      @client.communicated { called += 1 }
+      @client.send(:make_request, :get, @path, @params)
+      called.should == 1
     end
 
     context "when exception" do
