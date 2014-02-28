@@ -88,6 +88,7 @@ module RightScale
       @auth_client = auth_client
       @http_client = nil
       @status_callbacks = []
+      @communicated_callbacks = []
       @options = options.dup
       @options[:server_name] ||= type.to_s
       @options[:open_timeout] ||= DEFAULT_OPEN_TIMEOUT
@@ -113,6 +114,17 @@ module RightScale
     def status(&callback)
       @status_callbacks << callback if callback
       state
+    end
+
+    # Set callback for each successful communication excluding health checks
+    # Multiple callbacks are supported
+    #
+    # @yield [] required block executed after successful communication
+    #
+    # @return [TrueClass] always true
+    def communicated(&callback)
+      @communicated_callbacks << callback if callback
+      true
     end
 
     # Take any actions necessary to quiesce client interaction in preparation
@@ -338,6 +350,7 @@ module RightScale
           request_uuid ? retry : raise
         end
       end
+      @communicated_callbacks.each { |callback| callback.call }
       result
     end
 

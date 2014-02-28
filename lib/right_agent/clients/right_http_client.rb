@@ -207,6 +207,22 @@ module RightScale
       @status
     end
 
+    # Set callback for each successful communication excluding health checks
+    #
+    # @param [Symbol] type of server: :api or :router; defaults to all
+    #
+    # @yield [] required block executed after successful communication
+    #
+    # @return [TrueClass] always true
+    #
+    # @raise [RuntimeError] init was not called
+    def communicated(type = nil, &callback)
+      raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
+      @api.communicated(&callback) if @api && [nil, :api].include?(type)
+      @router.communicated(&callback) if @router && [nil, :router].include?(type)
+      true
+    end
+
     # Take any actions necessary to quiesce client interaction in preparation
     # for agent termination but allow any active requests to complete
     # Only router and api clients are closed, not auth client
