@@ -209,17 +209,18 @@ module RightScale
 
     # Set callback for each successful communication excluding health checks
     #
-    # @param [Symbol] type of server: :api or :router; defaults to all
+    # @param [Array] types of server: :auth, :api, or :router; defaults to all
     #
     # @yield [] required block executed after successful communication
     #
     # @return [TrueClass] always true
     #
     # @raise [RuntimeError] init was not called
-    def communicated(type = nil, &callback)
+    def communicated(types = [], &callback)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @api.communicated(&callback) if @api && [nil, :api].include?(type)
-      @router.communicated(&callback) if @router && [nil, :router].include?(type)
+      @auth.communicated(&callback) if types.empty? || types.include?(:auth)
+      @api.communicated(&callback) if @api && (types.empty? || types.include?(:api))
+      @router.communicated(&callback) if @router && (types.empty? || types.include?(:router))
       true
     end
 

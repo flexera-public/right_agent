@@ -397,6 +397,7 @@ module RightScale
             Log.info("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
           end
+          @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
         rescue Exception => e
           Log.error("Failed handling WebSocket event", e, :trace)
           @stats["exceptions"].track("event", e)
@@ -420,6 +421,7 @@ module RightScale
       begin
         result = long_poll(routing_keys, uuids, &handler)
         @reconnect_interval = RECONNECT_INTERVAL
+        @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
       rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
         Log.error("Failed long-polling", e, :no_trace)
         sleep(backoff_reconnect_interval)
