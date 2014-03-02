@@ -495,7 +495,7 @@ module RightScale
       if @mode == :http
         stats.merge!(@client.stats(reset))
       else
-        stats["broker"] = @client.stats(reset)
+        stats["brokers"] = @client.stats(reset)
       end
       result = OperationResult.success(stats)
       @last_stat_reset_time = now if reset
