@@ -89,7 +89,7 @@ module RightScale
     # === Return
     # true:: Always return true
     def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
-      unless @terminating || @ping_timer || (id && !@sender.client.connected?(id))
+      unless @terminating || @ping_timer || (id && !@sender.agent.client.connected?(id))
         @ping_id = id
         @ping_timer = EM::Timer.new(PING_TIMEOUT) do
           if @ping_id
