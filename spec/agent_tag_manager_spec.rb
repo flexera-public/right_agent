@@ -32,7 +32,7 @@ describe RightScale::AgentTagManager do
     @identity = "rs-agent-1-1"
     @agent_href = "/api/clouds/1/instances/1"
     @agent_href2 = "/api/clouds/2/instances/2"
-    @agent = flexmock("agent", :self_href => @agent_href, :identity => @identity)
+    @agent = flexmock("agent", :self_href => @agent_href, :identity => @identity, :mode => :http).by_default
     @hrefs = [@agent_href, @agent_href2]
     @manager = RightScale::AgentTagManager.instance
     @manager.agent = @agent
@@ -55,6 +55,15 @@ describe RightScale::AgentTagManager do
     end
 
     it "retrieves current agent tags" do
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => [@tag]}}).once
+      @manager.tags { |r| @result = r }
+      @result.should == [@tag]
+    end
+
+    it "retrieves current agent tags using agent ID if not in :http mode" do
+      @agent.should_receive(:mode).and_return(:amqp)
+      @retryable_request.should_receive(:new).with("/router/query_tags",
+          {:agent_identity => @identity, :agent_ids => [@identity]}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield({@agent_href => {"tags" => [@tag]}}).once
       @manager.tags { |r| @result = r }
       @result.should == [@tag]

@@ -88,7 +88,6 @@ module RightScale
       @auth_client = auth_client
       @http_client = nil
       @status_callbacks = []
-      @communicated_callbacks = []
       @options = options.dup
       @options[:server_name] ||= type.to_s
       @options[:open_timeout] ||= DEFAULT_OPEN_TIMEOUT
@@ -122,8 +121,12 @@ module RightScale
     # @yield [] required block executed after successful communication
     #
     # @return [TrueClass] always true
+    #
+    # @raise [ArgumentError] block missing
     def communicated(&callback)
-      @communicated_callbacks << callback if callback
+      raise ArgumentError, "Block missing" unless callback
+      @communicated_callbacks ||= []
+      @communicated_callbacks << callback
       true
     end
 
@@ -350,7 +353,7 @@ module RightScale
           request_uuid ? retry : raise
         end
       end
-      @communicated_callbacks.each { |callback| callback.call }
+      @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
       result
     end
 

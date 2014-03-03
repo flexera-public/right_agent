@@ -154,6 +154,21 @@ module RightScale
       state
     end
 
+    # Set callback for each successful communication excluding health checks
+    # Multiple callbacks are supported
+    #
+    # @yield [] required block executed after successful communication
+    #
+    # @return [TrueClass] always true
+    #
+    # @raise [ArgumentError] block missing
+    def communicated(&callback)
+      raise ArgumentError, "Block missing" unless callback
+      @communicated_callbacks ||= []
+      @communicated_callbacks << callback
+      true
+    end
+
     # Current statistics for this client
     #
     # @param [Boolean] reset the statistics after getting the current ones

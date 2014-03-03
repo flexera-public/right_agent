@@ -11,9 +11,7 @@ gem 'right_support',
     :git => 'git@github.com:rightscale/right_support.git',
     :branch => 'master'
 
-gem 'rest-client',
-    :git => 'git@github.com:duncan-bayne/rest-client.git',
-    :branch => 'feature-keep-alive'
+gem 'rest-client', '~> 1.7.0.1'
 
 gem "simple_uuid", "~> 0.2"
 
@@ -25,7 +23,7 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '~> 1.0.0.5'
+gem 'eventmachine', '~> 1.0.0.6'
 
 group :windows do
   platform :mswin do

@@ -45,7 +45,7 @@ module RightScale
     # true:: Always return true
     def tags(options = {})
       # TODO remove use of agent identity when fully drop AMQP
-      do_query(nil, @agent.self_href || @agent.identity, options) do |result|
+      do_query(nil, @agent.mode == :http ? @agent.self_href : @agent.identity, options) do |result|
         if result.kind_of?(Hash)
           yield(result.size == 1 ? result.values.first['tags'] : [])
         else
@@ -168,7 +168,12 @@ module RightScale
       agent_check
       payload = {:agent_identity => @agent.identity}
       payload[:tags] = ensure_flat_array_value(tags) unless tags.nil? || tags.empty?
-      payload[:hrefs] = ensure_flat_array_value(hrefs) unless hrefs.nil? || hrefs.empty?
+      # TODO remove use of agent identity when fully drop AMQP
+      if @agent.mode == :http
+        payload[:hrefs] = ensure_flat_array_value(hrefs) unless hrefs.nil? || hrefs.empty?
+      else
+        payload[:agent_ids] = ensure_flat_array_value(hrefs) unless hrefs.nil? || hrefs.empty?
+      end
       request = RightScale::RetryableRequest.new("/router/query_tags", payload, request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|

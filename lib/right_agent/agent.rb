@@ -193,11 +193,7 @@ module RightScale
       @history.update("start")
       now = Time.now
       Log.info("[start] Agent #{@identity} starting; time: #{now.utc}; utc_offset: #{now.utc_offset}")
-      Log.debug("Start options:")
-      log_opts = @options.inject([]) do |t, (k, v)|
-        t << "-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}"
-      end
-      log_opts.each { |l| Log.debug(l) }
+      @options.each { |k, v| Log.info("-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}") }
 
       begin
         # Capture process id in file after optional daemonize
@@ -495,7 +491,7 @@ module RightScale
       if @mode == :http
         stats.merge!(@client.stats(reset))
       else
-        stats["broker"] = @client.stats(reset)
+        stats["brokers"] = @client.stats(reset)
       end
       result = OperationResult.success(stats)
       @last_stat_reset_time = now if reset
@@ -529,7 +525,7 @@ module RightScale
         "request failures"  => @request_failure_stats.all,
         "response failures" => @response_failure_stats.all
       }
-      unless @mode == :http
+      if @mode != :http
         stats["connect requests"] = @connect_request_stats.all
         stats["non-deliveries"] = @non_delivery_stats.all
       end
@@ -610,7 +606,7 @@ module RightScale
         load_actors
         setup_traps
         setup_status
-        unless @mode == :http
+        if @mode != :http
           setup_non_delivery
           setup_queues
         end
@@ -731,7 +727,7 @@ module RightScale
         Dir["#{dir}/*.rb"].each do |file|
           actor = File.basename(file, ".rb")
           next if actors && !actors.include?(actor)
-          Log.info("[setup] loading actor #{file}")
+          Log.info("[setup] Loading actor #{file}")
           require file
           actors.delete(actor)
         end
@@ -740,7 +736,7 @@ module RightScale
 
       # Perform agent-specific initialization including actor creation and registration
       if (init_file = AgentConfig.init_file)
-        Log.info("[setup] initializing agent from #{init_file}")
+        Log.info("[setup] Initializing agent from #{init_file}")
         instance_eval(File.read(init_file), init_file)
       else
         Log.error("No agent init.rb file found in init directory of #{AgentConfig.root_dir.inspect}")
@@ -794,12 +790,14 @@ module RightScale
     # true:: Always return true
     def setup_status
       @status = {}
-      if @mode == :http
-        @status = @client.status { |type, state| update_status(type, state) }.dup
-      else
-        @client.connection_status { |state| update_status(:broker, state) }
-        @status[:broker] = :connected
-        @status[:auth] = @auth_client.status { |type, state| update_status(type, state) } if @auth_client
+      if @client
+        if @mode == :http
+          @status = @client.status { |type, state| update_status(type, state) }.dup
+        else
+          @client.connection_status { |state| update_status(:broker, state) }
+          @status[:broker] = :connected
+          @status[:auth] = @auth_client.status { |type, state| update_status(type, state) } if @auth_client
+        end
       end
       true
     end
@@ -976,7 +974,7 @@ module RightScale
     # true:: Always return true
     def setup_status_checks(interval)
       @check_status_count = 0
-      @check_status_brokers = @client.all unless @mode == :http
+      @check_status_brokers = @client.all if @mode != :http
       @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
       true
     end

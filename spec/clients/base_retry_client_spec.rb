@@ -136,11 +136,15 @@ describe RightScale::BaseRetryClient do
   context :communicated do
     it "stores callback" do
       callback = lambda { |_, _| }
-      @client.instance_variable_get(:@communicated_callbacks).size.should == 0
+      @client.instance_variable_get(:@communicated_callbacks).should be_nil
       @client.communicated(&callback)
       @client.instance_variable_get(:@communicated_callbacks).size.should == 1
       @client.instance_variable_get(:@communicated_callbacks)[0].should == callback
     end
+
+    it "requires callback block" do
+      lambda { @client.communicated }.should raise_error(ArgumentError, "Block missing")
+     end
   end
 
   context :close do
