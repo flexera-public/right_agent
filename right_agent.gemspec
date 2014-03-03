@@ -40,7 +40,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency('right_support', ['>= 2.4.1', '< 3.0'])
   spec.add_dependency('right_amqp', '~> 0.7')
-  spec.add_dependency('rest-client', '1.7.0.alpha')
+  spec.add_dependency('rest-client', '1.7.0.1')
   spec.add_dependency('faye-websocket', '0.7.0')
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('net-ssh', '~> 2.0')
