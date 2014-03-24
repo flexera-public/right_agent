@@ -35,7 +35,7 @@ module RightScale
     # Default maximum number of consecutive ping timeouts before attempt to reconnect
     MAX_PING_TIMEOUTS = 3
 
-    # (EM::Timer) Timer while waiting for RightNet router ping response
+    # Timer while waiting for RightNet router ping response
     attr_accessor :ping_timer
 
     def initialize(sender, check_interval, ping_stats, exception_stats)
@@ -91,7 +91,7 @@ module RightScale
     def check(id = nil, max_ping_timeouts = MAX_PING_TIMEOUTS)
       unless @terminating || @ping_timer || (id && !@sender.agent.client.connected?(id))
         @ping_id = id
-        @ping_timer = EM::Timer.new(PING_TIMEOUT) do
+        @ping_timer = EM_S.add_timer(PING_TIMEOUT) do
           if @ping_id
             begin
               @ping_stats.update("timeout")

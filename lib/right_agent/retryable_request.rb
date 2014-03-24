@@ -107,7 +107,7 @@ module RightScale
     def run
       Sender.instance.send_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
       if @cancel_timer.nil? && @timeout > 0
-        @cancel_timer = EM::Timer.new(@timeout) do
+        @cancel_timer = EM.add_timer(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
           Log.info(msg)
           cancel(msg)
@@ -175,9 +175,9 @@ module RightScale
               @retry_delay_count = [@retry_delay_count / RETRY_BACKOFF_FACTOR, 1].max
               @retries = 0
             end
-            EM.add_timer(this_delay) { run }
+            EM_S.add_timer(this_delay) { run }
           else
-            EM.next_tick { run }
+            EM_S.next_tick { run }
           end
         else
           cancel(res.content)

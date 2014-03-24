@@ -287,7 +287,7 @@ module RightScale
     def dispatch(action, agent_name)
       # Setup the environment from config if necessary
       begin
-        eval("#{action}_agent(agent_name)")
+        send("#{action}_agent", agent_name)
       rescue SystemExit
         true
       rescue SignalException
@@ -332,6 +332,12 @@ module RightScale
     def start_agent(agent_name, agent_class = Agent)
       puts "#{human_readable_name} being started"
 
+      if @options[:fiber_pool_size]
+        require 'fiber_pool'
+        @options[:fiber_pool] = FiberPool.new(@options[:fiber_pool_size])
+        EM.fiber_pool = @options[:fiber_pool]
+      end
+
       EM.error_handler do |e|
         Log.error("EM block execution failed with exception", e, :trace)
         Log.error("\n\n===== Exiting due to EM block exception =====\n\n")
@@ -339,7 +345,7 @@ module RightScale
         exit(1)
       end
 
-      EM.run do
+      EM_S.run do
         begin
           @@agent = agent_class.start(@options)
         rescue SystemExit
@@ -364,9 +370,9 @@ module RightScale
     # (Boolean):: true if process was stopped, otherwise false
     def stop_agent(agent_name)
       res = false
-      if pid_file = AgentConfig.pid_file(agent_name)
+      if (pid_file = AgentConfig.pid_file(agent_name))
         name = human_readable_name(agent_name, pid_file.identity)
-        if pid = pid_file.read_pid[:pid]
+        if (pid = pid_file.read_pid[:pid])
           begin
             Process.kill('TERM', pid)
             res = true
@@ -405,7 +411,7 @@ module RightScale
         else
           puts "#{name} is not running but has a stale pid file at #{pid_file}"
         end
-      elsif identity = AgentConfig.agent_options(agent_name)[:identity]
+      elsif (identity = AgentConfig.agent_options(agent_name)[:identity])
         puts "#{human_readable_name(agent_name, identity)} is not running"
       end
       res
@@ -469,7 +475,7 @@ module RightScale
     def configure_agent(action, options)
       agent_type = options[:agent_type]
       agent_name = options[:agent_name]
-      if agent_name != agent_type && cfg = AgentConfig.load_cfg(agent_type)
+      if agent_name != agent_type && (cfg = AgentConfig.load_cfg(agent_type))
         base_id = (options[:base_id] || AgentIdentity.parse(cfg[:identity]).base_id.to_s).to_i
         unless (identity = AgentConfig.agent_options(agent_name)[:identity]) &&
                AgentIdentity.parse(identity).base_id == base_id

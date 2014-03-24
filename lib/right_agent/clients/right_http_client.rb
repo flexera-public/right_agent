@@ -46,6 +46,8 @@ module RightScale
     # @option options [Numeric] :retry_timeout maximum before stop retrying
     # @option options [Array] :retry_intervals between successive retries
     # @option options [Boolean] :retry_enabled for requests that fail to connect or that return a retry result
+    # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
+    #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Boolean] :long_polling_only never attempt to create a WebSocket, always long-polling instead
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging
