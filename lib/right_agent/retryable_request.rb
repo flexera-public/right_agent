@@ -88,7 +88,7 @@ module RightScale
     def initialize(operation, payload, options = {})
       raise ArgumentError.new("operation is required") unless (@operation = operation)
       raise ArgumentError.new("payload is required") unless (@payload = payload)
-      @retry_on_error = options[:retry_on_error] || false
+      @retry_on_error = options[:retry_on_error]
       @timeout = options[:timeout] || DEFAULT_TIMEOUT
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
       @retry_delay_count = options[:retry_delay_count] || DEFAULT_RETRY_DELAY_COUNT
@@ -107,7 +107,7 @@ module RightScale
     def run
       Sender.instance.send_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
       if @cancel_timer.nil? && @timeout > 0
-        @cancel_timer = EM.add_timer(@timeout) do
+        @cancel_timer = EM::Timer.new(@timeout) do
           msg = "Request #{@operation} timed out after #{@timeout} seconds"
           Log.info(msg)
           cancel(msg)

@@ -247,7 +247,7 @@ module RightScale
     # true:: Always return true
     def start_timer
       if @restart_vote && @state != :terminating
-        @restart_vote_timer ||= EM.add_timer(RESTART_VOTE_DELAY) { vote_to_restart(timer_trigger = true) }
+        @restart_vote_timer ||= EM::Timer.new(RESTART_VOTE_DELAY) { vote_to_restart(timer_trigger = true) }
       end
       true
     end

@@ -147,7 +147,7 @@ describe RightScale::OfflineHandler do
     it "starts restart vote timer when after going into offline mode" do
       @handler.init
       @handler.start
-      flexmock(EM).should_receive(:add_timer).once
+      flexmock(EM::Timer).should_receive(:new).once
       @handler.enable.should be_true
     end
 
@@ -310,14 +310,14 @@ describe RightScale::OfflineHandler do
   context :start_timer do
     it "starts a re-vote timer" do
       timer = flexmock("timer")
-      flexmock(EM).should_receive(:add_timer).and_return(timer).once
+      flexmock(EM::Timer).should_receive(:new).and_return(timer).once
       @handler.send(:start_timer).should be_true
       @handler.instance_variable_get(:@restart_vote_timer).should == timer
     end
 
     it "does nothing if there is not restart vote callback or if terminating" do
       @handler = RightScale::OfflineHandler.new(restart_callback = nil, @offline_stats)
-      flexmock(EM).should_receive(:add_timer).never
+      flexmock(EM::Timer).should_receive(:new).never
       @handler.send(:start_timer).should be_true
     end
   end
@@ -326,7 +326,7 @@ describe RightScale::OfflineHandler do
     it "cancels restart vote timer and resets the vote count" do
       timer = flexmock("timer")
       timer.should_receive(:cancel).once
-      flexmock(EM).should_receive(:add_timer).and_return(timer)
+      flexmock(EM::Timer).should_receive(:new).and_return(timer)
       @handler.send(:start_timer)
       @handler.send(:cancel_timer).should be_true
       @handler.instance_variable_get(:@restart_vote_timer).should be_nil

@@ -224,7 +224,7 @@ describe RightScale::RetryableRequest do
                                                     :retry_delay_count => retry_delay_count)
         flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
             and_yield(RightScale::OperationResult.retry('test')).twice
-        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).twice
+        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.once
         flexmock(EM).should_receive(:add_timer).with(retry_delay * backoff_factor, Proc).once
         flexmock(EM).should_receive(:next_tick).never
@@ -241,7 +241,7 @@ describe RightScale::RetryableRequest do
                                                     :max_retry_delay => max_retry_delay)
         flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
             and_yield(RightScale::OperationResult.retry('test')).times(4)
-        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).times(4)
+        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.twice
         flexmock(EM).should_receive(:add_timer).with(retry_delay * backoff_factor, Proc).and_yield.once
         flexmock(EM).should_receive(:add_timer).with(max_retry_delay, Proc).once
@@ -262,7 +262,7 @@ describe RightScale::RetryableRequest do
                                                     :max_retry_delay => max_retry_delay)
         flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
             and_yield(RightScale::OperationResult.retry('test')).times(3)
-        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).times(3)
+        flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.once
         flexmock(EM).should_receive(:add_timer).with(retry_delay * backoff_factor, Proc).and_yield.once
         flexmock(EM).should_receive(:add_timer).with(max_retry_delay, Proc).once
