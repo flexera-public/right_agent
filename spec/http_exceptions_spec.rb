@@ -62,7 +62,7 @@ end # RightScale::HttpException
 describe RightScale::HttpExceptions do
 
   before(:each) do
-    @response = RightScale::Response.new({:location => "here"})
+    @header = {:location => "here"}
   end
 
   it "initializes list of standard HTTP exceptions" do
@@ -72,21 +72,27 @@ describe RightScale::HttpExceptions do
 
   context :create do
     it "creates instance of standard exception" do
-      e = RightScale::HttpExceptions.create(500, "failed", @response)
+      e = RightScale::HttpExceptions.create(500, "failed")
       e.class.should == RightScale::HttpExceptions::InternalServerError
+      e.response.headers.should == {}
     end
 
     it "creates exception whose message is the generic description" do
-      e = RightScale::HttpExceptions.create(500, "failed", @response)
+      e = RightScale::HttpExceptions.create(500, "failed")
       e.message.should == "500 Internal Server Error"
       e.inspect.should == "500 Internal Server Error: failed"
     end
 
     it "creates RequestFailed exception if the HTTP code is not recognized" do
-      e = RightScale::HttpExceptions.create(999, "failed", @response)
+      e = RightScale::HttpExceptions.create(999, "failed")
       e.class.should == RightScale::HttpExceptions::RequestFailed
       e.message.should == "HTTP status code 999"
       e.inspect.should == "HTTP status code 999: failed"
+    end
+
+    it "puts header into a Response and stores in exception" do
+      e = RightScale::HttpExceptions.create(500, "failed", @header)
+      e.response.headers.should == {:location => "here"}
     end
   end
 

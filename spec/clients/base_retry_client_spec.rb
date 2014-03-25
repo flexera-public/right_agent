@@ -542,7 +542,7 @@ describe RightScale::BaseRetryClient do
     context :handle_redirect do
       it "initiates redirect by notifying auth client and raising retryable error" do
         location = "http://somewhere.com"
-        e = RightScale::HttpExceptions.create(301, "moved permanently", RightScale::Response.new({:location => location}))
+        e = RightScale::HttpExceptions.create(301, "moved permanently", {:location => location})
         @log.should_receive(:info).with(/Received REDIRECT/).once.ordered
         @log.should_receive(:info).with("Requesting auth client to handle redirect to #{location.inspect}").once.ordered
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
@@ -551,7 +551,7 @@ describe RightScale::BaseRetryClient do
       end
 
       it "raises internal error if no redirect location is provided" do
-        e = RightScale::HttpExceptions.create(301, "moved permanently", RightScale::Response.new({}))
+        e = RightScale::HttpExceptions.create(301, "moved permanently")
         @log.should_receive(:info).with(/Received REDIRECT/).once
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
             raise_error(RightScale::Exceptions::InternalServerError, "No redirect location provided")

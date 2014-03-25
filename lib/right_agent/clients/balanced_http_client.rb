@@ -194,6 +194,15 @@ module RightScale
       headers
     end
 
+    # Beautify response header keys so that in same form as RestClient
+    #
+    # @param [Hash] headers from response
+    #
+    # @return [Hash] response headers with keys as lower case symbols
+    def beautify_headers(headers)
+      headers.inject({}) { |out, (key, value)| out[key.gsub(/-/, '_').downcase.to_sym] = value; out }
+    end
+
     # Initialize for "blocking" request
     #
     # @param [Hash] params for HTTP request
@@ -340,6 +349,7 @@ module RightScale
       http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
+      response_headers = beautify_headers(response_headers) if response_headers
       result = process_response(response_code, response_body, response_headers, decode)
       [result, response_code, response_body, response_headers]
     end

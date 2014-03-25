@@ -260,6 +260,26 @@ describe RightScale::BalancedHttpClient do
     end
   end
 
+  context :beautify_headers do
+    before(:each) do
+      @client = RightScale::BalancedHttpClient.new(@urls)
+    end
+
+    it "beautifies header keys" do
+      headers = {"SERVER" => "nginx/1.4.2", "DATE" => "Tue, 25 Mar 2014 22:19:52 GMT",
+                 "CONTENT_TYPE" => "application/json; charset=utf-8", "CONTENT_LENGTH" => "4", "CONNECTION" => "close",
+                 "STATUS" => "200 OK", "CACHE_CONTROL" => "private, max-age=0, must-revalidate", "X_RUNTIME" => "1", "SET_COOKIE" => ""}
+      result = @client.send(:beautify_headers, headers)
+      result.should == {:server => "nginx/1.4.2", :date => "Tue, 25 Mar 2014 22:19:52 GMT",
+                 :content_type => "application/json; charset=utf-8", :content_length => "4", :connection => "close",
+                 :status => "200 OK", :cache_control => "private, max-age=0, must-revalidate", :x_runtime => "1", :set_cookie => ""}
+    end
+
+    it "converts hyphenations to underscores" do
+      @client.send(:beautify_headers, {"NON-BLOCKING" => "yes"}).should == {:non_blocking => "yes"}
+    end
+  end
+
   context :blocking_init do
     after(:each) do
       ENV.delete("HTTPS_PROXY")
@@ -535,7 +555,8 @@ describe RightScale::BalancedHttpClient do
       @request_options = {:path => @path}
       @result = {"out" => 123}
       @body = JSON.dump({:out => 123})
-      @headers = flexmock("response header", :status => 200).by_default
+      @headers = EventMachine::HttpResponseHeader.new
+      @headers.http_status = 200
       @response = flexmock("em http response", :response_header => @headers, :response => @body,
                                 :error => nil, :errback => true, :callback => true).by_default
       @request = flexmock("em http request", :get => @response).by_default
@@ -564,7 +585,7 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "converts Errno::ETIMEDOUT error to 504" do
-      @headers.should_receive(:status).and_return(504)
+      @headers.http_status = 504
       @response.should_receive(:errback).and_yield.once
       @response.should_receive(:error).and_return("Errno::ETIMEDOUT")
       @fiber.should_receive(:resume).with(504, "Errno::ETIMEDOUT").once

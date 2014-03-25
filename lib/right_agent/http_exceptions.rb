@@ -59,11 +59,11 @@ module RightScale
     HTTP_EXCEPTIONS_MAP = {}
 
     # Create exception for given code
-    def self.create(code, body = "", response = nil)
+    def self.create(code, body = "", headers = {})
       if HttpExceptions::HTTP_EXCEPTIONS_MAP[code]
-        HttpExceptions::HTTP_EXCEPTIONS_MAP[code].new(code, body, response)
+        HttpExceptions::HTTP_EXCEPTIONS_MAP[code].new(code, body, RightScale::Response.new(headers))
       else
-        RequestFailed.new(code, body, response)
+        RequestFailed.new(code, body, RightScale::Response.new(headers))
       end
     end
 
