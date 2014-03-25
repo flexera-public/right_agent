@@ -335,7 +335,7 @@ module RightScale
       if @options[:fiber_pool_size]
         require 'fiber_pool'
         @options[:fiber_pool] = FiberPool.new(@options[:fiber_pool_size])
-        EM.fiber_pool = @options[:fiber_pool]
+        EM_S.fiber_pool = @options[:fiber_pool]
       end
 
       EM.error_handler do |e|

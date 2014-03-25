@@ -577,6 +577,7 @@ module RightScale
       end
 
       @options[:async_response] = true unless @options.has_key?(:async_response)
+      @options[:non_blocking] = true if @options[:fiber_pool_size].to_i > 0
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
@@ -615,7 +616,7 @@ module RightScale
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
         EM_S.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-        @client.listen(nil) { |e| handle_event(e) } if @mode == :http
+        EM_S.defer { @client.listen(nil) { |e| handle_event(e) } } if @mode == :http
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next
@@ -640,13 +641,17 @@ module RightScale
     def handle_event(event)
       if event.is_a?(Hash)
         if ["Push", "Request"].include?(event[:type])
-          begin
-            if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
-              @client.notify(result_to_event(result), [result.to])
+          # Use next_tick to ensure that on main reactor thread
+          # so that any data access is thread safe
+          EM_S.next_tick do
+            begin
+              if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
+                @client.notify(result_to_event(result), [result.to])
+              end
+            rescue Dispatcher::DuplicateRequest
+            rescue Exception => e
+              Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
             end
-          rescue Dispatcher::DuplicateRequest
-          rescue Exception => e
-            Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
           end
         else
           Log.error("Unrecognized event type #{event[:type]} from #{event[:from]}")

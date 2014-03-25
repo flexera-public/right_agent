@@ -44,7 +44,7 @@
 #      --reconnect-interval SEC Set number of seconds between HTTP or AMQP reconnect attempts
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
-#      --fiber-pool-size N      Set size of fiber pool
+#      --fiber-pool-size, -f N  Set size of fiber pool
 #      --options, -o KEY=VAL    Set options that act as final override for any persisted configuration settings
 #      --monit                  Generate monit configuration file
 #      --test                   Build test deployment using default test settings
@@ -177,7 +177,7 @@ module RightScale
           options[:dup_check] = b
         end
 
-        opts.on('--fiber-pool-size N') do |n|
+        opts.on('-f', '--fiber-pool-size N') do |n|
           options[:fiber_pool_size] = n.to_i
         end
 
