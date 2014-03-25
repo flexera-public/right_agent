@@ -92,7 +92,8 @@ describe RightScale::HttpExceptions do
 
   context :convert do
     it "converts RestClient exception to HttpException" do
-
+      bad_request = RestClient::Exceptions::EXCEPTIONS_MAP[400].new(nil, 400)
+      RightScale::HttpExceptions.convert(bad_request).should be_a RightScale::HttpExceptions::BadRequest
     end
   end
 

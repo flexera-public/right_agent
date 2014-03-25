@@ -76,12 +76,26 @@ module RightScale
       @api_version = options[:api_version]
       @server_name = options[:server_name]
       @filter_params = (options[:filter_params] || []).map { |p| p.to_s }
-      @request_type = options[:non_blocking] ? :em_http : :rest_client
+      @request_type = options[:non_blocking] ? :non_blocking : :blocking
+
+      # Setup for proxy initialization if defined
+      if (v = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
+        @proxy_uri = ENV[v].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[v]) : URI.parse("http://" + ENV[v])
+      end
+
+      # Initialize health check and its use in request balancer
       @health_check_proc = send("#{@request_type}_init", options)
       balancer_options = {:policy => RightSupport::Net::LB::HealthCheck, :health_check => @health_check_proc }
       @balancer = RightSupport::Net::RequestBalancer.new(@urls, balancer_options)
     end
 
+    # Check health of server
+    #
+    # @param [String] host name of server
+    #
+    # @return [Object] health check result from server
+    #
+    # @raise [NotResponding] server is not responding
     def check_health(host = nil)
       begin
         @health_check_proc.call(host || @urls.first)
@@ -134,33 +148,33 @@ module RightScale
     def request(verb, path, params = {}, options = {})
       started_at = Time.now
       filter = @filter_params + (options[:filter_params] || []).map { |p| p.to_s }
-      log_level = options[:log_level] || :info
+      log_level = options[:log_level] || Log.level
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
       connect_options, request_options = send("#{@request_type}_options", verb, path, params,
                                               request_headers(request_uuid, options), options)
 
-      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
+      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter, log_level))
 
       host_picked = nil
       result, code, body, headers = @balancer.request do |host|
         uri = URI.parse(host)
         uri.user = uri.password = nil
         host_picked = uri.to_s
-        send("#{@request_type}_request", verb, path, host, connect_options, request_options)
+        send("#{@request_type}_request", verb, path, host, connect_options, request_options, decode = true)
       end
 
-      report_success(result, code, body, headers, host_picked, path, request_uuid, started_at, log_level)
+      log_success(result, code, body, headers, host_picked, path, request_uuid, started_at, log_level)
       result
     rescue RightSupport::Net::NoResult => e
       handle_no_result(e, host_picked) do |e2|
-        report_failure(host_picked, path, params, filter, request_uuid, started_at, e2)
+        log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e2)
       end
     rescue RestClient::Exception => e
       e2 = HttpExceptions.convert(e)
-      report_failure(host_picked, path, params, filter, request_uuid, started_at, e2)
+      log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e2)
       raise e2
     rescue Exception => e
-      report_failure(host_picked, path, params, filter, request_uuid, started_at, e)
+      log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e)
       raise
     end
 
@@ -180,21 +194,18 @@ module RightScale
       headers
     end
 
-    # Initialize for using RestClient (via HTTPClient)
+    # Initialize for "blocking" request
     #
     # @param [Hash] params for HTTP request
     # @param [String] request_headers to be applied to request
     # @param [Hash] options per #request
     #
     # @return [Proc] health check procedure
-    def rest_client_init(options)
+    def blocking_init(options)
       require 'restclient'
 
       # Initialize use of proxy if defined
-      if (proxy_var = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
-        proxy_uri = ENV[proxy_var].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[proxy_var]) : URI.parse("http://" + ENV[proxy_var])
-        RestClient.proxy = proxy_uri.to_s
-      end
+      RestClient.proxy = @proxy_uri.to_s if @proxy_uri
 
       # Create health check proc for use by request balancer
       # Strip user and password from host name since health-check does not require authorization
@@ -204,11 +215,42 @@ module RightScale
         uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
         request_options = {:open_timeout => DEFAULT_OPEN_TIMEOUT, :timeout => HEALTH_CHECK_TIMEOUT}
         request_options[:headers] = {"X-API-Version" => @api_version} if @api_version
-        RightSupport::Net::HTTPClient.new.get(uri.to_s, request_options)
+        blocking_request(:get, "", uri.to_s, {}, request_options, decode = false)
       end
     end
 
-    # Construct options for a RestClient request
+    # Initialize for "non-blocking" request
+    #
+    # @param [Hash] params for HTTP request
+    # @param [String] request_headers to be applied to request
+    # @param [Hash] options per #request
+    #
+    # @return [Proc] health check procedure
+    def non_blocking_init(options)
+      require 'em-http-request'
+
+      # Initialize use of proxy if defined
+      if @proxy_uri
+        @proxy = {:host => @proxy_uri.host, :port => @proxy_uri.port}
+        @proxy[:authorization] = [@proxy_uri.user, @proxy_uri.password] if @proxy_uri.user
+      end
+
+      # Create health check proc for use by request balancer
+      # Strip user and password from host name since health-check does not require authorization
+      Proc.new do |host|
+        uri = URI.parse(host)
+        uri.user = uri.password = nil
+        uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
+        connect_options = {:connect_timeout => DEFAULT_OPEN_TIMEOUT, :inactivity_timeout => HEALTH_CHECK_TIMEOUT}
+        connect_options[:proxy] = @proxy if @proxy
+        request_options = {:path => uri.path}
+        request_options[:head] = {"X-API-Version" => @api_version} if @api_version
+        uri.path = ""
+        non_blocking_request(:get, "", uri.to_s, connect_options, request_options, decode = false)
+      end
+    end
+
+    # Construct options for "blocking" request
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
@@ -217,7 +259,7 @@ module RightScale
     # @param [Hash] options per #request
     #
     # @return [Array] connect and request option hashes
-    def rest_client_options(verb, path, params, request_headers, options)
+    def blocking_options(verb, path, params, request_headers, options)
       request_options = {
         :open_timeout => options[:open_timeout] || DEFAULT_OPEN_TIMEOUT,
         :timeout => options[:request_timeout] || DEFAULT_REQUEST_TIMEOUT,
@@ -232,61 +274,7 @@ module RightScale
       [{}, request_options]
     end
 
-    # Make request using RestClient (via HTTPClient) and RequestBalancer
-    #
-    # @param [Symbol] verb for HTTP REST request
-    # @param [String] path in URI for desired resource
-    # @param [Hash] connect_options for HTTP connection
-    # @param [Hash] request_options for HTTP request
-    #
-    # @return [Array] result to be returned followed by response code, body, and headers
-    #
-    # @raise [NotResponding] server not responding, recommend retry
-    def rest_client_request(verb, path, host, connect_options, request_options)
-      if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path, request_options.merge(connect_options)))
-        [process_response(r.code, r.body, r.headers, decode = true), r.code, r.body, r.headers]
-      else
-        [nil, nil, nil, nil]
-      end
-    end
-
-    # Initialize for using EM:HttpRequest
-    #
-    # @param [Hash] params for HTTP request
-    # @param [String] request_headers to be applied to request
-    # @param [Hash] options per #request
-    #
-    # @return [Proc] health check procedure
-    def em_http_init(options)
-      require 'em-http-request'
-
-      # Initialize use of proxy if defined
-      if (proxy_var = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
-        proxy_uri = ENV[proxy_var].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[proxy_var]) : URI.parse("http://" + ENV[proxy_var])
-        @proxy = {:host => proxy_uri.host, :port => proxy_uri.port}
-        @proxy[:authorization] = [proxy_uri.user, proxy_uri.password] if proxy_uri.user
-      end
-
-      # Create health check proc for use by request balancer
-      # Strip user and password from host name since health-check does not require authorization
-      Proc.new do |host|
-        fiber = Fiber.current
-        uri = URI.parse(host)
-        uri.user = uri.password = nil
-        uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
-        connect_options = {:open_timeout => DEFAULT_OPEN_TIMEOUT, :inactivity_timeout => HEALTH_CHECK_TIMEOUT}
-        connect_options[:proxy] = @proxy if @proxy
-        request_options = {:path => uri.path}
-        request_options[:head] = {"X-API-Version" => @api_version} if @api_version
-        uri.path = ""
-        http = EM::HttpRequest.new(uri.to_s, connect_options).get(request_options)
-        http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
-        http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
-        process_response(*Fiber.yield)
-      end
-    end
-
-    # Construct options for an EM::HttpRequest
+    # Construct options for a "non-blocking" request
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
@@ -295,7 +283,7 @@ module RightScale
     # @param [Hash] options per #request
     #
     # @return [Array] connect and request option hashes
-    def em_http_options(verb, path, params, request_headers, options)
+    def non_blocking_options(verb, path, params, request_headers, options)
       connect_options = {
         :connect_timeout => options[:open_timeout] || DEFAULT_OPEN_TIMEOUT,
         :inactivity_timeout => options[:request_timeout] || DEFAULT_REQUEST_TIMEOUT }
@@ -307,29 +295,52 @@ module RightScale
         [nil, (params.is_a?(Hash) && params.any?) ? path + "?#{format(params)}" : path]
       else
         request_headers[:content_type] = "application/json"
-        [(params.is_a?(Hash) && params.any?) ? nil : JSON.dump(params), path]
+        [(params.is_a?(Hash) && params.any?) ? JSON.dump(params) : nil, path]
       end
-      request_options = {:path => request_path, :head => request_headers, :body => request_body}
+      request_options = {:path => request_path, :body => request_body, :head => request_headers}
       [connect_options, request_options]
     end
 
-    # Make request using EM::HttpRequest and RequestBalancer
+    # Make "blocking" request using RestClient (via HTTPClient) and RequestBalancer
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
+    # @param [String] host name of server
     # @param [Hash] connect_options for HTTP connection
     # @param [Hash] request_options for HTTP request
+    # @param [Boolean] decode JSON-encoded body on success; defaults to false
     #
     # @return [Array] result to be returned followed by response code, body, and headers
     #
     # @raise [NotResponding] server not responding, recommend retry
-    def em_http_request(verb, path, host, connect_options, request_options)
+    def blocking_request(verb, path, host, connect_options, request_options, decode)
+      if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path, request_options.merge(connect_options)))
+        [process_response(r.code, r.body, r.headers, decode), r.code, r.body, r.headers]
+      else
+        [nil, nil, nil, nil]
+      end
+    end
+
+    # Make "non-blocking" request using EM::HttpRequest and RequestBalancer
+    # Note that the underlying thread is not blocked by the HTTP i/o, but this call itself is blocking
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [String] path in URI for desired resource
+    # @param [String] host name of server
+    # @param [Hash] connect_options for HTTP connection
+    # @param [Hash] request_options for HTTP request
+    # @param [Boolean] decode JSON-encoded body on success; defaults to false
+    #
+    # @return [Array] result to be returned followed by response code, body, and headers
+    #
+    # @raise [NotResponding] server not responding, recommend retry
+    def non_blocking_request(verb, path, host, connect_options, request_options, decode)
       fiber = Fiber.current
       http = EM::HttpRequest.new(host, connect_options).send(verb, request_options)
       http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
-      result = process_response(response_code, response_body, response_headers, decode = true)
+      result = process_response(response_code, response_body, response_headers, decode)
       [result, response_code, response_body, response_headers]
     end
 
@@ -400,7 +411,7 @@ module RightScale
       true
     end
 
-    # Report successful request completion
+    # Log successful request completion
     #
     # @param [Object] result to be returned to client
     # @param [Integer, NilClass] code for response status
@@ -414,16 +425,16 @@ module RightScale
     #   other than errors
     #
     # @return [TrueClass] always true
-    def report_success(result, code, body, headers, host, path, request_uuid, started_at, log_level)
+    def log_success(result, code, body, headers, host, path, request_uuid, started_at, log_level)
       length = (headers && headers[:content_length]) || (body && body.size) || "-"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
       completed = "Completed <#{request_uuid}> in #{duration} | #{code || "nil"} [#{host}#{path}] | #{length} bytes"
-      completed << " | #{result.inspect}" if Log.level == :debug
+      completed << " | #{result.inspect}" if log_level == :debug
       Log.send(log_level, completed)
       true
     end
 
-    # Report request failure to logs
+    # Log request failure
     # Also report it as audit entry if an instance is targeted
     #
     # @param [String] host server URL where request was attempted if known
@@ -432,13 +443,14 @@ module RightScale
     # @param [Array] filter list of parameters whose value is to be hidden
     # @param [String] request_uuid uniquely identifying request
     # @param [Time] started_at time for request
+    # @param [Symbol] log_level to use when logging information about the request
     # @param [Exception, String] exception or message that should be logged
     #
     # @return [TrueClass] Always return true
-    def report_failure(host, path, params, filter, request_uuid, started_at, exception)
-      status = exception.respond_to?(:http_code) ? exception.http_code : "nil"
+    def log_failure(host, path, params, filter, request_uuid, started_at, log_level, exception)
+      code = exception.respond_to?(:http_code) ? exception.http_code : "nil"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      Log.error("Failed <#{request_uuid}> in #{duration} | #{status} " + log_text(path, params, filter, host, exception))
+      Log.error("Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, log_level, host, exception))
       true
     end
 
@@ -447,16 +459,35 @@ module RightScale
     # @param [String] path in URI for desired resource
     # @param [Hash] params for HTTP request
     # @param [Array, NilClass] filter augmentation to base filter list
+    # @param [Symbol] log_level to use when logging information about the request
     # @param [String] host server URL where request was attempted if known
     # @param [Exception, String, NilClass] exception or failure message that should be logged
     #
     # @return [String] Log text
-    def log_text(path, params, filter, host = nil, exception = nil)
-      filtered_params = (exception || Log.level == :debug) ? filter(params, filter).inspect : nil
+    def log_text(path, params, filter, log_level, host = nil, exception = nil)
+      filtered_params = (exception || log_level == :debug) ? filter(params, filter).inspect : nil
       text = filtered_params ? "#{path} #{filtered_params}" : path
       text = "[#{host}#{text}]" if host
       text << " | #{self.class.exception_text(exception)}" if exception
       text
+    end
+
+    # Format query parameters for inclusion in URI
+    #
+    # @param params [Hash] Parameters that are converted to <key>=<escaped_value> format
+    #   and any value that is an array has each of its values formatted as <key>[]=<escaped_value>
+    #
+    # @return [String] Formatted parameter string with parameters separated by '&'
+    def format(params)
+      p = []
+      params.each do |k, v|
+        if v.is_a?(Array)
+          v.each { |v2| p << "#{k.to_s}[]=#{CGI.escape(v2.to_s)}" }
+        else
+          p << "#{k.to_s}=#{CGI.escape(v.to_s)}"
+        end
+      end
+      p.join("&")
     end
 
     # Apply parameter hiding filter

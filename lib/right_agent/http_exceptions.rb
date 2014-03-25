@@ -69,7 +69,7 @@ module RightScale
 
     # Convert RestClient exception
     def self.convert(e)
-      e2 = create(e.http_code, e.http_body, RightScale::Response.new(e.response.headers))
+      e2 = create(e.http_code, e.http_body, RightScale::Response.new((e.response && e.response.headers) || {}))
       e2.message = e.message
       e2
     end
