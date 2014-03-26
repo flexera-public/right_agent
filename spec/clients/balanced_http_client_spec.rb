@@ -584,6 +584,15 @@ describe RightScale::BalancedHttpClient do
       result.should == [@result, 200, @body, @headers]
     end
 
+    it "handles host value that has path" do
+      @request_options[:path] = "/api" + @request_options[:path]
+      @response.should_receive(:callback).and_yield.once
+      @fiber.should_receive(:resume).with(200, @body, @headers).once
+      flexmock(EM::HttpRequest).should_receive(:new).with(@host, @connect_options).and_return(@request).once
+      @request.should_receive(:get).with(@request_options).and_return(@response).once
+      @client.send(:non_blocking_request, :get, @path, @host + "/api", @connect_options, @request_options, true)
+    end
+
     it "converts Errno::ETIMEDOUT error to 504" do
       @headers.http_status = 504
       @response.should_receive(:errback).and_yield.once

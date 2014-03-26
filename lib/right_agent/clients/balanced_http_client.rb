@@ -345,7 +345,10 @@ module RightScale
     # @raise [NotResponding] server not responding, recommend retry
     def non_blocking_request(verb, path, host, connect_options, request_options, decode)
       fiber = Fiber.current
-      http = EM::HttpRequest.new(host, connect_options).send(verb, request_options)
+      uri = URI.parse(host)
+      request_options[:path] = uri.path + request_options[:path]
+      uri.path = ""
+      http = EM::HttpRequest.new(uri.to_s, connect_options).send(verb, request_options)
       http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
