@@ -25,8 +25,16 @@
 module EventMachineSpawn
   @fiber_pool = nil
 
+  def self.fiber_pool
+    @fiber_pool
+  end
+
   def self.fiber_pool=(value)
     @fiber_pool = value
+  end
+
+  def self.execute(&block)
+    @fiber_pool ? @fiber_pool.spawn(&block) : yield
   end
 
   def self.run(*args, &block)
@@ -43,6 +51,18 @@ module EventMachineSpawn
 
   def self.add_periodic_timer(*args, &block)
     EM.add_periodic_timer(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
+  end
+
+  class Timer
+    def self.new(*args, &block)
+      EM::Timer.new(*args) { EM_S.fiber_pool ? EM_S.fiber_pool.spawn(&block) : yield }
+    end
+  end
+
+  class PeriodicTimer
+    def self.new(*args, &block)
+      EM::PeriodicTimer.new(*args) { EM_S.fiber_pool ? EM_S.fiber_pool.spawn(&block) : yield }
+    end
   end
 end
 
