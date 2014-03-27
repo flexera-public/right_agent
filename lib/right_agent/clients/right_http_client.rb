@@ -166,8 +166,6 @@ module RightScale
     end
 
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
-    # This is a blocking call and therefore should be used from a thread different than
-    # otherwise used with this object, e.g., EM.defer thread
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
     #

@@ -449,7 +449,7 @@ module RightScale
         if attempts == 1 && interval && (Time.now - started_at) < @options[:retry_timeout]
           Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
                     "in response to retryable error (#{retry_result.http_body})")
-          sleep(interval)
+          wait(interval)
         else
           @stats["request failures"].update("#{type} - retry")
           raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
@@ -482,7 +482,7 @@ module RightScale
         if interval && (Time.now - started_at) < @options[:retry_timeout]
           Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
                     "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
-          sleep(interval)
+          wait(interval)
         else
           @stats["request failures"].update("#{type} - no result")
           self.state = :disconnected
@@ -492,6 +492,22 @@ module RightScale
         @stats["request failures"].update("#{type} - no result")
         self.state = :disconnected
         raise Exceptions::ConnectivityFailure.new(not_responding.message)
+      end
+      true
+    end
+
+    # Wait the specified interval in non-blocking fashion if possible
+    #
+    # @param [Numeric] interval to wait
+    #
+    # @return [TrueClass] always true
+    def wait(interval)
+      if @options[:non_blocking]
+        fiber = Fiber.current
+        EM.add_timer(interval) { fiber.resume }
+        Fiber.yield
+      else
+        sleep(interval)
       end
       true
     end

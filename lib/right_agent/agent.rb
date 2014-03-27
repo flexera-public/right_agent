@@ -616,7 +616,7 @@ module RightScale
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
         EM_S.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-        EM_S.defer { @client.listen(nil) { |e| handle_event(e) } } if @mode == :http
+        @client.listen(nil) { |e| handle_event(e) } if @mode == :http
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next

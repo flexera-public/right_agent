@@ -33,10 +33,6 @@ module EventMachineSpawn
     EM.run(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
   end
 
-  def self.defer(*args, &block)
-    EM.defer(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
-  end
-
   def self.next_tick(*args, &block)
     EM.next_tick(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
   end

@@ -563,7 +563,7 @@ describe RightScale::BaseRetryClient do
         @exception = RightScale::HttpExceptions.create(449, "retry with")
       end
 
-      it "sleeps for configured interval and does not raise if retry still viable" do
+      it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
         @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1)
@@ -598,13 +598,13 @@ describe RightScale::BaseRetryClient do
         @exception = RightScale::BalancedHttpClient::NotResponding.new("Server not responding")
       end
 
-      it "sleeps for configured interval and does not raise if retry still viable" do
+      it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
         @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 1)
       end
 
-      it "changes sleep interval for successive retries" do
+      it "changes wait interval for successive retries" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(12).once
         @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 2)
@@ -634,6 +634,22 @@ describe RightScale::BaseRetryClient do
             raise_error(RightScale::Exceptions::ConnectivityFailure, "Server not responding")
         @client.state.should == :disconnected
       end
+    end
+  end
+
+  context :wait do
+    it "waits using timer if non-blocking enabled" do
+      @fiber = flexmock("fiber", :resume => true).by_default
+      flexmock(Fiber).should_receive(:current).and_return(@fiber)
+      flexmock(Fiber).should_receive(:yield).once
+      flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.once
+      @client.init(:test, @auth_client, @options.merge(:non_blocking => true))
+      @client.send(:wait, 1).should be true
+    end
+
+    it " waits using sleep if non-blocking disabled" do
+      flexmock(@client).should_receive(:sleep).with(1).once
+      @client.send(:wait, 1).should be true
     end
   end
 end

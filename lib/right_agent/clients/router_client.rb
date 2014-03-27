@@ -201,8 +201,6 @@ module RightScale
     end
 
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
-    # This is a blocking call and therefore should be used from a thread different than
-    # otherwise used with this object, e.g., EM.defer thread
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
     #
@@ -221,27 +219,56 @@ module RightScale
     def listen(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
+      retries = 0
+      event_uuids = nil
+      @listen_state = :choose
       @connect_interval = CONNECT_INTERVAL
-      @last_connect_time = Time.now - @connect_interval
       @reconnect_interval = RECONNECT_INTERVAL
 
-      uuids = nil
-      retries = 0
-      until [:closing, :closed].include?(state) do
-        if @websocket
-          @connect_interval = CONNECT_INTERVAL
-          @reconnect_interval = RECONNECT_INTERVAL
-          sleep(CHECK_INTERVAL)
-          next
-        elsif retry_connect?
-          @last_connect_time = Time.now
-          @close_code = @close_reason = nil
-          @stats["reconnects"].update("websocket") if (retries += 1) > 1
-          next if try_connect(routing_keys, &handler)
+      @listen_timer = EM_S.add_periodic_timer(0) do
+        begin
+          case listen_state
+          when :choose
+            # Choose listen method or continue as is if already listening
+            # or want to delay choosing
+            choose_listen_method
+          when :check
+            # Check whether really got connected, given the possibility of an
+            # asynchronous WebSocket handshake failure that resulted in a close
+            # Continue to use WebSockets if still connected or if connect failed
+            # due to unresponsive server
+            if @websocket.nil?
+              if router_not_responding?
+                update_listen_state(:connect, backoff_reconnect_interval)
+              else
+                backoff_connect_interval
+                update_listen_state(:long_poll)
+              end
+            elsif (@listen_checks += 1) > CHECK_INTERVAL
+              @reconnect_interval = RECONNECT_INTERVAL
+              update_listen_state(:choose, @connect_interval = CONNECT_INTERVAL)
+            end
+          when :connect
+            # Use of WebSockets is enabled and it is again time to try to connect
+            @stats["reconnects"].update("websocket") if @attempted_connect_at
+            try_connect(routing_keys, &handler)
+          when :long_poll
+            # Resorting to long-polling
+            # Need to long-poll on separate thread if cannot use non-blocking HTTP i/o
+            # Will still periodically retry WebSockets if not restricted to just long-polling
+            if @options[:non_blocking]
+              event_uuids = process_long_poll(try_long_poll(routing_keys, event_uuids, &handler))
+            else
+              update_listen_state(:wait, 1)
+              try_deferred_long_polling(routing_keys, event_uuids, &handler)
+            end
+          when :wait
+            # Deferred long-polling is expected to break out of this state eventually
+          end
+        rescue Exception => e
+          Log.error("Failed to listen", e, :trace)
+          @stats["exceptions"].track("listen", e)
         end
-
-        # Resort to long-polling if WebSocket not usable
-        uuids = try_long_poll(routing_keys, uuids, &handler) if @websocket.nil?
       end
       true
     end
@@ -255,6 +282,7 @@ module RightScale
     # @return [TrueClass] always true
     def close(scope = :all)
       super
+      update_listen_state(:cancel)
       @websocket.close(SHUTDOWN_CLOSE, "Agent terminating") if @websocket
     end
 
@@ -287,24 +315,61 @@ module RightScale
       true
     end
 
-    # Determine whether should retry creation of WebSocket connection
+    # Listen state
+    # This function is here solely to facilitate testing
+    #
+    # @return [Symbol] listen state
+    def listen_state
+      @listen_state
+    end
+
+    # Update listen state
+    #
+    # @param [Symbol] state next
+    # @param [Integer] interval before next listen action
+    #
+    # @return [TrueClass] always true
+    #
+    # @raise [ArgumentError] invalid state
+    def update_listen_state(state, interval = 0)
+      if @listen_timer
+        if state == :cancel
+          @listen_timer.cancel if @listen_timer
+          @listen_timer = nil
+        elsif [:choose, :check, :connect, :long_poll, :wait].include?(state)
+          @started_long_polling_at = Time.now if state == :long_poll && @listen_state != :long_poll
+          @listen_checks = 0 if state == :check && @listen_state != :check
+          @listen_state = state
+          @listen_timer.interval = interval
+        else
+          raise ArgumentError, "Invalid listen state: #{state.inspect}"
+        end
+      end
+      true
+    end
+
+    # Determine whether should retry creation of WebSocket connection now
     # Should only retry if (1) WebSocket is enabled, (2) there is none currently,
     # (3) previous closure was for acceptable reasons (normal, router shutdown,
     # router inaccessible), or (4) enough time has elapsed to make another attempt
     #
-    # @return [Boolean] true if should try, otherwise false
-    def retry_connect?
-      unless @options[:long_polling_only]
-        if @websocket.nil?
-          if (Time.now - @last_connect_time) > @connect_interval
-            true
-          elsif [NORMAL_CLOSE, SHUTDOWN_CLOSE].include?(@close_code)
-            true
-          elsif router_not_responding?
-            true
-          end
+    # @return [TrueClass] always true
+    def choose_listen_method
+      if @options[:long_polling_only]
+        update_listen_state(:long_poll)
+      elsif @websocket
+        update_listen_state(:choose, @connect_interval)
+      else
+        if @attempted_connect_at.nil?
+          interval = 0
+        elsif (interval = @connect_interval - (Time.now - @attempted_connect_at)) < 0 ||
+              [NORMAL_CLOSE, SHUTDOWN_CLOSE].include?(@close_code) ||
+              router_not_responding?
+          interval = 0
         end
+        update_listen_state(:connect, interval)
       end
+      true
     end
 
     # Try to create WebSocket connection
@@ -314,29 +379,15 @@ module RightScale
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
-    # @return [Boolean] true if should not try long-polling, otherwise false
+    # @return [TrueClass] always true
     def try_connect(routing_keys, &handler)
-      begin
-        connect(routing_keys, &handler)
-        CHECK_INTERVAL.times do
-          # Allow for possibility of asynchronous handshake failure resulting in close
-          if @websocket.nil?
-            if router_not_responding?
-              sleep(backoff_reconnect_interval)
-            else
-              backoff_connect_interval
-            end
-            break
-          end
-          sleep(1)
-        end
-        @websocket.nil?
-      rescue Exception => e
-        Log.error("Failed creating WebSocket", e)
-        @stats["exceptions"].track("websocket", e)
-        backoff_connect_interval
-        false
-      end
+      connect(routing_keys, &handler)
+      update_listen_state(:check, 1)
+    rescue Exception => e
+      Log.error("Failed creating WebSocket", e)
+      @stats["exceptions"].track("websocket", e)
+      backoff_connect_interval
+      update_listen_state(:long_poll)
     end
 
     # Connect to RightNet router using WebSocket for receiving events
@@ -354,6 +405,9 @@ module RightScale
     # @raise [ArgumentError] block missing
     def connect(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
+
+      @attempted_connect_at = Time.now
+      @close_code = @close_reason = nil
 
       options = {
         # Limit to .auth_header here (rather than .headers) to keep WebSockets happy
@@ -394,11 +448,8 @@ module RightScale
           # Acknowledge event
           @websocket.send(JSON.dump({:ack => event[:uuid]}))
 
-          # Send response, if any
-          if (result = handler.call(event))
-            Log.info("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
-            @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
-          end
+          # Handle event
+          handler.call(event)
           @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
         rescue Exception => e
           Log.error("Failed handling WebSocket event", e, :trace)
@@ -412,27 +463,40 @@ module RightScale
     # Try to make long-polling request to receive events
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] uuids for events received on previous poll
+    # @param [Array, NilClass] uuids for events received from previous poll
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [Array, NilClass, Exception] UUIDs of events received, or nil if none, or Exception if failed
+    def try_long_poll(routing_keys, uuids, &handler)
+      begin
+        long_poll(routing_keys, uuids, &handler)
+      rescue Exception => e
+        e
+      end
+    end
+
+    # Try to make long-polling request to receive events using EM defer thread
+    # Repeat long-polling until there is an error or the stop time has been reached
+    #
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] uuids for events received from previous poll
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
     # @return [Array, NilClass] UUIDs of events received, or nil if none
-    def try_long_poll(routing_keys, uuids, &handler)
-      result = nil
-      begin
-        result = long_poll(routing_keys, uuids, &handler)
-        @reconnect_interval = RECONNECT_INTERVAL
-        @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
-      rescue Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError => e
-        Log.error("Failed long-polling", e, :no_trace)
-        sleep(backoff_reconnect_interval)
-      rescue Exception => e
-        Log.error("Failed long-polling", e, :trace)
-        @stats["exceptions"].track("long-polling", e)
-        sleep(backoff_reconnect_interval)
+    def try_deferred_long_polling(routing_keys, uuids, &handler)
+      stop_at = @started_long_polling_at + @connect_interval
+
+      @defer_proc = Proc.new do
+        uuids = try_long_poll(routing_keys, uuids, &handler) until (Time.now - stop_at) > 0 || uuids.is_a?(Exception)
+        uuids
       end
-      result
+
+      EM.defer(@defer_proc) { |result| process_long_poll(result) }
+      true
     end
 
     # Make long-polling request to receive one or more events
@@ -469,6 +533,34 @@ module RightScale
         end
       end
       uuids if uuids.any?
+    end
+
+    # Process result from long-polling attempt
+    #
+    # @param [Array, NilClass] result from long-polling attempt
+    #
+    # @return [Array, NilClass] result for long-polling attempt
+    def process_long_poll(result)
+      case result
+      when Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError
+        Log.error("Failed long-polling", result, :no_trace)
+        update_listen_state(:choose, backoff_reconnect_interval)
+        result = nil
+      when Exception
+        Log.error("Failed long-polling", result, :trace)
+        @stats["exceptions"].track("long-polling", result)
+        update_listen_state(:choose, backoff_reconnect_interval)
+        result = nil
+      else
+        @reconnect_interval = RECONNECT_INTERVAL
+        @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+        if (Time.now - @started_long_polling_at) > @connect_interval
+          update_listen_state(:choose)
+        else
+          update_listen_state(:long_poll)
+        end
+      end
+      result
     end
 
     # Exponentially increase WebSocket connect attempt interval after failing to connect
