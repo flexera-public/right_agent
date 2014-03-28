@@ -373,8 +373,8 @@ describe RightScale::RouterClient do
 
         it "logs event" do
           @log.should_receive(:info).with("Creating WebSocket connection to ws://test.com/connect").once.ordered
-          @log.should_receive(:info).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once.ordered
-          @log.should_receive(:info).with("Sending EVENT <uuid> Push /foo/bar to rs-agent-1-1").once.ordered
+          @log.should_receive(:debug).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once.ordered
+          @log.should_receive(:debug).with("Sending EVENT <uuid> Push /foo/bar to rs-agent-1-1").once.ordered
           event = nil
           @client.send(:connect, @routing_keys) { |e| event = e }
           @websocket.onmessage(@json_event)
@@ -508,7 +508,7 @@ describe RightScale::RouterClient do
       end
 
       it "logs event" do
-        @log.should_receive(:info).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once
+        @log.should_receive(:debug).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([@event])
         @client.send(:long_poll, @routing_keys, @ack) { |_| }
       end
@@ -522,7 +522,7 @@ describe RightScale::RouterClient do
 
       it "handles event keys that are strings" do
         event = {"uuid" => "uuid", "type" => "Push", "path" => "/foo/bar", "from" => "rs-agent-1-1", "data" => {}, "version" => @version}
-        @log.should_receive(:info).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once
+        @log.should_receive(:debug).with("Received EVENT <uuid> Push /foo/bar from rs-agent-1-1").once
         flexmock(@client).should_receive(:make_request).and_return([event])
         event = nil
         @client.send(:long_poll, @routing_keys, @ack) { |e| event = e }

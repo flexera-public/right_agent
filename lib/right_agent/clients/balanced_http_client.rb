@@ -155,7 +155,7 @@ module RightScale
       started_at = Time.now
       filter = @filter_params + (options[:filter_params] || []).map { |p| p.to_s }
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
-      log_level = options[:log_level] || :info
+      log_level = options[:log_level] || :debug
 
       Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
 

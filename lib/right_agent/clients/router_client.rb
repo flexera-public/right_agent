@@ -190,7 +190,7 @@ module RightScale
       if @websocket
         path = event[:path] ? " #{event[:path]}" : ""
         to = routing_keys ? " to #{routing_keys.inspect}" : ""
-        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
+        Log.debug("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
         @websocket.send(JSON.dump(params))
       else
         make_request(:post, "/notify", params, "notify", event[:uuid], :filter_params => ["event"])
@@ -386,7 +386,7 @@ module RightScale
         begin
           # Receive event
           event = SerializationHelper.symbolize_keys(JSON.load(event.data))
-          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          Log.debug("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update("#{event[:type]} #{event[:path]}")
 
           # Acknowledge event
@@ -394,7 +394,7 @@ module RightScale
 
           # Send response, if any
           if (result = handler.call(event))
-            Log.info("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
+            Log.debug("Sending EVENT <#{result[:uuid]}> #{result[:type]} #{result[:path]} to #{result[:from]}")
             @websocket.send(JSON.dump({:event => result, :routing_keys => [event[:from]]}))
           end
           @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
@@ -460,7 +460,7 @@ module RightScale
                                 :request_timeout => @options[:listen_timeout]))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
-          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          Log.debug("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update("#{event[:type]} #{event[:path]}")
           uuids << event[:uuid]
           handler.call(event)

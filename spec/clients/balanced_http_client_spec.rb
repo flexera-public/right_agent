@@ -288,8 +288,8 @@ describe RightScale::BalancedHttpClient do
 
       it "logs request and response" do
         @http_client.should_receive(:post).and_return(@response)
-        @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
-        @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
+        @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+        @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
         @client.send(:request, :post, @path)
       end
 
@@ -303,16 +303,16 @@ describe RightScale::BalancedHttpClient do
       it "logs response length using header :content_length if available" do
         @response.should_receive(:headers).and_return({:status => "200 OK", :content_length => 99})
         @http_client.should_receive(:post).and_return(@response)
-        @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
-        @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 99 bytes").once
+        @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+        @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 99 bytes").once
         @client.send(:request, :post, @path)
       end
 
       it "omits user and password from logged host" do
         url = "http://111:secret@my.com"
         @client = RightScale::BalancedHttpClient.new([url])
-        @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
-        @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
+        @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+        @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
         @http_client.should_receive(:post).with("#{url}#{@path}", Hash).and_return(@response).once
         @balancer.should_receive(:request).and_yield(url).once
         @client.send(:request, :post, @path)
@@ -329,14 +329,14 @@ describe RightScale::BalancedHttpClient do
         it "logs request with filtered params if in debug mode" do
           @log.should_receive(:level).and_return(:debug)
           @http_client.should_receive(:post).and_return(@response)
-          @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar #{@filtered_params}").once
-          @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
+          @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar #{@filtered_params}").once
+          @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
           @client.send(:request, :post, @path, @params, @options)
         end
 
         it "logs response failure including filtered params" do
           @http_client.should_receive(:post).and_raise(RestExceptionMock.new(400, "bad data")).once
-          @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
+          @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
           @log.should_receive(:error).with("Failed <random uuid> in 10ms | 400 [http://my.com/foo/bar #{@filtered_params}] | 400 Bad Request: bad data").once
           lambda { @client.send(:request, :post, @path, @params, @options) }.should raise_error(RuntimeError)
         end
