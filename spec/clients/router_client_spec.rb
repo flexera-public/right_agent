@@ -320,9 +320,10 @@ describe RightScale::RouterClient do
         end
 
         context "and state set to :long_poll" do
-          it "records start of long-polling" do
+          it "records start of long-polling and erases persistent connection" do
             @client.send(:update_listen_state, :long_poll)
             @client.instance_variable_get(:@started_long_polling_at).should == @later
+            @client.instance_variable_get(:@long_polling_connection).should be nil
           end
 
           it "only records start of long-polling when state changes" do
@@ -718,7 +719,24 @@ describe RightScale::RouterClient do
       it "returns nil if no events are received" do
         flexmock(@client).should_receive(:make_request).and_return(nil)
         @client.send(:long_poll, @routing_keys, @ack, &@handler).should be nil
-       end
+      end
+
+      context "when non-blocking" do
+        it "sets :persistent_callback option" do
+          @client = RightScale::RouterClient.new(@auth_client, :non_blocking => true)
+          flexmock(@client).should_receive(:make_request).with(:get, "/listen", Hash, "listen", nil,
+              on { |a| a[:persistent_callback].is_a?(Proc) }).and_return([@event]).once
+          @client.send(:long_poll, @routing_keys, @ack, &@handler)
+        end
+
+        it "gets/puts persistent connection" do
+          flexmock(@client).should_receive(:make_request).and_return(nil)
+          @client.send(:long_poll, @routing_keys, @ack, &@handler)
+          @client.instance_variable_get(:@long_polling_connection_proc).call(:get, nil).should be_nil
+          @client.instance_variable_get(:@long_polling_connection_proc).call(:set, "connection").should == "connection"
+          @client.instance_variable_get(:@long_polling_connection_proc).call(:get, nil).should == "connection"
+        end
+      end
     end
 
     context :process_long_poll do

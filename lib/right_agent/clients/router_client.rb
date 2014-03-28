@@ -337,7 +337,10 @@ module RightScale
           @listen_timer.cancel if @listen_timer
           @listen_timer = nil
         elsif [:choose, :check, :connect, :long_poll, :wait].include?(state)
-          @started_long_polling_at = Time.now if state == :long_poll && @listen_state != :long_poll
+          if state == :long_poll && @listen_state != :long_poll
+            @started_long_polling_at = Time.now
+            @long_polling_connection = nil
+          end
           @listen_checks = 0 if state == :check && @listen_state != :check
           @listen_state = state
           @listen_timer.interval = interval
@@ -515,15 +518,27 @@ module RightScale
     def long_poll(routing_keys, ack, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
+      # Callback for use with non-blocking to make long-polling connection persistent
+      @long_polling_connection_proc = Proc.new do |action, connection|
+        case action
+        when :get then @long_polling_connection
+        when :set then @long_polling_connection = connection
+        end
+      end
+
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
       params[:routing_keys] = routing_keys if routing_keys
       params[:ack] = ack if ack && ack.any?
 
+      options = {
+        :log_level => :debug,
+        :request_timeout => @options[:listen_timeout] }
+      options[:persistent_callback] = @long_polling_connection_proc if @options[:non_blocking]
+
       uuids = []
-      if (events = make_request(:get, "/listen", params, "listen", nil, :log_level => :debug,
-                                :request_timeout => @options[:listen_timeout]))
+      if (events = make_request(:get, "/listen", params, "listen", nil, options))
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
           Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")

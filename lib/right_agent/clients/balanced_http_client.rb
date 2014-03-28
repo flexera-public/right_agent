@@ -140,6 +140,10 @@ module RightScale
     #   parameters whose values are to be hidden when logging in addition to the ones
     #   provided during object initialization
     # @option options [Hash] :headers to be added to request
+    # @option options [Proc] :persistent_callback called with :get to retrieve EM:HttpRequest to be used
+    #   for request or called with :set and an EM:HttpRequest connection that is to returned by :get;
+    #   if :get call returns nil, a new connection is created and returned with :set; this callback
+    #   is only used if this HTTP client was initialized with the :non_blocking option
     # @option options [Symbol] :log_level to use when logging information about the request other than errors
     #
     # @return [Object] result returned by receiver of request
@@ -160,7 +164,7 @@ module RightScale
         uri = URI.parse(host)
         uri.user = uri.password = nil
         host_picked = uri.to_s
-        send("#{@request_type}_request", verb, path, host, connect_options, request_options, decode = true)
+        send("#{@request_type}_request", verb, path, host, connect_options, request_options, options)
       end
 
       log_success(result, code, body, headers, host_picked, path, request_uuid, started_at, log_level)
@@ -224,7 +228,7 @@ module RightScale
         uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
         request_options = {:open_timeout => DEFAULT_OPEN_TIMEOUT, :timeout => HEALTH_CHECK_TIMEOUT}
         request_options[:headers] = {"X-API-Version" => @api_version} if @api_version
-        blocking_request(:get, "", uri.to_s, {}, request_options, decode = false)
+        blocking_request(:get, "", uri.to_s, {}, request_options, options)
       end
     end
 
@@ -255,7 +259,7 @@ module RightScale
         request_options = {:path => uri.path}
         request_options[:head] = {"X-API-Version" => @api_version} if @api_version
         uri.path = ""
-        non_blocking_request(:get, "", uri.to_s, connect_options, request_options, decode = false)
+        non_blocking_request(:get, "", uri.to_s, connect_options, request_options, options)
       end
     end
 
@@ -317,14 +321,14 @@ module RightScale
     # @param [String] host name of server
     # @param [Hash] connect_options for HTTP connection
     # @param [Hash] request_options for HTTP request
-    # @param [Boolean] decode JSON-encoded body on success; defaults to false
+    # @param [Hash] options per #request
     #
     # @return [Array] result to be returned followed by response code, body, and headers
     #
     # @raise [NotResponding] server not responding, recommend retry
-    def blocking_request(verb, path, host, connect_options, request_options, decode)
+    def blocking_request(verb, path, host, connect_options, request_options, options)
       if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path, request_options.merge(connect_options)))
-        [process_response(r.code, r.body, r.headers, decode), r.code, r.body, r.headers]
+        [process_response(r.code, r.body, r.headers, request_options[:headers][:accept]), r.code, r.body, r.headers]
       else
         [nil, nil, nil, nil]
       end
@@ -338,22 +342,36 @@ module RightScale
     # @param [String] host name of server
     # @param [Hash] connect_options for HTTP connection
     # @param [Hash] request_options for HTTP request
-    # @param [Boolean] decode JSON-encoded body on success; defaults to false
+    # @param [Hash] options per #request
     #
     # @return [Array] result to be returned followed by response code, body, and headers
     #
     # @raise [NotResponding] server not responding, recommend retry
-    def non_blocking_request(verb, path, host, connect_options, request_options, decode)
-      fiber = Fiber.current
+    def non_blocking_request(verb, path, host, connect_options, request_options, options)
+      # Finish forming path by stripping path, if any, from host
       uri = URI.parse(host)
       request_options[:path] = uri.path + request_options[:path]
       uri.path = ""
-      http = EM::HttpRequest.new(uri.to_s, connect_options).send(verb, request_options)
+
+      # Create connection unless can reuse persistent connection
+      if options[:persistent_callback]
+        request_options[:keepalive] = true
+        unless (connection = options[:persistent_callback].call(:get, nil))
+          connection = EM::HttpRequest.new(uri.to_s, connect_options)
+          options[:persistent_callback].call(:set, connection)
+        end
+      else
+        connection = EM::HttpRequest.new(uri.to_s, connect_options)
+      end
+
+      # Make request an then yield fiber until it completes
+      fiber = Fiber.current
+      http = connection.send(verb, request_options)
       http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
       response_headers = beautify_headers(response_headers) if response_headers
-      result = process_response(response_code, response_body, response_headers, decode)
+      result = process_response(response_code, response_body, response_headers, request_options[:head][:accept])
       [result, response_code, response_body, response_headers]
     end
 
@@ -365,12 +383,12 @@ module RightScale
     # @param [Integer] code for response status
     # @param [Object] body of response
     # @param [Hash] headers for response
-    # @param [Boolean] decode JSON-encoded body on success; defaults to false
+    # @param [Boolean] decode JSON-encoded body on success
     #
     # @return [Object] JSON-decoded response body
     #
     # @raise [RightScale::HttpExceptions] HTTP failure with associated status code
-    def process_response(code, body, headers, decode = false)
+    def process_response(code, body, headers, decode)
       if (200..207).include?(code)
         if code == 201
           result = headers[:location]
