@@ -439,9 +439,9 @@ describe RightScale::BalancedHttpClient do
     [:get, :delete].each do |verb|
       context "with #{verb.inspect}" do
         it "uses form-encoded query option for parameters" do
-          @params = {:some => "data"}
+          @params = {:some => "data", :more => ["a", "b"]}
           _, request_options = @client.send(:blocking_options, verb, @path, @params, @headers, @options)
-          request_options[:query].should == @params
+          request_options[:query].should == "?some=data&more[]=a&more[]=b"
           request_options[:payload].should be nil
         end
 
@@ -525,8 +525,9 @@ describe RightScale::BalancedHttpClient do
 
   context :blocking_request do
     before(:each) do
+      @query = "?some=data&more[]=a&more[]=b"
       @connect_options = {}
-      @request_options = {:open_timeout => 2, :request_timeout => 5, :headers => {:accept => "application/json"}}
+      @request_options = {:open_timeout => 2, :request_timeout => 5, :headers => {:accept => "application/json"}, :query => @query}
       @result = {"out" => 123}
       @body = JSON.dump({:out => 123})
       @headers = {:status => "200 OK"}
@@ -537,18 +538,19 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "makes request" do
-      @http_client.should_receive(:get).with(@host + @path, @request_options).and_return(@response).once
+      @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(@response).once
       @client.send(:blocking_request, :get, @path, @host, @connect_options, @request_options, @options)
+      @request_options[:query].should be nil
     end
 
     it "processes response and returns result plus response code, body, and headers" do
-      @http_client.should_receive(:get).with(@host + @path, @request_options).and_return(@response).once
+      @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(@response).once
       result = @client.send(:blocking_request, :get, @path, @host, @connect_options, @request_options, @options)
       result.should == [@result, 200, @body, @headers]
     end
 
     it "returns nil if response is nil" do
-      @http_client.should_receive(:get).with(@host + @path, @request_options).and_return(nil).once
+      @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(nil).once
       result = @client.send(:blocking_request, :get, @path, @host, @connect_options, @request_options, @options)
       result.should == [nil, nil, nil, nil]
     end

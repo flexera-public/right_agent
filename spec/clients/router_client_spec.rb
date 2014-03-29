@@ -32,8 +32,8 @@ describe RightScale::RouterClient do
     @log = flexmock(RightScale::Log)
     @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
     @log.should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
-    @timer = flexmock("timer", :cancel => true, :interval= => 0).by_default
-    flexmock(EM).should_receive(:add_periodic_timer).and_return(@timer).by_default
+    @timer = flexmock("timer", :cancel => true).by_default
+    flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
     @http_client = flexmock("http client", :get => true, :check_health => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @websocket = WebSocketClientMock.new
@@ -154,126 +154,20 @@ describe RightScale::RouterClient do
         lambda { @client.listen(@routing_keys) }.should raise_error(ArgumentError, "Block missing")
       end
 
-      it "initializes listen state to :choose and starts periodic timer" do
-        flexmock(EM).should_receive(:add_periodic_timer).with(0, Proc).and_return(@timer).once
+      it "initializes listen state and starts loop" do
+        flexmock(@client).should_receive(:listen_loop).with(@routing_keys, nil, Proc).and_return(true).once
         @client.listen(@routing_keys, &@handler).should be true
         @client.instance_variable_get(:@listen_state).should == :choose
-      end
-
-      context "when timer fires" do
-        def when_in_listen_state(state, checks = nil)
-          flexmock(EM).should_receive(:add_periodic_timer).and_return(@timer).and_yield.once
-          flexmock(@client).should_receive(:listen_state).and_return do
-            @client.instance_variable_set(:@listen_timer, @timer)
-            @client.send(:update_listen_state, state)
-            @client.instance_variable_set(:@listen_checks, checks) if checks
-            state
-          end
-        end
-
-        context "in :choose state" do
-          it "chooses listen method" do
-            when_in_listen_state(:choose)
-            @client.listen(@routing_keys, &@handler)
-            @client.instance_variable_get(:@listen_state).should == :connect
-          end
-        end
-
-        context "in :check state" do
-          context "and not connected" do
-            before(:each) do
-              when_in_listen_state(:check)
-              @client.instance_variable_set(:@websocket, nil)
-            end
-
-            it "sets state to :connect if router not responding" do
-              flexmock(@client).should_receive(:router_not_responding?).and_return(true).once
-              @timer.should_receive(:interval=).with(0).once.ordered
-              @timer.should_receive(:interval=).with(4).once.ordered
-              @client.listen(@routing_keys, &@handler)
-              @client.instance_variable_get(:@listen_state).should == :connect
-            end
-
-            it "otherwise backs off connect interval and sets state to :long_poll" do
-              flexmock(@client).should_receive(:router_not_responding?).and_return(false).once
-              @timer.should_receive(:interval=).with(0).twice
-              @client.listen(@routing_keys, &@handler)
-              @client.instance_variable_get(:@listen_state).should == :long_poll
-            end
-          end
-
-          context "and connected" do
-            before(:each) do
-              @client.instance_variable_set(:@websocket, @websocket)
-            end
-
-            it "sets state to :choose if have checked enough" do
-              when_in_listen_state(:check, 5)
-              @timer.should_receive(:interval=).with(0).once.ordered
-              @timer.should_receive(:interval=).with(30).once.ordered
-              @client.listen(@routing_keys, &@handler)
-              @client.instance_variable_get(:@listen_state).should == :choose
-            end
-
-            it "otherwise stays in same state" do
-              when_in_listen_state(:check, 4)
-              @client.listen(@routing_keys, &@handler)
-              @client.instance_variable_get(:@listen_state).should == :check
-            end
-          end
-        end
-
-        context "in :connect state" do
-         it "tries to connect" do
-            when_in_listen_state(:connect)
-            flexmock(@client).should_receive(:try_connect).with(@routing_keys, Proc).once
-            @client.listen(@routing_keys, &@handler)
-          end
-        end
-
-        context "in :long_poll state" do
-          it "tries long-polling if non-blocking enabled" do
-            @client = RightScale::RouterClient.new(@auth_client, :non_blocking => true)
-            when_in_listen_state(:long_poll)
-            flexmock(@client).should_receive(:try_long_poll).with(@routing_keys, nil, Proc).and_return(nil).once
-            @client.listen(@routing_keys, &@handler)
-          end
-
-          it "otherwise tries deferred long-polling and sets state to :wait" do
-            when_in_listen_state(:long_poll)
-            flexmock(@client).should_receive(:try_deferred_long_polling).with(@routing_keys, nil, Proc).once
-            @timer.should_receive(:interval=).with(0).once.ordered
-            @timer.should_receive(:interval=).with(1).once.ordered
-            @client.listen(@routing_keys, &@handler)
-            @client.instance_variable_get(:@listen_state).should == :wait
-          end
-        end
-
-        context "in :wait state" do
-          it "does nothing" do
-            when_in_listen_state(:wait)
-            @client.listen(@routing_keys, &@handler)
-            @client.instance_variable_get(:@listen_state).should == :wait
-          end
-        end
-
-        context "and exception raised" do
-          it "logs error" do
-            when_in_listen_state(:choose)
-            flexmock(@client).should_receive(:choose_listen_method).and_raise(RuntimeError).once
-            @log.should_receive(:error).with("Failed to listen", RuntimeError, :trace).once
-            @client.listen(@routing_keys, &@handler)
-          end
-        end
       end
     end
 
     context :close do
       it "stops listening" do
+        @client.instance_variable_set(:@listen_timer, @timer)
         @timer.should_receive(:cancel).once
-        @client.send(:listen, nil, &@handler)
         @client.close
         @client.instance_variable_get(:@listen_timer).should be nil
+        @client.instance_variable_get(:@listen_state).should == :cancel
       end
 
       it "closes websocket" do
@@ -285,94 +179,235 @@ describe RightScale::RouterClient do
     end
 
     context :update_listen_state do
-      it "does nothing unless listen timer defined" do
-        @client.send(:update_listen_state, :choose).should be true
-        @client.instance_variable_get(:@listen_state).should be nil
+      it "cancels timer if state is :cancel" do
+        @client.instance_variable_set(:@listen_timer, @timer)
+        @client.send(:update_listen_state, :cancel).should be true
+        @client.instance_variable_get(:@listen_state).should == :cancel
+        @client.instance_variable_get(:@listen_timer).should be nil
       end
 
-      context "when listen timer defined" do
+      it "can handle a re-cancel" do
+        @client.instance_variable_set(:@listen_timer, @timer)
+        @client.send(:update_listen_state, :cancel).should be true
+        @client.send(:update_listen_state, :cancel).should be true
+        @client.instance_variable_get(:@listen_timer).should be nil
+      end
+
+      [:choose, :check, :connect, :long_poll, :wait].each do |state|
+        it "sets state and timer interval for valid state #{state}" do
+          @client.send(:update_listen_state, state, 10).should be true
+          @client.instance_variable_get(:@listen_state).should == state
+          @client.instance_variable_get(:@listen_interval).should == 10
+        end
+      end
+
+      it "rejects invalid states" do
+        lambda { @client.send(:update_listen_state, :bogus) }.should raise_error(ArgumentError)
+      end
+
+      context "and state set to :long_poll" do
+        it "records start of long-polling and erases persistent connection" do
+          @client.send(:update_listen_state, :long_poll)
+          @client.instance_variable_get(:@started_long_polling_at).should == @later
+          @client.instance_variable_get(:@long_polling_connection).should be nil
+        end
+
+        it "only records start of long-polling when state changes" do
+          @client.instance_variable_get(:@started_long_polling_at).should be nil
+          @client.send(:update_listen_state, :long_poll)
+          @client.instance_variable_get(:@started_long_polling_at).should == @later
+          @client.instance_variable_set(:@started_long_polling_at, nil)
+          @client.send(:update_listen_state, :long_poll)
+          @client.instance_variable_get(:@started_long_polling_at).should be nil
+        end
+      end
+
+      context "and state set to :check" do
+        it "initializes check count" do
+          @client.instance_variable_get(:@listen_checks).should be nil
+          @client.send(:update_listen_state, :check).should be true
+          @client.instance_variable_get(:@listen_checks).should == 0
+        end
+
+        it "only records start of long-polling when state changes" do
+          @client.send(:update_listen_state, :check).should be true
+          @client.instance_variable_get(:@listen_checks).should == 0
+          @client.instance_variable_set(:@listen_checks, nil)
+          @client.send(:update_listen_state, :check)
+          @client.instance_variable_get(:@listen_checks).should be nil
+        end
+      end
+    end
+
+    context :listen_loop do
+      def when_in_listen_state(state, checks = nil, failures = 0)
+        @event_uuids = nil
+        flexmock(EM).should_receive(:next_tick).by_default
+        flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
+        @client.send(:update_listen_state, state)
+        @client.instance_variable_set(:@listen_checks, checks) if checks
+        @client.instance_variable_set(:@listen_failures, failures)
+        @client.instance_variable_set(:@connect_interval, 30)
+        @client.instance_variable_set(:@reconnect_interval, 2)
+        state
+      end
+
+      context "in :choose state" do
+        it "chooses listen method" do
+          when_in_listen_state(:choose)
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+          @client.instance_variable_get(:@listen_state).should == :connect
+        end
+      end
+
+      context "in :check state" do
+        context "and not connected" do
+          before(:each) do
+            when_in_listen_state(:check)
+            @client.instance_variable_set(:@websocket, nil)
+          end
+
+          it "sets state to :connect if router not responding" do
+            flexmock(@client).should_receive(:router_not_responding?).and_return(true).once
+            @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+            @client.instance_variable_get(:@listen_state).should == :connect
+            @client.instance_variable_get(:@listen_interval).should == 4
+          end
+
+          it "otherwise backs off connect interval and sets state to :long_poll" do
+            flexmock(@client).should_receive(:router_not_responding?).and_return(false).once
+            @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+            @client.instance_variable_get(:@connect_interval).should == 60
+            @client.instance_variable_get(:@listen_state).should == :long_poll
+            @client.instance_variable_get(:@listen_interval).should == 0
+          end
+        end
+
+        context "and connected" do
+          before(:each) do
+            @client.instance_variable_set(:@websocket, @websocket)
+          end
+
+          it "sets state to :choose if have checked enough" do
+            when_in_listen_state(:check, 5)
+            @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+            @client.instance_variable_get(:@listen_state).should == :choose
+            @client.instance_variable_get(:@listen_interval).should == 30
+          end
+
+          it "otherwise stays in same state" do
+            when_in_listen_state(:check, 4)
+            @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+            @client.instance_variable_get(:@listen_state).should == :check
+          end
+        end
+      end
+
+      context "in :connect state" do
+       it "tries to connect" do
+          when_in_listen_state(:connect)
+          flexmock(@client).should_receive(:try_connect).with(@routing_keys, Proc).once
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+        end
+      end
+
+      context "in :long_poll state" do
+        it "tries long-polling if non-blocking enabled" do
+          @client = RightScale::RouterClient.new(@auth_client, :non_blocking => true)
+          when_in_listen_state(:long_poll)
+          flexmock(@client).should_receive(:try_long_poll).with(@routing_keys, nil, Proc).and_return(nil).once
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+        end
+
+        it "otherwise tries deferred long-polling and sets state to :wait" do
+          when_in_listen_state(:long_poll)
+          flexmock(@client).should_receive(:try_deferred_long_polling).with(@routing_keys, nil, Proc).once
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+          @client.instance_variable_get(:@listen_state).should == :wait
+          @client.instance_variable_get(:@listen_interval).should == 1
+        end
+      end
+
+      context "in :wait state" do
+        it "does nothing" do
+          when_in_listen_state(:wait)
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler)
+          @client.instance_variable_get(:@listen_state).should == :wait
+        end
+      end
+
+      context "in :cancel state" do
+        it "returns false" do
+          when_in_listen_state(:cancel)
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be false
+          @client.instance_variable_get(:@listen_state).should == :cancel
+        end
+      end
+
+      context "when unexpected exception" do
         before(:each) do
-          @client.instance_variable_set(:@listen_timer, @timer)
+          when_in_listen_state(:connect)
+          flexmock(@client).should_receive(:try_connect).and_raise(RuntimeError).once
         end
 
-        it "cancels timer if state is :cancel" do
-          @client.send(:update_listen_state, :cancel).should be true
-          @client.instance_variable_get(:@listen_state).should be nil
-          @client.instance_variable_get(:@listen_timer).should be nil
+        it "logs error" do
+          @log.should_receive(:error).with("Failed to listen", RuntimeError, :trace).once
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be true
         end
 
-        it "can handle a re-cancel" do
-          @client.send(:update_listen_state, :cancel).should be true
-          @client.send(:update_listen_state, :cancel).should be true
-          @client.instance_variable_get(:@listen_timer).should be nil
+        it "resets state to :choose" do
+          @log.should_receive(:error)
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be true
+          @client.instance_variable_get(:@listen_state).should == :choose
         end
 
-        [:choose, :check, :connect, :long_poll, :wait].each do |state|
-          it "sets state and timer interval for valid state #{state}" do
-            @timer.should_receive(:interval=).with(10).once
-            @client.send(:update_listen_state, state, 10).should be true
-            @client.instance_variable_get(:@listen_state).should == state
-          end
+        it "fails if exceeded repeated failure limit" do
+          when_in_listen_state(:connect, 1, 10)
+          @log.should_receive(:error).with("Failed to listen", RuntimeError, :trace).once.ordered
+          @log.should_receive(:error).with("Exceeded maximum repeated listen failures (10), stopping listening").once.ordered
+          @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be false
+          @client.instance_variable_get(:@listen_state).should == :cancel
+          @client.state.should == :failed
         end
+      end
 
-        it "rejects invalid states" do
-          lambda { @client.send(:update_listen_state, :bogus) }.should raise_error(ArgumentError)
-        end
+      it "uses next_tick for next loop if interval is 0" do
+        when_in_listen_state(:choose)
+        @client.instance_variable_get(:@listen_interval).should == 0
+        flexmock(EM).should_receive(:next_tick).and_yield.once
+        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).once
+        @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be true
+        @client.instance_variable_get(:@listen_state).should == :check
+      end
 
-        context "and state set to :long_poll" do
-          it "records start of long-polling and erases persistent connection" do
-            @client.send(:update_listen_state, :long_poll)
-            @client.instance_variable_get(:@started_long_polling_at).should == @later
-            @client.instance_variable_get(:@long_polling_connection).should be nil
-          end
-
-          it "only records start of long-polling when state changes" do
-            @client.instance_variable_get(:@started_long_polling_at).should be nil
-            @client.send(:update_listen_state, :long_poll)
-            @client.instance_variable_get(:@started_long_polling_at).should == @later
-            @client.instance_variable_set(:@started_long_polling_at, nil)
-            @client.send(:update_listen_state, :long_poll)
-            @client.instance_variable_get(:@started_long_polling_at).should be nil
-          end
-        end
-
-        context "and state set to :check" do
-          it "initializes check count" do
-            @client.instance_variable_get(:@listen_checks).should be nil
-            @client.send(:update_listen_state, :check).should be true
-            @client.instance_variable_get(:@listen_checks).should == 0
-          end
-
-          it "only records start of long-polling when state changes" do
-            @client.send(:update_listen_state, :check).should be true
-            @client.instance_variable_get(:@listen_checks).should == 0
-            @client.instance_variable_set(:@listen_checks, nil)
-            @client.send(:update_listen_state, :check)
-            @client.instance_variable_get(:@listen_checks).should be nil
-          end
-        end
+      it "otherwise uses timer for next loop" do
+        when_in_listen_state(:long_poll)
+        flexmock(@client).should_receive(:try_deferred_long_polling).once
+        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).once
+        flexmock(EM).should_receive(:next_tick).never
+        @client.send(:listen_loop, @routing_keys, @event_uuids, &@handler).should be true
+        @client.instance_variable_get(:@listen_state).should == :wait
       end
     end
 
     context :choose_listen_method do
       before(:each) do
-        @client.instance_variable_set(:@listen_timer, @timer)
         @client.instance_variable_set(:@connect_interval, 30)
       end
 
       it "chooses long-polling if only it is enabled" do
         @client = RightScale::RouterClient.new(@auth_client, :long_polling_only => true)
-        @client.instance_variable_set(:@listen_timer, @timer)
-        @timer.should_receive(:interval=).with(0).once
         @client.send(:choose_listen_method).should be true
         @client.instance_variable_get(:@listen_state).should == :long_poll
+        @client.instance_variable_get(:@listen_interval).should == 0
+        @client.instance_variable_get(:@connect_interval).should == 60 * 60 * 24
       end
 
       it "chooses to delay choice if already connected" do
         @client.instance_variable_set(:@websocket, @websocket)
-        @timer.should_receive(:interval=).with(30).once
         @client.send(:choose_listen_method).should be true
         @client.instance_variable_get(:@listen_state).should == :choose
+        @client.instance_variable_get(:@listen_interval).should == 30
       end
 
       context "when not connected" do
@@ -381,9 +416,9 @@ describe RightScale::RouterClient do
         end
 
         it "chooses to connect if never connected" do
-          @timer.should_receive(:interval=).with(0).once
           @client.send(:choose_listen_method).should be true
           @client.instance_variable_get(:@listen_state).should == :connect
+          @client.instance_variable_get(:@listen_interval).should == 0
         end
 
         context "but previously attempted" do
@@ -392,19 +427,19 @@ describe RightScale::RouterClient do
           end
 
           it "chooses to connect immediately if enough time has elapsed" do
-            @timer.should_receive(:interval=).with(0).once
             @client.instance_variable_set(:@attempted_connect_at, @now - 30)
             @client.send(:choose_listen_method).should be true
             @client.instance_variable_get(:@listen_state).should == :connect
+            @client.instance_variable_get(:@listen_interval).should == 0
           end
 
           [RightScale::RouterClient::NORMAL_CLOSE, RightScale::RouterClient::SHUTDOWN_CLOSE].each do |code|
             it "chooses to connect immediately if previous close code is #{code}" do
               @client.instance_variable_set(:@close_code, code)
               @client.instance_variable_set(:@connect_interval, 300)
-              @timer.should_receive(:interval=).with(0).once
               @client.send(:choose_listen_method).should be true
               @client.instance_variable_get(:@listen_state).should == :connect
+              @client.instance_variable_get(:@listen_interval).should == 0
             end
           end
 
@@ -413,17 +448,17 @@ describe RightScale::RouterClient do
               @client.instance_variable_set(:@close_code, RightScale::RouterClient::PROTOCOL_ERROR_CLOSE)
               @client.instance_variable_set(:@close_reason, "Unexpected response code: #{code}")
               @client.instance_variable_set(:@connect_interval, 300)
-              @timer.should_receive(:interval=).with(0).once
               @client.send(:choose_listen_method).should be true
               @client.instance_variable_get(:@listen_state).should == :connect
+              @client.instance_variable_get(:@listen_interval).should == 0
             end
           end
 
           it "otherwise it chooses to connect as soon as connect interval expires" do
             @client.instance_variable_set(:@attempted_connect_at, @now - 28)
-            @timer.should_receive(:interval=).with(1).once
             @client.send(:choose_listen_method).should be true
             @client.instance_variable_get(:@listen_state).should == :connect
+            @client.instance_variable_get(:@listen_interval).should == 1
           end
         end
       end
@@ -432,25 +467,24 @@ describe RightScale::RouterClient do
     context :try_connect do
       before(:each) do
         @client.instance_variable_get(:@websocket).should be nil
-        @client.instance_variable_set(:@listen_timer, @timer)
         @client.instance_variable_set(:@connect_interval, 30)
         @client.instance_variable_set(:@reconnect_interval, 2)
       end
 
       it "makes websocket connect request and sets state to :check" do
         flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@websocket).once
-        @timer.should_receive(:interval=).with(1).once
         @client.send(:try_connect, @routing_keys, &@handler)
         @client.instance_variable_get(:@listen_state).should == :check
+        @client.instance_variable_get(:@listen_interval).should == 1
       end
 
       it "adjusts connect interval if websocket creation fails and sets state to :long_poll" do
         @log.should_receive(:error).with("Failed creating WebSocket", RuntimeError).once
         flexmock(Faye::WebSocket::Client).should_receive(:new).and_raise(RuntimeError).once
-        @timer.should_receive(:interval=).with(0).once
         @client.send(:try_connect, @routing_keys, &@handler)
         @client.instance_variable_get(:@connect_interval).should == 60
         @client.instance_variable_get(:@listen_state).should == :long_poll
+        @client.instance_variable_get(:@listen_interval).should == 0
       end
     end
 
@@ -600,7 +634,6 @@ describe RightScale::RouterClient do
     context :try_deferred_long_polling do
       before(:each) do
         @uuids = ["uuid"]
-        @client.instance_variable_set(:@listen_timer, @timer)
         @client.instance_variable_set(:@connect_interval, 30)
         @client.instance_variable_set(:@reconnect_interval, 2)
         @client.send(:update_listen_state, :long_poll)
@@ -612,50 +645,56 @@ describe RightScale::RouterClient do
         @client.send(:try_deferred_long_polling, @routing_keys, @uuids, &@handler).should be true
       end
 
-      it "hanldes UUIDs of events received" do
-        flexmock(EM).should_receive(:defer).and_yield(@uuids).once
-        @timer.should_receive(:interval=).with(0).once
-        @client.send(:try_deferred_long_polling, @routing_keys, [], &@handler).should be true
-        @client.instance_variable_get(:@listen_state).should == :long_poll
-      end
-
-      it "handles exception if there is a long-polling failure" do
-        flexmock(EM).should_receive(:defer).and_yield(RuntimeError.new).once
-        @log.should_receive(:error).with("Failed long-polling", RuntimeError, :trace).once
-        @timer.should_receive(:interval=).with(4).once
-        @client.send(:try_deferred_long_polling, @routing_keys, @uuids, &@handler).should be true
-        @client.instance_variable_get(:@listen_state).should == :choose
-      end
-
-      context "defer_proc" do
+      context "defer_operation_proc" do
         before(:each) do
           @client.instance_variable_set(:@connect_interval, 1)
           @client.send(:try_deferred_long_polling, @routing_keys, @uuids, &@handler)
-          @defer_proc = @client.instance_variable_get(:@defer_proc)
+          @defer_operation_proc = @client.instance_variable_get(:@defer_operation_proc)
         end
 
         it "long-polls" do
           flexmock(@client).should_receive(:long_poll).with(@routing_keys, @uuids, @handler).and_return([]).once
-          @defer_proc.call.should == []
+          @defer_operation_proc.call.should == []
         end
 
         context "long-polls repeatedly" do
           before(:each) do
             @client.instance_variable_set(:@connect_interval, 2)
             @client.send(:try_deferred_long_polling, @routing_keys, @uuids, &@handler)
-            @defer_proc = @client.instance_variable_get(:@defer_proc)
+            @defer_operation_proc = @client.instance_variable_get(:@defer_operation_proc)
           end
 
           it "repeatedly long-polls until time to stop" do
             flexmock(@client).should_receive(:long_poll).and_return([]).twice
-            @defer_proc.call.should == []
+            @defer_operation_proc.call.should == []
           end
 
           it "repeatedly long-polls until there is an exception" do
             flexmock(@client).should_receive(:long_poll).and_return([]).once.ordered
             flexmock(@client).should_receive(:long_poll).and_raise(RuntimeError).once.ordered
-            @defer_proc.call.should be_a RuntimeError
+            @defer_operation_proc.call.should be_a RuntimeError
           end
+        end
+      end
+
+      context "defer_callback_proc" do
+        before(:each) do
+          @client.instance_variable_set(:@connect_interval, 1)
+          @client.send(:try_deferred_long_polling, @routing_keys, @uuids, &@handler)
+          @defer_callback_proc = @client.instance_variable_get(:@defer_callback_proc)
+        end
+
+        it "handles UUIDs of events received" do
+          @defer_callback_proc.call(@uuids).should == @uuids
+          @client.instance_variable_get(:@listen_state).should == :long_poll
+          @client.instance_variable_get(:@listen_interval).should == 0
+        end
+
+        it "handles exception if there is a long-polling failure" do
+          @log.should_receive(:error).with("Failed long-polling", RuntimeError, :trace).once
+          @defer_callback_proc.call(RuntimeError.new).should be nil
+          @client.instance_variable_get(:@listen_state).should == :choose
+          @client.instance_variable_get(:@listen_interval).should == 4
         end
       end
     end
@@ -742,7 +781,6 @@ describe RightScale::RouterClient do
     context :process_long_poll do
       before(:each) do
         @uuids = ["uuid"]
-        @client.instance_variable_set(:@listen_timer, @timer)
         @client.instance_variable_set(:@connect_interval, 30)
         @client.instance_variable_set(:@reconnect_interval, 2)
         @client.send(:update_listen_state, :long_poll)
@@ -753,34 +791,34 @@ describe RightScale::RouterClient do
       RightScale::Exceptions::RetryableError.new("error")].each do |e|
         it "does not trace #{e} exceptions but sets state to :choose" do
           @log.should_receive(:error).with("Failed long-polling", e, :no_trace).once
-          @timer.should_receive(:interval=).with(4).once
           @client.send(:process_long_poll, e).should be nil
           @client.instance_variable_get(:@listen_state).should == :choose
+          @client.instance_variable_get(:@listen_interval).should == 4
         end
       end
 
       it "traces unexpected exceptions and sets state to :choose" do
         e = RuntimeError.new
         @log.should_receive(:error).with("Failed long-polling", e, :trace).once
-        @timer.should_receive(:interval=).with(4).once
         @client.send(:process_long_poll, e).should be nil
         @client.instance_variable_get(:@listen_state).should == :choose
+        @client.instance_variable_get(:@listen_interval).should == 4
       end
 
       context "when no exception" do
         it "sets state to :choose if time to try to connect" do
           @client.instance_variable_set(:@connect_interval, 0)
           @client.instance_variable_set(:@reconnect_interval, 2)
-          @timer.should_receive(:interval=).with(0).once
           @client.send(:process_long_poll, @uuids).should == @uuids
           @client.instance_variable_get(:@listen_state).should == :choose
           @client.instance_variable_get(:@reconnect_interval).should == 2
+          @client.instance_variable_get(:@listen_interval).should == 0
         end
 
         it "otherwise sets state to :long_poll" do
-          @timer.should_receive(:interval=).with(0).once
           @client.send(:process_long_poll, @uuids).should == @uuids
           @client.instance_variable_get(:@listen_state).should == :long_poll
+          @client.instance_variable_get(:@listen_interval).should == 0
         end
       end
     end

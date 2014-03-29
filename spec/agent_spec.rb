@@ -42,7 +42,7 @@ describe RightScale::Agent do
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
       @timer = flexmock("timer")
-      flexmock(EM).should_receive(:add_periodic_timer).and_return(@timer)
+      flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer)
       @timer.should_receive(:cancel)
       @broker = flexmock("broker", :subscribe => ["b1"], :publish => ["b1"], :prefetch => true,
                          :all => ["b1"], :connected => ["b1"], :failed => [], :close_one => true,
@@ -250,8 +250,8 @@ describe RightScale::Agent do
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).with(0, Proc).and_yield.by_default
       flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.by_default
-      @periodic_timer = flexmock("timer")
-      flexmock(EM).should_receive(:add_periodic_timer).and_return(@periodic_timer)
+      @periodic_timer = flexmock("periodic timer")
+      flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@periodic_timer)
       @periodic_timer.should_receive(:cancel).by_default
       @broker_id = "rs-broker-123-1"
       @broker_id2 = "rs-broker-123-2"

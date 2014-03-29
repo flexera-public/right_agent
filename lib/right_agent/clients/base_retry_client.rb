@@ -274,7 +274,7 @@ module RightScale
       unless @reconnecting
         @reconnecting = true
         @stats["reconnects"].update("initiate")
-        @reconnect_timer = EM_S.add_periodic_timer(rand(@options[:reconnect_interval])) do
+        @reconnect_timer = EM_S::PeriodicTimer.new(rand(@options[:reconnect_interval])) do
           begin
             create_http_client
             if check_health == :connected

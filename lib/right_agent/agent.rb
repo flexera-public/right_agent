@@ -979,7 +979,7 @@ module RightScale
     def setup_status_checks(interval)
       @check_status_count = 0
       @check_status_brokers = @client.all if @mode != :http
-      @check_status_timer = EM_S.add_periodic_timer(interval) { check_status }
+      @check_status_timer = EM_S::PeriodicTimer.new(interval) { check_status }
       true
     end
 

@@ -279,7 +279,10 @@ module RightScale
         :headers => request_headers }
 
       if [:get, :delete].include?(verb)
-        request_options[:query] = params if params.is_a?(Hash) && params.any?
+        # Doing own formatting because :query option for HTTPClient uses addressable gem
+        # for conversion and that gem encodes arrays in a Rails-compatible fashion without []
+        # markers and that is inconsistent with what sinatra expects
+        request_options[:query] = "?#{format(params)}" if params.is_a?(Hash) && params.any?
       else
         request_options[:payload] = JSON.dump(params)
         request_options[:headers][:content_type] = "application/json"
@@ -327,7 +330,8 @@ module RightScale
     #
     # @raise [NotResponding] server not responding, recommend retry
     def blocking_request(verb, path, host, connect_options, request_options, options)
-      if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path, request_options.merge(connect_options)))
+      query = request_options.delete(:query).to_s
+      if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path + query, request_options.merge(connect_options)))
         [process_response(r.code, r.body, r.headers, request_options[:headers][:accept]), r.code, r.body, r.headers]
       else
         [nil, nil, nil, nil]
@@ -504,6 +508,8 @@ module RightScale
     end
 
     # Format query parameters for inclusion in URI
+    # It can only handle parameters that can be converted to a string or arrays of same,
+    # not hashes or arrays/hashes that recursively contain arrays and/or hashes
     #
     # @param params [Hash] Parameters that are converted to <key>=<escaped_value> format
     #   and any value that is an array has each of its values formatted as <key>[]=<escaped_value>
@@ -559,7 +565,7 @@ module RightScale
       case exception
       when String
         exception
-      when RightScale::HttpException
+      when RightScale::HttpException, RestClient::Exception
         if exception.http_body.nil? || exception.http_body.empty? || exception.http_body =~ /^<html>| html /
           exception.message
         else
