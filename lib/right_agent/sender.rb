@@ -571,7 +571,9 @@ module RightScale
       true
     end
 
-    # Send request via HTTP and then immediately handle response
+    # Send request via HTTP
+    # Use next_tick for asynchronous response and to ensure
+    # that the request is sent using the main EM reactor thread
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
@@ -583,6 +585,33 @@ module RightScale
     # === Return
     # true:: Always return true
     def http_send(kind, target, packet, received_at, callback)
+      if @options[:async_response]
+        EM_S.next_tick do
+          begin
+            http_send_once(kind, target, packet, received_at, callback)
+          rescue Exception => e
+            Log.error("Failed sending or handling response for #{packet.trace} #{packet.type}", e, :trace)
+            @exception_stats.track("request", e)
+          end
+        end
+      else
+        http_send_once(kind, target, packet, received_at, callback)
+      end
+      true
+    end
+
+    # Send request via HTTP and then immediately handle response
+    #
+    # === Parameters
+    # kind(Symbol):: Kind of request: :send_push or :send_request
+    # target(Hash|String|nil):: Target for request
+    # packet(Push|Request):: Request packet to send
+    # received_at(Time):: Time when request received
+    # callback(Proc|nil):: Block used to process response
+    #
+    # === Return
+    # true:: Always return true
+    def http_send_once(kind, target, packet, received_at, callback)
       begin
         method = packet.class.name.split("::").last.downcase
         result = success_result(@agent.client.send(method, packet.type, packet.payload, target, packet.token))
@@ -619,11 +648,7 @@ module RightScale
         result = Result.new(packet.token, @identity, result, from = packet.target)
         result.received_at = received_at.to_f
         @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
-        if @options[:async_response]
-          EM.next_tick { handle_response(result) }
-        else
-          handle_response(result)
-        end
+        handle_response(result)
       end
       true
     end

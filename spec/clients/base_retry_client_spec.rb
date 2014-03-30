@@ -103,7 +103,7 @@ describe RightScale::BaseRetryClient do
 
     it "sets up for reconnect if not connected" do
       flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).once
-      e = RightScale::BalancedHttpClient::NotResponding.new(nil, RestExceptionMock.new(503))
+      e = RightScale::BalancedHttpClient::NotResponding.new(nil, RightScale::HttpExceptions.create(503))
       @http_client.should_receive(:check_health).and_raise(e)
       @log.should_receive(:error)
       flexmock(@client).should_receive(:enable_use).never
@@ -291,9 +291,9 @@ describe RightScale::BaseRetryClient do
     end
 
     it "sets state to :disconnected and logs if server not responding" do
-      e = RightScale::BalancedHttpClient::NotResponding.new("not responding", RestExceptionMock.new(503))
+      e = RightScale::BalancedHttpClient::NotResponding.new("not responding", RightScale::HttpExceptions.create(503))
       @http_client.should_receive(:check_health).and_raise(e).once
-      @log.should_receive(:error).with("Failed test health check", RestExceptionMock).once
+      @log.should_receive(:error).with("Failed test health check", RightScale::HttpException).once
       @client.send(:check_health).should == :disconnected
       @client.state.should == :disconnected
     end
@@ -490,7 +490,7 @@ describe RightScale::BaseRetryClient do
       context "when redirect" do
         [301, 302].each do |http_code|
           it "handles #{http_code} redirect" do
-            e = RestExceptionMock.new(http_code, "redirect")
+            e = RightScale::HttpExceptions.create(http_code, "redirect")
             flexmock(@client).should_receive(:handle_redirect).with(e, @type, @request_uuid).once
             @client.send(:handle_exception, e, @type, @request_uuid, @now, 1)
           end
@@ -498,27 +498,27 @@ describe RightScale::BaseRetryClient do
       end
 
       it "raises if unauthorized" do
-        e = RestExceptionMock.new(401, "unauthorized")
+        e = RightScale::HttpExceptions.create(401, "unauthorized")
         lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
             raise_error(RightScale::Exceptions::Unauthorized, "unauthorized")
       end
 
       it "notifies auth client and raises retryable if session expired" do
-        e = RestExceptionMock.new(403, "forbidden")
+        e = RightScale::HttpExceptions.create(403, "forbidden")
         lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
             raise_error(RightScale::Exceptions::RetryableError, "Authorization expired")
         @auth_client.expired_called.should be_true
       end
 
       it "handles retry with and updates request_uuid to distinguish for retry" do
-        e = RestExceptionMock.new(449, "retry with")
+        e = RightScale::HttpExceptions.create(449, "retry with")
         flexmock(@client).should_receive(:handle_retry_with).with(e, @type, @request_uuid, @now, 1).
             and_return("modified uuid").once
         @client.send(:handle_exception, e, @type, @request_uuid, @now, 1).should == "modified uuid"
       end
 
       it "handles internal server error" do
-        e = RestExceptionMock.new(500, "test internal error")
+        e = RightScale::HttpExceptions.create(500, "test internal error")
         lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
             raise_error(RightScale::Exceptions::InternalServerError, "test internal error")
       end
@@ -530,7 +530,7 @@ describe RightScale::BaseRetryClient do
       end
 
       it "causes other HTTP exceptions to be re-raised by returning nil" do
-        e = RestExceptionMock.new(400, "bad request")
+        e = RightScale::HttpExceptions.create(400, "bad request")
         @client.send(:handle_exception, e, @type, @request_uuid, @now, 1).should be_nil
       end
 
@@ -542,7 +542,7 @@ describe RightScale::BaseRetryClient do
     context :handle_redirect do
       it "initiates redirect by notifying auth client and raising retryable error" do
         location = "http://somewhere.com"
-        e = RestExceptionMock.new(301, "moved permanently", {:location => location})
+        e = RightScale::HttpExceptions.create(301, "moved permanently", {:location => location})
         @log.should_receive(:info).with(/Received REDIRECT/).once.ordered
         @log.should_receive(:info).with("Requesting auth client to handle redirect to #{location.inspect}").once.ordered
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
@@ -551,7 +551,7 @@ describe RightScale::BaseRetryClient do
       end
 
       it "raises internal error if no redirect location is provided" do
-        e = RestExceptionMock.new(301, "moved permanently")
+        e = RightScale::HttpExceptions.create(301, "moved permanently")
         @log.should_receive(:info).with(/Received REDIRECT/).once
         lambda { @client.send(:handle_redirect, e, @type, @request_uuid) }.should \
             raise_error(RightScale::Exceptions::InternalServerError, "No redirect location provided")
@@ -560,10 +560,10 @@ describe RightScale::BaseRetryClient do
 
     context :handle_retry_with do
       before(:each) do
-        @exception = RestExceptionMock.new(449, "retry with")
+        @exception = RightScale::HttpExceptions.create(449, "retry with")
       end
 
-      it "sleeps for configured interval and does not raise if retry still viable" do
+      it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
         @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1)
@@ -598,13 +598,13 @@ describe RightScale::BaseRetryClient do
         @exception = RightScale::BalancedHttpClient::NotResponding.new("Server not responding")
       end
 
-      it "sleeps for configured interval and does not raise if retry still viable" do
+      it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
         @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 1)
       end
 
-      it "changes sleep interval for successive retries" do
+      it "changes wait interval for successive retries" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(12).once
         @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 2)
@@ -634,6 +634,22 @@ describe RightScale::BaseRetryClient do
             raise_error(RightScale::Exceptions::ConnectivityFailure, "Server not responding")
         @client.state.should == :disconnected
       end
+    end
+  end
+
+  context :wait do
+    it "waits using timer if non-blocking enabled" do
+      @fiber = flexmock("fiber", :resume => true).by_default
+      flexmock(Fiber).should_receive(:current).and_return(@fiber)
+      flexmock(Fiber).should_receive(:yield).once
+      flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.once
+      @client.init(:test, @auth_client, @options.merge(:non_blocking => true))
+      @client.send(:wait, 1).should be true
+    end
+
+    it " waits using sleep if non-blocking disabled" do
+      flexmock(@client).should_receive(:sleep).with(1).once
+      @client.send(:wait, 1).should be true
     end
   end
 end

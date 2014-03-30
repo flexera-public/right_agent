@@ -27,14 +27,13 @@ require 'json'
 require 'openssl'
 require 'right_amqp'
 
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'monkey_patches'))
-require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'protocol_version_mixin'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'payload_formatter'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'packets'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'enrollment_result'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'console'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'daemonize'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'exceptions'))
+require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'http_exceptions'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'multiplexer'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'tracer'))
 require File.normalize_path(File.join(RIGHT_AGENT_BASE_DIR, 'audit_formatter'))
