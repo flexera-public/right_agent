@@ -615,7 +615,7 @@ module RightScale
         end
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
-        EM_S.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
+        EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
         @client.listen(nil) { |e| handle_event(e) } if @mode == :http
 
         # Need to keep reconnect interval at least :connect_timeout in size,
@@ -779,7 +779,7 @@ module RightScale
     def setup_traps
       ['INT', 'TERM'].each do |sig|
         old = trap(sig) do
-          EM_S.next_tick do
+          EM.next_tick do
             begin
               terminate do
                 TERMINATE_BLOCK.call
@@ -985,7 +985,7 @@ module RightScale
     def setup_status_checks(interval)
       @check_status_count = 0
       @check_status_brokers = @client.all if @mode != :http
-      @check_status_timer = EM_S::PeriodicTimer.new(interval) { check_status }
+      @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
       true
     end
 

@@ -175,9 +175,9 @@ module RightScale
               @retry_delay_count = [@retry_delay_count / RETRY_BACKOFF_FACTOR, 1].max
               @retries = 0
             end
-            EM_S.add_timer(this_delay) { run }
+            EM.add_timer(this_delay) { run }
           else
-            EM_S.next_tick { run }
+            EM.next_tick { run }
           end
         else
           cancel(res.content)

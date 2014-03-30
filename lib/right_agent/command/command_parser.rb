@@ -65,7 +65,7 @@ module RightScale
           end
         end
         commands.each do |cmd|
-          EM_S.next_tick do
+          EM.next_tick do
             begin
               @callback.call(cmd)
             rescue Exception => e

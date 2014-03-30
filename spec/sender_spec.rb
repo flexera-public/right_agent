@@ -671,9 +671,47 @@ describe RightScale::Sender do
           @sender.send(:http_send, :send_push, @target, @packet, @received_at, @callback).should be_true
         end
 
+        context "when :async_response enabled" do
+          before(:each) do
+            @sender = create_sender(:http, :async_response => true)
+            flexmock(EM).should_receive(:next_tick).and_yield.once
+          end
+
+          it "sends in next_tick if :async_response option set" do
+            @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
+            @client.should_receive(:push).with(@type, @payload, @target, @token).and_return(nil).once
+            @sender.send(:http_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+          end
+
+          it "logs unexpected exception" do
+            flexmock(@sender).should_receive(:handle_response).and_raise(RuntimeError).once
+            @log.should_receive(:error).with(/Failed sending or handling response/, RuntimeError, :trace).once
+            @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
+            @client.should_receive(:request).with(@type, @payload, @target, @token).and_return("result").once
+            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+          end
+        end
+      end
+
+      context :http_send_once do
+        before(:each) do
+          @received_at = Time.now
+          flexmock(Time).should_receive(:now).and_return(@received_at)
+          flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@token).by_default
+          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
+          @response = nil
+          @callback = lambda { |response| @response = response }
+        end
+
+        it "sends request using configured client" do
+          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
+          @client.should_receive(:push).with(@type, @payload, @target, @token).and_return(nil).once
+          @sender.send(:http_send_once, :send_push, @target, @packet, @received_at, @callback).should be_true
+        end
+
         it "responds with success result containing response" do
           @client.should_receive(:request).with(@type, @payload, @target, @token).and_return("result").once
-          @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
           @response.token.should == @token
           @response.results.success?.should be_true
           @response.results.content.should == "result"
@@ -683,19 +721,7 @@ describe RightScale::Sender do
 
         it "responds with success result when response is nil" do
           @client.should_receive(:request).with(@type, @payload, @target, @token).and_return(nil).once
-          @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
-          @response.token.should == @token
-          @response.results.success?.should be_true
-          @response.results.content.should be_nil
-          @response.from.should == @target
-          @response.received_at.should == @received_at.to_f
-        end
-
-        it "responds asynchronously if requested" do
-          @sender = create_sender(:http, :async_response => true)
-          flexmock(EM).should_receive(:next_tick).and_yield.once
-          @client.should_receive(:request).with(@type, @payload, @target, @token).and_return(nil).once
-          @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
           @response.token.should == @token
           @response.results.success?.should be_true
           @response.results.content.should be_nil
@@ -713,12 +739,12 @@ describe RightScale::Sender do
               flexmock(@sender.offline_handler).should_receive(:queue_request).with(:send_request, @type,
                   @payload, @target, @callback).once
               flexmock(@sender).should_receive(:handle_response).never
-              @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
             end
 
             it "responds with retry result if not queueing" do
               @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "Server not responding").once
-              @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
               @response.results.retry?.should be_true
               @response.results.content.should == "Server not responding"
             end
@@ -726,14 +752,14 @@ describe RightScale::Sender do
 
           it "responds with retry result if retryable error" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::RetryableError, "try again").once
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
             @response.results.retry?.should be_true
             @response.results.content.should == "try again"
           end
 
           it "responds with error result if internal error" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::InternalServerError.new("unprocessable", "Router")).once
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "Router internal error"
           end
@@ -741,12 +767,12 @@ describe RightScale::Sender do
           it "does not respond to request if terminating" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::Terminating, "going down").once
             flexmock(@sender).should_receive(:handle_response).never
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
           end
 
           it "responds with error result if HTTP error" do
             @client.should_receive(:request).and_raise(RightScale::HttpExceptions.create(400, "bad data")).once
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "400 Bad Request: bad data"
           end
@@ -754,7 +780,7 @@ describe RightScale::Sender do
           it "responds with error result if unexpected error" do
             @log.should_receive(:error).with(/Failed to send/, StandardError, :trace).once
             @client.should_receive(:request).and_raise(StandardError, "unexpected").once
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "Agent agent internal error"
           end
