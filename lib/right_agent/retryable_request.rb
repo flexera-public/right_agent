@@ -88,7 +88,7 @@ module RightScale
     def initialize(operation, payload, options = {})
       raise ArgumentError.new("operation is required") unless (@operation = operation)
       raise ArgumentError.new("payload is required") unless (@payload = payload)
-      @retry_on_error = options[:retry_on_error] || false
+      @retry_on_error = options[:retry_on_error]
       @timeout = options[:timeout] || DEFAULT_TIMEOUT
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
       @retry_delay_count = options[:retry_delay_count] || DEFAULT_RETRY_DELAY_COUNT
@@ -175,9 +175,9 @@ module RightScale
               @retry_delay_count = [@retry_delay_count / RETRY_BACKOFF_FACTOR, 1].max
               @retries = 0
             end
-            EM.add_timer(this_delay) { run }
+            EM_S.add_timer(this_delay) { run }
           else
-            EM.next_tick { run }
+            EM_S.next_tick { run }
           end
         else
           cancel(res.content)

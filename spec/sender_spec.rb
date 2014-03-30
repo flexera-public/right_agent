@@ -745,7 +745,7 @@ describe RightScale::Sender do
           end
 
           it "responds with error result if HTTP error" do
-            @client.should_receive(:request).and_raise(RestExceptionMock.new(400, "bad data")).once
+            @client.should_receive(:request).and_raise(RightScale::HttpExceptions.create(400, "bad data")).once
             @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "400 Bad Request: bad data"

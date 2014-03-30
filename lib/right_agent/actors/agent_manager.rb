@@ -162,7 +162,7 @@ class AgentManager
     options = RightScale::SerializationHelper.symbolize_keys(options)
     res = success_result
     begin
-      if error = @agent.connect(options[:host], options[:port], options[:id], options[:priority], options[:force])
+      if (error = @agent.connect(options[:host], options[:port], options[:id], options[:priority], options[:force]))
         res = error_result(error)
       end
     rescue Exception => e
@@ -185,7 +185,7 @@ class AgentManager
     options = RightScale::SerializationHelper.symbolize_keys(options)
     res = success_result
     begin
-      if error = @agent.disconnect(options[:host], options[:port], options[:remove])
+      if (error = @agent.disconnect(options[:host], options[:port], options[:remove]))
         res = error_result(error)
       end
     rescue Exception => e
@@ -206,7 +206,7 @@ class AgentManager
     options = RightScale::SerializationHelper.symbolize_keys(options)
     res = success_result
     begin
-      if error = @agent.connect_failed(options[:brokers])
+      if (error = @agent.connect_failed(options[:brokers]))
         res = error_result(error)
       end
     rescue Exception => e
@@ -225,7 +225,7 @@ class AgentManager
   def terminate(options = nil)
     RightScale::CommandRunner.stop
     # Delay terminate a bit to give request message a chance to be ack'd and reply to be sent
-    EM.add_timer(1) { @agent.terminate }
+    EM_S.add_timer(1) { @agent.terminate }
     true
   end
 

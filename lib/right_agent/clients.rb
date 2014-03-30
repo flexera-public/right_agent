@@ -23,6 +23,14 @@
 
 CLIENTS_BASE_DIR = File.join(File.dirname(__FILE__), 'clients')
 
+unless defined?(Fiber)
+  # To avoid load errors when using pre-1.9 ruby
+  class Fiber
+    def self.current; nil end
+    def self.yield; [] end
+  end
+end
+
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'balanced_http_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'base_retry_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'auth_client'))

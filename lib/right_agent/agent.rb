@@ -138,6 +138,8 @@ module RightScale
     #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access RightNet when online (no argument)
     #   :services(Symbol):: List of services provided by this agent; defaults to all methods exposed by actors
     #   :secure(Boolean):: true indicates to use security features of RabbitMQ to restrict agents to themselves
+    #   :fiber_pool_size(Integer):: Size of fiber pool
+    #   :fiber_pool(FiberPool):: Fiber pool configured for use with EventMachine when making HTTP requests
     #   :mode(Symbol):: RightNet communication mode: :http or :amqp; defaults to :amqp
     #   :api_url(String):: Domain name for HTTP access to RightApi server
     #   :account_id(Integer):: Identifier for account owning this agent
@@ -218,7 +220,7 @@ module RightScale
               # Need to give EM (on Windows) a chance to respond to the AMQP handshake
               # before doing anything interesting to prevent AMQP handshake from
               # timing-out; delay post-connected activity a second
-              EM.add_timer(1) { start_service }
+              EM_S.add_timer(1) { start_service }
             elsif status == :failed
               terminate("failed to connect to any brokers during startup")
             elsif status == :timeout
@@ -575,6 +577,7 @@ module RightScale
       end
 
       @options[:async_response] = true unless @options.has_key?(:async_response)
+      @options[:non_blocking] = true if @options[:fiber_pool_size].to_i > 0
 
       @identity = @options[:identity]
       parsed_identity = AgentIdentity.parse(@identity)
@@ -612,8 +615,8 @@ module RightScale
         end
         @history.update("run")
         start_console if @options[:console] && !@options[:daemonize]
-        EM.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
-        EM.defer { @client.listen(nil) { |e| handle_event(e) } } if @mode == :http
+        EM_S.next_tick { @options[:ready_callback].call } if @options[:ready_callback]
+        @client.listen(nil) { |e| handle_event(e) } if @mode == :http
 
         # Need to keep reconnect interval at least :connect_timeout in size,
         # otherwise connection_status callback will not timeout prior to next
@@ -640,14 +643,21 @@ module RightScale
         if ["Push", "Request"].include?(event[:type])
           # Use next_tick to ensure that on main reactor thread
           # so that any data access is thread safe
-          EM.next_tick do
+          EM_S.next_tick do
             begin
               if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
                 @client.notify(result_to_event(result), [result.to])
               end
+            rescue Dispatcher::DuplicateRequest
             rescue Exception => e
               Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
             end
+          end
+        elsif event[:type] == "Result"
+          if (data = event[:data]) && (result = data[:result]) && result.respond_to?(:non_delivery?) && result.non_delivery?
+            Log.info("Non-delivery of event <#{data[:request_uuid]}>: #{result.content}")
+          else
+            Log.error("Unexpected Result event from #{event[:from]}: #{event.inspect}")
           end
         else
           Log.error("Unrecognized event type #{event[:type]} from #{event[:from]}")
@@ -769,7 +779,7 @@ module RightScale
     def setup_traps
       ['INT', 'TERM'].each do |sig|
         old = trap(sig) do
-          EM.next_tick do
+          EM_S.next_tick do
             begin
               terminate do
                 TERMINATE_BLOCK.call
@@ -975,7 +985,7 @@ module RightScale
     def setup_status_checks(interval)
       @check_status_count = 0
       @check_status_brokers = @client.all if @mode != :http
-      @check_status_timer = EM::PeriodicTimer.new(interval) { check_status }
+      @check_status_timer = EM_S::PeriodicTimer.new(interval) { check_status }
       true
     end
 

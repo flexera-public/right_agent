@@ -75,32 +75,6 @@ module RightScale
 
 end
 
-# Mock RestClient exceptions since cannot create directly without a
-# RestClient::Response, but need RestClient interface for error reporting
-class RestExceptionMock < RestClient::Exception
-  class Response
-    attr_reader :headers
-
-    def initialize(headers)
-      @headers = headers || {}
-    end
-  end
-
-  attr_accessor :message
-  attr_reader :http_code, :http_body, :response
-
-  def initialize(http_code, http_body = nil, response_headers = nil)
-    @message = "#{http_code} #{RestClient::STATUSES[http_code]}"
-    @http_code = http_code
-    @http_body = http_body
-    @response = Response.new(response_headers)
-  end
-
-  def inspect
-    "#{@message}: #{@http_body}"
-  end
-end
-
 # Functions for setting version per ProtocolVersionMixin
 def version_cannot_put_version_in_packet; RightScale::Packet::DEFAULT_VERSION end
 def version_can_put_version_in_packet; 12 end

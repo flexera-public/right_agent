@@ -620,7 +620,7 @@ module RightScale
         result.received_at = received_at.to_f
         @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
         if @options[:async_response]
-          EM.next_tick { handle_response(result) }
+          EM_S.next_tick { handle_response(result) }
         else
           handle_response(result)
         end
@@ -721,7 +721,7 @@ module RightScale
 
       if @retry_interval && @retry_timeout && parent_token
         interval = [(@retry_interval * multiplier) + (@request_stats.avg_duration || 0), @retry_timeout - elapsed].min
-        EM.add_timer(interval) do
+        EM_S.add_timer(interval) do
           begin
             if @pending_requests[parent_token]
               count += 1

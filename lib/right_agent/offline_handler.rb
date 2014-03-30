@@ -153,7 +153,7 @@ module RightScale
         cancel_timer
         @state = :flushing
         # Wait a bit to avoid flooding RightNet
-        EM.add_timer(rand(MAX_QUEUE_FLUSH_DELAY)) { flush }
+        EM_S.add_timer(rand(MAX_QUEUE_FLUSH_DELAY)) { flush }
       end
       true
     end
@@ -215,7 +215,7 @@ module RightScale
           @mode = :online
           @state = :running
         else
-          EM.next_tick { flush(true) }
+          EM_S.next_tick { flush(true) }
         end
       end
       true
