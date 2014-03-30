@@ -653,6 +653,12 @@ module RightScale
               Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
             end
           end
+        elsif event[:type] == "Result"
+          if (data = event[:data]) && (result = data[:result]) && result.respond_to?(:non_delivery?) && result.non_delivery?
+            Log.info("Non-delivery of event <#{data[:request_uuid]}>: #{result.content}")
+          else
+            Log.error("Unexpected Result event from #{event[:from]}: #{event.inspect}")
+          end
         else
           Log.error("Unrecognized event type #{event[:type]} from #{event[:from]}")
         end
