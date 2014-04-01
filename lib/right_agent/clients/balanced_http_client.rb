@@ -44,11 +44,14 @@ module RightScale
     # Default time for HTTP connection to open
     DEFAULT_OPEN_TIMEOUT = 2
 
-    # Default time to wait for health check response
+    # Time to wait for health check response
     HEALTH_CHECK_TIMEOUT = 5
 
     # Default time to wait for response from request
     DEFAULT_REQUEST_TIMEOUT = 30
+
+    # Maximum time between uses of an HTTP connection
+    CONNECTION_REUSE_TIMEOUT = 5
 
     # Default health check path
     DEFAULT_HEALTH_CHECK_PATH = "/health-check"
@@ -76,16 +79,12 @@ module RightScale
       @api_version = options[:api_version]
       @server_name = options[:server_name]
       @filter_params = (options[:filter_params] || []).map { |p| p.to_s }
-      @request_type = options[:non_blocking] ? :non_blocking : :blocking
 
-      # Setup for proxy initialization if defined
-      if (v = PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
-        @proxy_uri = ENV[v].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[v]) : URI.parse("http://" + ENV[v])
-      end
+      # Create appropriate underlying HTTP client
+      @http_client = options[:non_blocking] ? NonBlockingClient.new(options) : BlockingClient.new(options)
 
       # Initialize health check and its use in request balancer
-      @health_check_proc = send("#{@request_type}_init", options)
-      balancer_options = {:policy => RightSupport::Net::LB::HealthCheck, :health_check => @health_check_proc }
+      balancer_options = {:policy => RightSupport::Net::LB::HealthCheck, :health_check => @http_client.health_check_proc }
       @balancer = RightSupport::Net::RequestBalancer.new(@urls, balancer_options)
     end
 
@@ -98,7 +97,7 @@ module RightScale
     # @raise [NotResponding] server is not responding
     def check_health(host = nil)
       begin
-        @health_check_proc.call(host || @urls.first)
+        @http_client.health_check_proc.call(host || @urls.first)
       rescue StandardError => e
         if e.respond_to?(:http_code) && RETRY_STATUS_CODES.include?(e.http_code)
           raise NotResponding.new("#{@server_name || host} not responding", e)
@@ -120,11 +119,16 @@ module RightScale
       request(:put, *args)
     end
 
+    def poll(*args)
+      request(:poll, *args)
+    end
+
     def delete(*args)
       request(:delete, *args)
     end
 
-    # Make request
+    # Make HTTP request
+    # If polling, continue to poll until receive data, timeout, or hit error
     # Encode request parameters and response using JSON
     # Apply configured authorization scheme
     # Log request/response with filtered parameters included for failure or debug mode
@@ -140,45 +144,41 @@ module RightScale
     #   parameters whose values are to be hidden when logging in addition to the ones
     #   provided during object initialization
     # @option options [Hash] :headers to be added to request
-    # @option options [Proc] :persistent_callback called with :get to retrieve EM:HttpRequest to be used
-    #   for request or called with :set and an EM:HttpRequest connection that is to returned by :get;
-    #   if :get call returns nil, a new connection is created and returned with :set; this callback
-    #   is only used if this HTTP client was initialized with the :non_blocking option
+    # @option options [Numeric] :poll_timeout maximum wait for individual poll; defaults to :request_timeout
     # @option options [Symbol] :log_level to use when logging information about the request other than errors
     #
     # @return [Object] result returned by receiver of request
     #
     # @raise [NotResponding] server not responding, recommend retry
+    # @raise [HttpException] HTTP failure with associated status code
     def request(verb, path, params = {}, options = {})
       started_at = Time.now
       filter = @filter_params + (options[:filter_params] || []).map { |p| p.to_s }
       log_level = options[:log_level] || Log.level
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
-      connect_options, request_options = send("#{@request_type}_options", verb, path, params,
-                                              request_headers(request_uuid, options), options)
+      connect_options, request_options = @http_client.options(verb, path, params, request_headers(request_uuid, options), options)
 
       Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter, log_level))
 
-      host_picked = nil
-      result, code, body, headers = @balancer.request do |host|
-        uri = URI.parse(host)
-        uri.user = uri.password = nil
-        host_picked = uri.to_s
-        send("#{@request_type}_request", verb, path, host, connect_options, request_options, options)
+      used = {}
+      result, code, body, headers = if verb != :poll
+        rest_request(verb, path, connect_options, request_options, used)
+      else
+        poll_request(path, connect_options, request_options, options[:request_timeout], started_at, used)
       end
 
-      log_success(result, code, body, headers, host_picked, path, request_uuid, started_at, log_level)
+      log_success(result, code, body, headers, used[:host], path, request_uuid, started_at, log_level)
       result
     rescue RightSupport::Net::NoResult => e
-      handle_no_result(e, host_picked) do |e2|
-        log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e2)
+      handle_no_result(e, used[:host]) do |e2|
+        log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e2)
       end
     rescue RestClient::Exception => e
       e2 = HttpExceptions.convert(e)
-      log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e2)
+      log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e2)
       raise e2
     rescue Exception => e
-      log_failure(host_picked, path, params, filter, request_uuid, started_at, log_level, e)
+      log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e)
       raise
     end
 
@@ -198,216 +198,56 @@ module RightScale
       headers
     end
 
-    # Beautify response header keys so that in same form as RestClient
-    #
-    # @param [Hash] headers from response
-    #
-    # @return [Hash] response headers with keys as lower case symbols
-    def beautify_headers(headers)
-      headers.inject({}) { |out, (key, value)| out[key.gsub(/-/, '_').downcase.to_sym] = value; out }
-    end
-
-    # Initialize for "blocking" request
-    #
-    # @param [Hash] params for HTTP request
-    # @param [String] request_headers to be applied to request
-    # @param [Hash] options per #request
-    #
-    # @return [Proc] health check procedure
-    def blocking_init(options)
-      require 'restclient'
-
-      # Initialize use of proxy if defined
-      RestClient.proxy = @proxy_uri.to_s if @proxy_uri
-
-      # Create health check proc for use by request balancer
-      # Strip user and password from host name since health-check does not require authorization
-      Proc.new do |host|
-        uri = URI.parse(host)
-        uri.user = uri.password = nil
-        uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
-        request_options = {:open_timeout => DEFAULT_OPEN_TIMEOUT, :timeout => HEALTH_CHECK_TIMEOUT}
-        request_options[:headers] = {"X-API-Version" => @api_version} if @api_version
-        blocking_request(:get, "", uri.to_s, {}, request_options, options)
-      end
-    end
-
-    # Initialize for "non-blocking" request
-    #
-    # @param [Hash] params for HTTP request
-    # @param [String] request_headers to be applied to request
-    # @param [Hash] options per #request
-    #
-    # @return [Proc] health check procedure
-    def non_blocking_init(options)
-      require 'em-http-request'
-
-      # Initialize use of proxy if defined
-      if @proxy_uri
-        @proxy = {:host => @proxy_uri.host, :port => @proxy_uri.port}
-        @proxy[:authorization] = [@proxy_uri.user, @proxy_uri.password] if @proxy_uri.user
-      end
-
-      # Create health check proc for use by request balancer
-      # Strip user and password from host name since health-check does not require authorization
-      Proc.new do |host|
-        uri = URI.parse(host)
-        uri.user = uri.password = nil
-        uri.path = uri.path + (options[:health_check_path] || DEFAULT_HEALTH_CHECK_PATH)
-        connect_options = {:connect_timeout => DEFAULT_OPEN_TIMEOUT, :inactivity_timeout => HEALTH_CHECK_TIMEOUT}
-        connect_options[:proxy] = @proxy if @proxy
-        request_options = {:path => uri.path}
-        request_options[:head] = {"X-API-Version" => @api_version} if @api_version
-        uri.path = ""
-        non_blocking_request(:get, "", uri.to_s, connect_options, request_options, options)
-      end
-    end
-
-    # Construct options for "blocking" request
+    # Make REST request
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
-    # @param [Hash] params for HTTP request
-    # @param [String] request_headers to be applied to request
-    # @param [Hash] options per #request
-    #
-    # @return [Array] connect and request option hashes
-    def blocking_options(verb, path, params, request_headers, options)
-      request_options = {
-        :open_timeout => options[:open_timeout] || DEFAULT_OPEN_TIMEOUT,
-        :timeout => options[:request_timeout] || DEFAULT_REQUEST_TIMEOUT,
-        :headers => request_headers }
-
-      if [:get, :delete].include?(verb)
-        # Doing own formatting because :query option for HTTPClient uses addressable gem
-        # for conversion and that gem encodes arrays in a Rails-compatible fashion without []
-        # markers and that is inconsistent with what sinatra expects
-        request_options[:query] = "?#{format(params)}" if params.is_a?(Hash) && params.any?
-      else
-        request_options[:payload] = JSON.dump(params)
-        request_options[:headers][:content_type] = "application/json"
-      end
-      [{}, request_options]
-    end
-
-    # Construct options for a "non-blocking" request
-    #
-    # @param [Symbol] verb for HTTP REST request
-    # @param [String] path in URI for desired resource
-    # @param [Hash] params for HTTP request
-    # @param [String] request_headers to be applied to request
-    # @param [Hash] options per #request
-    #
-    # @return [Array] connect and request option hashes
-    def non_blocking_options(verb, path, params, request_headers, options)
-      connect_options = {
-        :connect_timeout => options[:open_timeout] || DEFAULT_OPEN_TIMEOUT,
-        :inactivity_timeout => options[:request_timeout] || DEFAULT_REQUEST_TIMEOUT }
-      connect_options[:proxy] = @proxy if @proxy
-
-      request_body, request_path = if [:get, :delete].include?(verb)
-        # Doing own formatting because :query option on EM::HttpRequest does not reliably
-        # URL encode, e.g., messes up on arrays in hashes
-        [nil, (params.is_a?(Hash) && params.any?) ? path + "?#{format(params)}" : path]
-      else
-        request_headers[:content_type] = "application/json"
-        [(params.is_a?(Hash) && params.any?) ? JSON.dump(params) : nil, path]
-      end
-      request_options = {:path => request_path, :body => request_body, :head => request_headers}
-      [connect_options, request_options]
-    end
-
-    # Make "blocking" request using RestClient (via HTTPClient) and RequestBalancer
-    #
-    # @param [Symbol] verb for HTTP REST request
-    # @param [String] path in URI for desired resource
-    # @param [String] host name of server
     # @param [Hash] connect_options for HTTP connection
     # @param [Hash] request_options for HTTP request
-    # @param [Hash] options per #request
+    # @param [Hash] used container for returning :host used for request;
+    #   needed so that can return it even when the request fails with an exception
     #
     # @return [Array] result to be returned followed by response code, body, and headers
     #
     # @raise [NotResponding] server not responding, recommend retry
-    def blocking_request(verb, path, host, connect_options, request_options, options)
-      query = request_options.delete(:query).to_s
-      if (r = RightSupport::Net::HTTPClient.new.send(verb, host + path + query, request_options.merge(connect_options)))
-        [process_response(r.code, r.body, r.headers, request_options[:headers][:accept]), r.code, r.body, r.headers]
-      else
-        [nil, nil, nil, nil]
+    # @raise [HttpException] HTTP failure with associated status code
+    def rest_request(verb, path, connect_options, request_options, used)
+      result, code, body, headers = @balancer.request do |host|
+        uri = URI.parse(host)
+        uri.user = uri.password = nil
+        used[:host] = uri.to_s
+        @http_client.request(verb, path, host, connect_options, request_options)
       end
+      [result, code, body, headers]
     end
 
-    # Make "non-blocking" request using EM::HttpRequest and RequestBalancer
-    # Note that the underlying thread is not blocked by the HTTP i/o, but this call itself is blocking
+    # Make long-polling request
     #
-    # @param [Symbol] verb for HTTP REST request
     # @param [String] path in URI for desired resource
-    # @param [String] host name of server
     # @param [Hash] connect_options for HTTP connection
     # @param [Hash] request_options for HTTP request
-    # @param [Hash] options per #request
+    # @param [Integer] request_timeout for a non-nil result
+    # @param [Time] started_at time for request
+    # @param [Hash] used container for returning :host used for request;
+    #   needed so that can return it even when the request fails with an exception
     #
     # @return [Array] result to be returned followed by response code, body, and headers
     #
     # @raise [NotResponding] server not responding, recommend retry
-    def non_blocking_request(verb, path, host, connect_options, request_options, options)
-      # Finish forming path by stripping path, if any, from host
-      uri = URI.parse(host)
-      request_options[:path] = uri.path + request_options[:path]
-      uri.path = ""
-
-      # Create connection unless can reuse persistent connection
-      if options[:persistent_callback]
-        request_options[:keepalive] = true
-        unless (connection = options[:persistent_callback].call(:get, nil))
-          connection = EM::HttpRequest.new(uri.to_s, connect_options)
-          options[:persistent_callback].call(:set, connection)
-        end
-      else
-        connection = EM::HttpRequest.new(uri.to_s, connect_options)
+    # @raise [HttpException] HTTP failure with associated status code
+    def poll_request(path, connect_options, request_options, request_timeout, started_at, used)
+      result = code = body = headers = nil
+      if (connection = @http_client.connections[path]).nil? || Time.now >= connection[:expires_at]
+        # Use normal :get request using request balancer for first poll
+        result, code, body, headers = rest_request(:get, path, connect_options, request_options.dup, used)
+        return [result, code, body, headers] if (Time.now - started_at) >= request_timeout
       end
-
-      # Make request an then yield fiber until it completes
-      fiber = Fiber.current
-      http = connection.send(verb, request_options)
-      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
-      http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
-      response_code, response_body, response_headers = Fiber.yield
-      response_headers = beautify_headers(response_headers) if response_headers
-      result = process_response(response_code, response_body, response_headers, request_options[:head][:accept])
-      [result, response_code, response_body, response_headers]
-    end
-
-    # Process HTTP response to produce result for client
-    # Extract result from location header for 201 response
-    # JSON-decode body of other 2xx responses except for 204
-    # Raise exception if request failed
-    #
-    # @param [Integer] code for response status
-    # @param [Object] body of response
-    # @param [Hash] headers for response
-    # @param [Boolean] decode JSON-encoded body on success
-    #
-    # @return [Object] JSON-decoded response body
-    #
-    # @raise [RightScale::HttpExceptions] HTTP failure with associated status code
-    def process_response(code, body, headers, decode)
-      if (200..207).include?(code)
-        if code == 201
-          result = headers[:location]
-        elsif code == 204 || body.nil? || (body.respond_to?(:empty?) && body.empty?)
-          result = nil
-        elsif decode
-          result = JSON.load(body)
-          result = nil if result.respond_to?(:empty?) && result.empty?
-        else
-          result = body
-        end
-      else
-        raise RightScale::HttpExceptions.create(code, body, headers)
+      if result.nil? && (connection = @http_client.connections[path]) && Time.now < connection[:expires_at]
+        # Continue to poll using same connection until get result, timeout, or hit error
+        used[:host] = connection[:host]
+        result, code, body, headers = @http_client.poll(connection, request_options, started_at + request_timeout)
       end
-      result
+      [result, code, body, headers]
     end
 
     # Handle no result from balancer
@@ -507,26 +347,6 @@ module RightScale
       text
     end
 
-    # Format query parameters for inclusion in URI
-    # It can only handle parameters that can be converted to a string or arrays of same,
-    # not hashes or arrays/hashes that recursively contain arrays and/or hashes
-    #
-    # @param params [Hash] Parameters that are converted to <key>=<escaped_value> format
-    #   and any value that is an array has each of its values formatted as <key>[]=<escaped_value>
-    #
-    # @return [String] Formatted parameter string with parameters separated by '&'
-    def format(params)
-      p = []
-      params.each do |k, v|
-        if v.is_a?(Array)
-          v.each { |v2| p << "#{k.to_s}[]=#{CGI.escape(v2.to_s)}" }
-        else
-          p << "#{k.to_s}=#{CGI.escape(v.to_s)}"
-        end
-      end
-      p.join("&")
-    end
-
     # Apply parameter hiding filter
     #
     # @param [Hash, Object] params to be filtered
@@ -555,6 +375,57 @@ module RightScale
 
     public
 
+    # Format query parameters for inclusion in URI
+    # It can only handle parameters that can be converted to a string or arrays of same,
+    # not hashes or arrays/hashes that recursively contain arrays and/or hashes
+    #
+    # @param params [Hash] Parameters that are converted to <key>=<escaped_value> format
+    #   and any value that is an array has each of its values formatted as <key>[]=<escaped_value>
+    #
+    # @return [String] Formatted parameter string with parameters separated by '&'
+    def self.format(params)
+      p = []
+      params.each do |k, v|
+        if v.is_a?(Array)
+          v.each { |v2| p << "#{k.to_s}[]=#{CGI.escape(v2.to_s)}" }
+        else
+          p << "#{k.to_s}=#{CGI.escape(v.to_s)}"
+        end
+      end
+      p.join("&")
+    end
+
+    # Process HTTP response to produce result for client
+    # Extract result from location header for 201 response
+    # JSON-decode body of other 2xx responses except for 204
+    # Raise exception if request failed
+    #
+    # @param [Integer] code for response status
+    # @param [Object] body of response
+    # @param [Hash] headers for response
+    # @param [Boolean] decode JSON-encoded body on success
+    #
+    # @return [Object] JSON-decoded response body
+    #
+    # @raise [HttpException] HTTP failure with associated status code
+    def self.response(code, body, headers, decode)
+      if (200..207).include?(code)
+        if code == 201
+          result = headers[:location]
+        elsif code == 204 || body.nil? || (body.respond_to?(:empty?) && body.empty?)
+          result = nil
+        elsif decode
+          result = JSON.load(body)
+          result = nil if result.respond_to?(:empty?) && result.empty?
+        else
+          result = body
+        end
+      else
+        raise HttpExceptions.create(code, body, headers)
+      end
+      result
+    end
+
     # Extract text of exception for logging
     # For RestClient exceptions extract useful info from http_body attribute
     #
@@ -565,7 +436,7 @@ module RightScale
       case exception
       when String
         exception
-      when RightScale::HttpException, RestClient::Exception
+      when HttpException, RestClient::Exception
         if exception.http_body.nil? || exception.http_body.empty? || exception.http_body =~ /^<html>| html /
           exception.message
         else

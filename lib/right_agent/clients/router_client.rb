@@ -80,7 +80,7 @@ module RightScale
     #
     # @option options [Numeric] :open_timeout maximum wait for connection; defaults to DEFAULT_OPEN_TIMEOUT
     # @option options [Numeric] :request_timeout maximum wait for response; defaults to DEFAULT_REQUEST_TIMEOUT
-    # @option options [Numeric] :listen_timeout maximum wait for event; defaults to DEFAULT_POLL_TIMEOUT
+    # @option options [Numeric] :listen_timeout maximum wait for event; defaults to DEFAULT_LISTEN_TIMEOUT
     # @option options [Boolean] :long_polling_only never attempt to create a WebSocket, always long-polling instead
     # @option options [Numeric] :retry_timeout maximum before stop retrying; defaults to DEFAULT_RETRY_TIMEOUT
     # @option options [Array] :retry_intervals between successive retries; defaults to DEFAULT_RETRY_INTERVALS
@@ -222,13 +222,14 @@ module RightScale
     def listen(routing_keys, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
+      @event_uuids = nil
       @listen_interval = 0
       @listen_state = :choose
       @listen_failures = 0
       @connect_interval = CONNECT_INTERVAL
       @reconnect_interval = RECONNECT_INTERVAL
 
-      listen_loop(routing_keys, nil, &handler)
+      listen_loop(routing_keys, &handler)
       true
     end
 
@@ -278,14 +279,12 @@ module RightScale
     # A periodic timer is not effective here because it does not wa
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] event_uuids for events received on previous loop,
-    #   or nil if none
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
     # @return [Boolean] false if failed or terminating, otherwise true
-    def listen_loop(routing_keys, event_uuids, &handler)
+    def listen_loop(routing_keys, &handler)
       @listen_timer = nil
 
       begin
@@ -320,10 +319,10 @@ module RightScale
           # Need to long-poll on separate thread if cannot use non-blocking HTTP i/o
           # Will still periodically retry WebSockets if not restricted to just long-polling
           if @options[:non_blocking]
-            event_uuids = process_long_poll(try_long_poll(routing_keys, event_uuids, &handler))
+            @event_uuids = process_long_poll(try_long_poll(routing_keys, @event_uuids, &handler))
           else
             update_listen_state(:wait, 1)
-            try_deferred_long_polling(routing_keys, event_uuids, &handler)
+            try_deferred_long_poll(routing_keys, @event_uuids, &handler)
           end
         when :wait
           # Deferred long-polling is expected to break out of this state eventually
@@ -347,9 +346,9 @@ module RightScale
 
       # Loop using next_tick or timer
       if @listen_interval == 0
-        EM_S.next_tick { listen_loop(routing_keys, event_uuids, &handler) }
+        EM_S.next_tick { listen_loop(routing_keys, &handler) }
       else
-        @listen_timer = EM_S::Timer.new(@listen_interval) { listen_loop(routing_keys, event_uuids, &handler) }
+        @listen_timer = EM_S::Timer.new(@listen_interval) { listen_loop(routing_keys, &handler) }
       end
       true
     end
@@ -368,10 +367,6 @@ module RightScale
         @listen_timer = nil
         @listen_state = state
       elsif [:choose, :check, :connect, :long_poll, :wait].include?(state)
-        if state == :long_poll && @listen_state != :long_poll
-          @started_long_polling_at = Time.now
-          @long_polling_connection = nil
-        end
         @listen_checks = 0 if state == :check && @listen_state != :check
         @listen_state = state
         @listen_interval = interval
@@ -497,15 +492,15 @@ module RightScale
     # Try to make long-polling request to receive events
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] uuids for events received from previous poll
+    # @param [Array, NilClass] event_uuids from previous poll
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
     # @return [Array, NilClass, Exception] UUIDs of events received, or nil if none, or Exception if failed
-    def try_long_poll(routing_keys, uuids, &handler)
+    def try_long_poll(routing_keys, event_uuids, &handler)
       begin
-        long_poll(routing_keys, uuids, &handler)
+        long_poll(routing_keys, event_uuids, &handler)
       rescue Exception => e
         e
       end
@@ -515,31 +510,26 @@ module RightScale
     # Repeat long-polling until there is an error or the stop time has been reached
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] uuids for events received from previous poll
+    # @param [Array, NilClass] event_uuids from previous poll
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received
     #
     # @return [Array, NilClass] UUIDs of events received, or nil if none
-    def try_deferred_long_polling(routing_keys, uuids, &handler)
-      stop_at = @started_long_polling_at + @connect_interval
+    def try_deferred_long_poll(routing_keys, event_uuids, &handler)
+      # Proc for running long-poll in EM defer thread since this is a blocking call
+      @defer_operation_proc = Proc.new { try_long_poll(routing_keys, event_uuids, &handler) }
 
-      @defer_operation_proc = Proc.new do
-        until (Time.now - stop_at) > 0 || uuids.is_a?(Exception) do
-          uuids = try_long_poll(routing_keys, uuids, &handler)
-        end
-        uuids
-      end
+      # Proc that runs in main EM reactor thread to handle result from above operation proc
+      @defer_callback_proc = Proc.new { |result| @event_uuids = process_long_poll(result) }
 
-      @defer_callback_proc = Proc.new do |result|
-        process_long_poll(result)
-      end
-
+      # Use EM defer thread since the long-poll will block
       EM.defer(@defer_operation_proc, @defer_callback_proc)
       true
     end
 
     # Make long-polling request to receive one or more events
+    # Do not return until an event is received or the polling times out or fails
     # Limit logging unless in debug mode
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
@@ -555,14 +545,6 @@ module RightScale
     def long_poll(routing_keys, ack, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      # Callback for use with non-blocking to make long-polling connection persistent
-      @long_polling_connection_proc = Proc.new do |action, connection|
-        case action
-        when :get then @long_polling_connection
-        when :set then @long_polling_connection = connection
-        end
-      end
-
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
@@ -571,20 +553,21 @@ module RightScale
 
       options = {
         :log_level => :debug,
-        :request_timeout => @options[:listen_timeout] }
-      options[:persistent_callback] = @long_polling_connection_proc if @options[:non_blocking]
+        :request_timeout => @connect_interval,
+        :poll_timeout => @options[:listen_timeout] }
 
-      uuids = []
-      if (events = make_request(:get, "/listen", params, "listen", nil, options))
+      event_uuids = []
+      events = make_request(:poll, "/listen", params, "listen", nil, options)
+      if events
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)
           Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update("#{event[:type]} #{event[:path]}")
-          uuids << event[:uuid]
+          event_uuids << event[:uuid]
           handler.call(event)
         end
       end
-      uuids if uuids.any?
+      event_uuids if event_uuids.any?
     end
 
     # Process result from long-polling attempt
@@ -594,7 +577,7 @@ module RightScale
     # @return [Array, NilClass] result for long-polling attempt
     def process_long_poll(result)
       case result
-      when Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError
+      when Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError, Exceptions::InternalServerError
         Log.error("Failed long-polling", result, :no_trace)
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
@@ -606,11 +589,7 @@ module RightScale
       else
         @reconnect_interval = RECONNECT_INTERVAL
         @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
-        if (Time.now - @started_long_polling_at) > @connect_interval
-          update_listen_state(:choose)
-        else
-          update_listen_state(:long_poll)
-        end
+        update_listen_state(:choose)
       end
       result
     end

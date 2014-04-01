@@ -31,6 +31,8 @@ unless defined?(Fiber)
   end
 end
 
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'non_blocking_client'))
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'blocking_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'balanced_http_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'base_retry_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'auth_client'))
