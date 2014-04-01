@@ -33,11 +33,13 @@ group :windows do
 end
 
 group :development, :test do
-  gem "rspec",       "~> 2.8"
-  gem "flexmock",    "~> 0.9"
-  gem "rake",        ">= 0.9.2.2"
+  gem "rspec",           "~> 2.8"
+  gem "flexmock",        "~> 0.9"
+  gem "rake",            ">= 0.9.2.2"
   gem "ruby-debug",
       :platforms => :mri_18
   gem "ruby-debug19",
       :platforms => :mri_19
+  gem "fiber_pool",      "1.0.0"
+  gem "em-http-request", "1.0.3"
 end
