@@ -42,7 +42,6 @@ describe RightScale::Agent do
       flexmock(EM).should_receive(:next_tick).and_yield
       flexmock(EM).should_receive(:add_timer).and_yield
       @timer = flexmock("timer")
-      flexmock(EM::Timer).should_receive(:new).and_return(@timer)
       flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer)
       @timer.should_receive(:cancel)
       @broker = flexmock("broker", :subscribe => ["b1"], :publish => ["b1"], :prefetch => true,
@@ -249,11 +248,9 @@ describe RightScale::Agent do
       @log = flexmock(RightScale::Log)
       @log.should_receive(:error).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       flexmock(EM).should_receive(:next_tick).and_yield
-      flexmock(EM).should_receive(:add_timer).and_yield
-      @timer = flexmock("timer")
-      flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
-      @timer.should_receive(:cancel).by_default
-      @periodic_timer = flexmock("timer")
+      flexmock(EM).should_receive(:add_timer).with(0, Proc).and_yield.by_default
+      flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.by_default
+      @periodic_timer = flexmock("periodic timer")
       flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@periodic_timer)
       @periodic_timer.should_receive(:cancel).by_default
       @broker_id = "rs-broker-123-1"
@@ -520,6 +517,12 @@ describe RightScale::Agent do
     end
 
     describe "Terminating" do
+
+      before(:each) do
+        @timer = flexmock("timer")
+        flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
+        @timer.should_receive(:cancel).by_default
+      end
 
       it "should log error for abnormal termination" do
         run_in_em do
