@@ -140,26 +140,27 @@ describe RightScale::BalancedHttpClient do
       @client.request(:post, @path) rescue nil
     end
 
-    it "logs using specified log level" do
+    it "logs using specified :log_level" do
       @params = {:some => "data"}
-      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\"}").once
-      @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
+      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+      @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
       @client.request(:post, @path, @params, :log_level => :debug)
     end
 
-    it "logs using configured log level if none specified" do
+    it "logs using :info level by default" do
       @params = {:some => "data"}
       @log.should_receive(:level).and_return(:debug)
-      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\"}").once
-      @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
+      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\"}").once
+      @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
       @client.request(:post, @path, @params)
     end
 
-    it "appends specified filter parameters to list" do
+    it "appends specified filter parameters to list when Log.level is :debug" do
       @params = {:some => "data", :secret => "data", :other => "data"}
-      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\", :secret=>\"<hidden>\", :other=>\"<hidden>\"}").once
-      @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
-      @client.request(:post, @path, @params, :log_level => :debug, :filter_params => [:other])
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\", :secret=>\"<hidden>\", :other=>\"<hidden>\"}").once
+      @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
+      @client.request(:post, @path, @params, :filter_params => [:other])
     end
 
     it "removes user and password from host when logging" do
@@ -433,7 +434,7 @@ describe RightScale::BalancedHttpClient do
       @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now, :info).should be true
     end
 
-    it "logs response length using response body size of :content_lenght not available" do
+    it "logs response length using response body size of :content_length not available" do
       @log.should_receive(:info).with("Completed <uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
       @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now, :info).should be true
     end
@@ -443,9 +444,15 @@ describe RightScale::BalancedHttpClient do
       @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now - 0.01, :info).should be true
     end
 
-    it "log result if log level option set to :debug" do
-      @log.should_receive(:debug).with("Completed <uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
-      @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now, :debug).should be true
+    it "log result if Log.level is set to :debug" do
+      @log.should_receive(:level).and_return(:debug)
+      @log.should_receive(:info).with("Completed <uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
+      @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now, :info).should be true
+    end
+
+    it "logs using the specified log_level" do
+      @log.should_receive(:debug).once
+      @client.send(:log_success, @result, 200, @body, @headers, "http://my.com", @path, "uuid", @now, :debug)
     end
   end
 
@@ -457,17 +464,17 @@ describe RightScale::BalancedHttpClient do
     it "logs exception" do
       exception = RightScale::HttpExceptions.create(400, "bad data")
       @log.should_receive(:error).with("Failed <uuid> in 10ms | 400 [http://my.com/foo/bar \"params\"] | 400 Bad Request: bad data").once
-      @client.send(:log_failure, @url, @path, "params", [], "uuid", @now, :info, exception).should be true
+      @client.send(:log_failure, @url, @path, "params", [], "uuid", @now, exception).should be true
     end
 
     it "logs error string" do
       @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar \"params\"] | bad data").once
-      @client.send(:log_failure, @url, @path, "params", [], "uuid", @now, :info, "bad data").should be true
+      @client.send(:log_failure, @url, @path, "params", [], "uuid", @now, "bad data").should be true
     end
 
     it "filters parameters" do
       @log.should_receive(:error).with("Failed <uuid> in 10ms | nil [http://my.com/foo/bar {:secret=>\"<hidden>\"}] | bad data").once
-      @client.send(:log_failure, @url, @path, {:secret => "data"}, ["secret"], "uuid", @now, :info, "bad data").should be true
+      @client.send(:log_failure, @url, @path, {:secret => "data"}, ["secret"], "uuid", @now, "bad data").should be true
     end
   end
 
@@ -478,37 +485,38 @@ describe RightScale::BalancedHttpClient do
 
     context "when no exception" do
 
-      context "in info mode with no host" do
+      context "and Log.level is :info with no host" do
         it "generates text containing path" do
-          text = @client.send(:log_text, @path, {:value => 123}, [], :info)
+          text = @client.send(:log_text, @path, {:value => 123}, [])
           text.should == "/foo/bar"
         end
       end
 
-      context "in info mode with host" do
+      context "and Log.level is :info with host" do
         it "generates text containing host and path" do
-          text = @client.send(:log_text, @path, {:value => 123}, [], :info, @url)
+          text = @client.send(:log_text, @path, {:value => 123}, [], @url)
           text.should == "[http://my.com/foo/bar]"
         end
       end
 
-      context "and in debug mode" do
+      context "and Log.level is :debug" do
         it "generates text containing containing host, path, and filtered parameters" do
-          text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], :debug, @url)
+          @log.should_receive(:level).and_return(:debug)
+          text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url)
           text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]"
         end
       end
     end
 
     context "when exception" do
-      it "includes params regardless of mode" do
-        text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], :info, @url, "failed")
+      it "includes params regardless of Log.level" do
+        text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, "failed")
         text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | failed"
       end
 
       it "includes exception text" do
         exception = RightScale::HttpExceptions.create(400, "bad data")
-        text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], :info, @url, exception)
+        text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, exception)
         text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | 400 Bad Request: bad data"
       end
     end

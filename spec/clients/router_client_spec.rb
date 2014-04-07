@@ -683,7 +683,7 @@ describe RightScale::RouterClient do
       it "uses listen timeout for request poll timeout and connect interval for request timeout" do
         @client.instance_variable_set(:@connect_interval, 300)
         flexmock(@client).should_receive(:make_request).with(:poll, "/listen", Hash, "listen", nil,
-            {:poll_timeout => 60, :request_timeout => 300, :log_level => :debug}).and_return([@event]).once
+            {:poll_timeout => 60, :request_timeout => 300}).and_return([@event]).once
         @client.send(:long_poll, @routing_keys, @ack, &@handler)
       end
 
