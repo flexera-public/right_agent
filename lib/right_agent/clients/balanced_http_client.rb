@@ -145,7 +145,8 @@ module RightScale
     #   provided during object initialization
     # @option options [Hash] :headers to be added to request
     # @option options [Numeric] :poll_timeout maximum wait for individual poll; defaults to :request_timeout
-    # @option options [Symbol] :log_level to use when logging information about the request other than errors
+    # @option options [Symbol] :log_level to use when logging information about the request other than errors;
+    #   defaults to :info
     #
     # @return [Object] result returned by receiver of request
     #
@@ -154,11 +155,11 @@ module RightScale
     def request(verb, path, params = {}, options = {})
       started_at = Time.now
       filter = @filter_params + (options[:filter_params] || []).map { |p| p.to_s }
-      log_level = options[:log_level] || Log.level
+      log_level = options[:log_level] || :info
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
       connect_options, request_options = @http_client.options(verb, path, params, request_headers(request_uuid, options), options)
 
-      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter, log_level))
+      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
 
       used = {}
       result, code, body, headers = if verb != :poll
@@ -171,14 +172,14 @@ module RightScale
       result
     rescue RightSupport::Net::NoResult => e
       handle_no_result(e, used[:host]) do |e2|
-        log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e2)
+        log_failure(used[:host], path, params, filter, request_uuid, started_at, e2)
       end
     rescue RestClient::Exception => e
       e2 = HttpExceptions.convert(e)
-      log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e2)
+      log_failure(used[:host], path, params, filter, request_uuid, started_at, e2)
       raise e2
     rescue Exception => e
-      log_failure(used[:host], path, params, filter, request_uuid, started_at, log_level, e)
+      log_failure(used[:host], path, params, filter, request_uuid, started_at, e)
       raise
     end
 
@@ -304,7 +305,7 @@ module RightScale
       length = (headers && headers[:content_length]) || (body && body.size) || "-"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
       completed = "Completed <#{request_uuid}> in #{duration} | #{code || "nil"} [#{host}#{path}] | #{length} bytes"
-      completed << " | #{result.inspect}" if log_level == :debug
+      completed << " | #{result.inspect}" if Log.level == :debug
       Log.send(log_level, completed)
       true
     end
@@ -318,14 +319,13 @@ module RightScale
     # @param [Array] filter list of parameters whose value is to be hidden
     # @param [String] request_uuid uniquely identifying request
     # @param [Time] started_at time for request
-    # @param [Symbol] log_level to use when logging information about the request
     # @param [Exception, String] exception or message that should be logged
     #
     # @return [TrueClass] Always return true
-    def log_failure(host, path, params, filter, request_uuid, started_at, log_level, exception)
+    def log_failure(host, path, params, filter, request_uuid, started_at, exception)
       code = exception.respond_to?(:http_code) ? exception.http_code : "nil"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      Log.error("Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, log_level, host, exception))
+      Log.error("Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, host, exception))
       true
     end
 
@@ -334,13 +334,12 @@ module RightScale
     # @param [String] path in URI for desired resource
     # @param [Hash] params for HTTP request
     # @param [Array, NilClass] filter augmentation to base filter list
-    # @param [Symbol] log_level to use when logging information about the request
     # @param [String] host server URL where request was attempted if known
     # @param [Exception, String, NilClass] exception or failure message that should be logged
     #
     # @return [String] Log text
-    def log_text(path, params, filter, log_level, host = nil, exception = nil)
-      filtered_params = (exception || log_level == :debug) ? filter(params, filter).inspect : nil
+    def log_text(path, params, filter, host = nil, exception = nil)
+      filtered_params = (exception || Log.level == :debug) ? filter(params, filter).inspect : nil
       text = filtered_params ? "#{path} #{filtered_params}" : path
       text = "[#{host}#{text}]" if host
       text << " | #{self.class.exception_text(exception)}" if exception

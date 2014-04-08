@@ -530,7 +530,6 @@ module RightScale
 
     # Make long-polling request to receive one or more events
     # Do not return until an event is received or the polling times out or fails
-    # Limit logging unless in debug mode
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
@@ -552,7 +551,6 @@ module RightScale
       params[:ack] = ack if ack && ack.any?
 
       options = {
-        :log_level => :debug,
         :request_timeout => @connect_interval,
         :poll_timeout => @options[:listen_timeout] }
 
