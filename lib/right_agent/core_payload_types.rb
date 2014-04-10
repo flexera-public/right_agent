@@ -21,7 +21,9 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
-CORE_PAYLOAD_TYPES_BASE_DIR = File.join(File.dirname(__FILE__), 'core_payload_types')
+unless defined? CORE_PAYLOAD_TYPES_BASE_DIR
+  CORE_PAYLOAD_TYPES_BASE_DIR = File.join(File.dirname(__FILE__), 'core_payload_types')
+end
 
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'cookbook'))
 require File.normalize_path(File.join(CORE_PAYLOAD_TYPES_BASE_DIR, 'cookbook_repository'))

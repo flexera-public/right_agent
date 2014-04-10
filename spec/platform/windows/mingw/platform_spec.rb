@@ -22,6 +22,8 @@
 
 require ::File.expand_path('../../spec_helper', __FILE__)
 
+if RightScale::Platform.windows?
+
 # stub FII for testing on non-mingw platforms; any mingw-specific tests must
 # mock API calls.
 module FFI
@@ -220,3 +222,5 @@ describe RightScale::Platform do
 
   end # windows/mingw
 end # RightScale::Platform
+
+end # if windows?

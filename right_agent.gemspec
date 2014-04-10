@@ -25,7 +25,7 @@ require 'rbconfig'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '2.1.3'
+  spec.version   = '2.1.4'
   spec.date      = '2014-04-10'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'

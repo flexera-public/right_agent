@@ -22,6 +22,8 @@
 
 require ::File.expand_path('../../spec_helper', __FILE__)
 
+if RightScale::Platform.windows?
+
 # stub out definition of ::Win32::API for testing on non-Windows platforms.
 module Win32
   class API; end
@@ -257,3 +259,5 @@ describe RightScale::Platform do
 
   end # windows/mswin
 end # RightScale::Platform
+
+end # if windows?
