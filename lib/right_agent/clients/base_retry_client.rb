@@ -73,6 +73,8 @@ module RightScale
     # @option options [Array] :retry_intervals between successive retries; defaults to DEFAULT_RETRY_INTERVALS
     # @option options [Boolean] :retry_enabled for requests that fail to connect or that return a retry result
     # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
+    # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
+    #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging; can be augmented on individual requests
     # @option options [Proc] :exception_callback for unexpected exceptions
@@ -224,15 +226,16 @@ module RightScale
     #
     # @return [TrueClass] always true
     #
-    # @return [RightSupport::Net::BalancedHttpClient] client
+    # @return [BalancedHttpClient] client
     def create_http_client
       url = @auth_client.send(@type.to_s + "_url")
       Log.info("Connecting to #{@options[:server_name]} via #{url.inspect}")
       options = {
         :server_name => @options[:server_name],
         :open_timeout => @options[:open_timeout],
-        :request_timeout => @options[:request_timeout] }
+        :request_timeout => @options[:request_timeout], }
       options[:api_version] = @options[:api_version] if @options[:api_version]
+      options[:non_blocking] = @options[:non_blocking] if @options[:non_blocking]
       options[:filter_params] = @options[:filter_params] if @options[:filter_params]
       @http_client = RightScale::BalancedHttpClient.new(url, options)
     end
@@ -271,7 +274,7 @@ module RightScale
       unless @reconnecting
         @reconnecting = true
         @stats["reconnects"].update("initiate")
-        @reconnect_timer = EM::PeriodicTimer.new(rand(@options[:reconnect_interval])) do
+        @reconnect_timer = EM_S::PeriodicTimer.new(rand(@options[:reconnect_interval])) do
           begin
             create_http_client
             if check_health == :connected
@@ -446,7 +449,7 @@ module RightScale
         if attempts == 1 && interval && (Time.now - started_at) < @options[:retry_timeout]
           Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
                     "in response to retryable error (#{retry_result.http_body})")
-          sleep(interval)
+          wait(interval)
         else
           @stats["request failures"].update("#{type} - retry")
           raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
@@ -462,7 +465,7 @@ module RightScale
     # Handle not responding response by determining whether okay to retry
     # If request is being retried, this function does not return until it is time to retry
     #
-    # @param [RightScale::BalancedHttpClient::NotResponding] not_responding exception
+    # @param [BalancedHttpClient::NotResponding] not_responding exception
     #   indicating targeted server is too busy or out of service
     # @param [String] type of request for use in logging
     # @param [String] request_uuid originally created for this request
@@ -479,7 +482,7 @@ module RightScale
         if interval && (Time.now - started_at) < @options[:retry_timeout]
           Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
                     "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
-          sleep(interval)
+          wait(interval)
         else
           @stats["request failures"].update("#{type} - no result")
           self.state = :disconnected
@@ -489,6 +492,22 @@ module RightScale
         @stats["request failures"].update("#{type} - no result")
         self.state = :disconnected
         raise Exceptions::ConnectivityFailure.new(not_responding.message)
+      end
+      true
+    end
+
+    # Wait the specified interval in non-blocking fashion if possible
+    #
+    # @param [Numeric] interval to wait
+    #
+    # @return [TrueClass] always true
+    def wait(interval)
+      if @options[:non_blocking]
+        fiber = Fiber.current
+        EM.add_timer(interval) { fiber.resume }
+        Fiber.yield
+      else
+        sleep(interval)
       end
       true
     end

@@ -48,32 +48,16 @@ module RightScale
     class Terminating < RuntimeError; end
 
     # Not authorized to make request
-    class Unauthorized < NestedException
-      def initialize(message, nested_exception = nil)
-        super(message, nested_exception)
-      end
-    end
+    class Unauthorized < NestedException; end
 
     # Cannot connect to service, lost connection to it, or it is out of service or too busy to respond
-    class ConnectivityFailure < NestedException
-      def initialize(message, nested_exception = nil)
-        super(message, nested_exception)
-      end
-    end
+    class ConnectivityFailure < NestedException; end
 
     # Request failed but potentially will succeed if retried
-    class RetryableError < NestedException
-      def initialize(message, nested_exception = nil)
-        super(message, nested_exception)
-      end
-    end
+    class RetryableError < NestedException; end
 
     # Database query failed
-    class QueryFailure < NestedException
-      def initialize(message, nested_exception = nil)
-        super(message, nested_exception)
-      end
-    end
+    class QueryFailure < NestedException; end
 
     # Error internal to specified server
     class InternalServerError < NestedException

@@ -55,7 +55,9 @@ module RightScale
       "/forwarder/shutdown"                => [:post, "/right_net/scheduler/shutdown"],
       "/key_server/retrieve_public_keys"   => [:get,  "/right_net/key_server/retrieve_public_keys"],
       "/router/ping"                       => [:get,  "/health-check"],
-      "/router/query_tags"                 => [:post, "/tags/by_tag"],
+      # Currently cannot use RightApi for query_tags because it does not support server
+      # tag scoping by account or deployment like the router does
+      #"/router/query_tags"                 => [:post, "/tags/by_tag"],
       "/router/add_tags"                   => [:post, "/tags/multi_add"],
       "/router/delete_tags"                => [:post, "/tags/multi_delete"],
       "/state_recorder/record"             => [:put,  "/right_net/state_recorder/record"],

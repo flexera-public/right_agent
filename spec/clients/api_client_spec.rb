@@ -96,11 +96,12 @@ describe RightScale::ApiClient do
       @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
     end
 
-    it "maps query_tags request" do
-      flexmock(@client).should_receive(:map_query_tags).with(:post, {:tags => ["a:b=c"]}, "query_tags", @token, Hash).
-          and_return({}).once
-      @client.request("/router/query_tags", @payload.merge(:tags => ["a:b=c"]), @target, @token).should == {}
-    end
+    # Currently not supporting query_tags via RightApi
+    #it "maps query_tags request" do
+    #  flexmock(@client).should_receive(:map_query_tags).with(:post, {:tags => ["a:b=c"]}, "query_tags", @token, Hash).
+    #      and_return({}).once
+    #  @client.request("/router/query_tags", @payload.merge(:tags => ["a:b=c"]), @target, @token).should == {}
+    #end
 
     it "does not require token" do
       flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
