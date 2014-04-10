@@ -124,7 +124,7 @@ module RightScale
       fiber = Fiber.current
       connection = EM::HttpRequest.new(uri.to_s, connect_options)
       http = connection.send(verb, request_options)
-      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
+      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error && http.error.to_s) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
       response_headers = beautify_headers(response_headers) if response_headers
@@ -172,7 +172,7 @@ module RightScale
     # @raise [HttpException] HTTP failure with associated status code
     def poll_again(fiber, connection, request_options, stop_at)
       http = connection.send(:get, request_options)
-      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error) }
+      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500, http.error && http.error.to_s) }
       http.callback do
         code, body, headers = http.response_header.status, http.response, http.response_header
         if code == 200 && (body.nil? || body == "null") && Time.now < stop_at
