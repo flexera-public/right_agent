@@ -256,7 +256,7 @@ describe RightScale::NonBlockingClient do
       it "converts Errno::ETIMEDOUT error to 504" do
         @headers.http_status = 504
         @response.should_receive(:errback).and_yield.once
-        @response.should_receive(:error).and_return("Errno::ETIMEDOUT")
+        @response.should_receive(:error).and_return(Errno::ETIMEDOUT)
         @fiber.should_receive(:resume).with(504, "Errno::ETIMEDOUT").once
         flexmock(Fiber).should_receive(:yield).and_return([504, "Errno::ETIMEDOUT"]).once
         flexmock(EM::HttpRequest).should_receive(:new).with(@host, @connect_options).and_return(@request).once
@@ -340,7 +340,7 @@ describe RightScale::NonBlockingClient do
         end
 
         it "stops polling if there is an error" do
-          @response.should_receive(:error).and_return("some error").twice
+          @response.should_receive(:error).and_return("some error").times(3)
           @response.should_receive(:errback).and_yield.once
           @fiber.should_receive(:resume).with(500, "some error").once
           @client.send(:poll_again, @fiber, @request, @request_options, @stop_at).should be true
