@@ -27,6 +27,45 @@ require 'json'
 
 require File.normalize_path(File.join(File.dirname(__FILE__), 'message_pack'))
 
+
+# Ensures that the JSON  deserializes incoming text as if it were UTF-8
+# Ruby 2.0 should assume UTF-8 automatically.  Ruby 1.9 is just a mess 
+# Ruby 1.8 treats everything as a byte stream so doesn't have this issue either
+# in assuming US-ASCII if unspecified, then proceeding to blow up when trying
+# to incorrectly transcode US-ASCII to UTF-8 on something is already UTF-8
+# if RUBY_VERSION =~ /^1\.9/ 
+#   module JSON
+#     class << self
+
+#       alias :_old_load :load
+#       def load(source, proc = nil, options = {})
+#         load_default_options = {
+#           :max_nesting      => false,
+#           :allow_nan        => true,
+#           :create_additions => false
+#         }
+#         opts = load_default_options.merge options
+#         if source.respond_to? :to_str
+#           source = source.to_str
+#         elsif source.respond_to? :to_io
+#           source = source.to_io.read
+#         else
+#           source = source.read
+#         end
+#         source.force_encoding("UTF-8") unless source.frozen?
+#         result = parse(source, opts)
+#         recurse_proc(result, &proc) if proc
+#         result
+#       end
+#     end
+#   end
+# end
+
+if RUBY_VERSION =~ /^1\.9/
+  Encoding.default_external = "UTF-8"
+  Encoding.default_internal = "UTF-8"
+end
+
 # Monkey patch common classes to support MessagePack serialization
 # As with JSON, unserializing them is manual using existing methods such as parse
 class Date
