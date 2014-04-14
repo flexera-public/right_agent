@@ -73,7 +73,6 @@
 #      --test                Use test settings
 #      --help                Display help
 
-
 require 'rubygems'
 require 'optparse'
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'minimal'))
