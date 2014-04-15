@@ -37,16 +37,24 @@ module RightScale
     # === Return
     # data(String):: Corresponding serialized data
     def self.dump(command)
-      # Before serializing set the encoding
+      # Set the encoding before serialization otherwise YAML will serialize
+      # UTF8 characters as binary data.  This can cause some quirks we'd rather
+      # avoid, such as the deserialized binary data having no encoding on 
+      # deserialization
       set_encoding(command)
+
       data = YAML::dump(command)
       data += SEPARATOR
     end
 
     def self.set_encoding(obj, encoding = "UTF-8")
-      if obj.kind_of?(Enumerable)
-        obj.each do |it|
-          set_encoding(it)
+      if obj.is_a?(Hash)
+        obj.each do |k,v|
+          set_encoding(v, encoding)
+        end
+      elsif obj.is_a?(Array)
+        obj.each do |v|
+          set_encoding(v, encoding)
         end
       elsif obj.is_a?(String) && !obj.frozen?
         obj.force_encoding(encoding) if obj.respond_to?(:force_encoding)
@@ -64,10 +72,10 @@ module RightScale
     # === Raise
     # (RightScale::Exceptions::IO): If serialized data is incorrect
     def self.load(data)
-      # Data coming from eventmachine is cleaned of its encoding, so set it
-      # to UTF8 manually, which we set to to before sencding from the command
-      # client.
+      # Data coming from eventmachine is cleaned of it's encoding, so set it
+      # to UTF-8 manually before deserializing or you'll throw transcode errors.
       set_encoding(data)
+
       command = YAML::load(data)
 
       raise RightScale::Exceptions::IO, "Invalid serialized command:\n#{data}" unless command
