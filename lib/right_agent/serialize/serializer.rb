@@ -27,6 +27,7 @@ require 'json'
 
 require File.normalize_path(File.join(File.dirname(__FILE__), 'message_pack'))
 
+
 # Monkey patch common classes to support MessagePack serialization
 # As with JSON, unserializing them is manual using existing methods such as parse
 class Date

@@ -1,3 +1,4 @@
+# encoding: utf-8
 #
 # Copyright (c) 2009-2011 RightScale Inc
 #
@@ -25,7 +26,7 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', 'spec_helper'))
 describe RightScale::CommandSerializer do
 
   before(:all) do
-    @sample_data = [ 42, 'fourty two', { :haha => 42, 'hoho' => 'fourty_two' }]
+    @sample_data = [ 42, 'fourty two', { :hello => 'Привет', :haha => 42, 'hoho' => 'fourty_two' }]
   end
 
   it 'should serialize' do

@@ -1,3 +1,4 @@
+# encoding: utf-8
 #
 # Copyright (c) 2009-2011 RightScale Inc
 #
@@ -64,6 +65,19 @@ describe RightScale::CommandIO do
       EM.add_timer(2) { stop }
     end
     @input.should == 'input'
+  end
+
+  it 'should receive a command with UTF-8 characters' do
+    @input = ''
+    EM.run do
+      RightScale::CommandIO.instance.listen(@socket_port) { |input, _| @input = input; stop }
+      send_input({:command => "say_hello", :data => 'Привет world'})
+      EM.add_timer(2) { stop }
+    end
+
+    @input.should == {:command => "say_hello", :data => 'Привет world'}
+    @input[:command].encoding.to_s.should == "UTF-8" if "".respond_to?(:encoding)
+    @input[:data].encoding.to_s.should == "UTF-8" if "".respond_to?(:encoding)
   end
 
   it 'should receive many commands' do
