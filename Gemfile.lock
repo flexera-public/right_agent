@@ -9,10 +9,10 @@ GIT
 
 GIT
   remote: git@github.com:rightscale/right_support.git
-  revision: 10d777cf4c9cdfb47c45fc0a291281d76fa78d6c
+  revision: 6a7f6c6dfc55ec255d7f496a0a640c670f38131b
   branch: master
   specs:
-    right_support (2.8.19)
+    right_support (2.8.22)
 
 PATH
   remote: .
