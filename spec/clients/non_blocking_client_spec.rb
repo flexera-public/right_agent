@@ -253,6 +253,17 @@ describe RightScale::NonBlockingClient do
         @request_options[:path].should == "/api/foo/bar"
       end
 
+      it "converts connection errors to 500 by default" do
+        @headers.http_status = 500
+        @response.should_receive(:errback).and_yield.once
+        @response.should_receive(:error).and_return(nil)
+        @fiber.should_receive(:resume).with(500, "HTTP connection failure for GET").once
+        flexmock(Fiber).should_receive(:yield).and_return([500, "HTTP connection failure for GET"]).once
+        flexmock(EM::HttpRequest).should_receive(:new).with(@host, @connect_options).and_return(@request).once
+        lambda { @client.request(:get, @path, @host, @connect_options, @request_options) }.
+            should raise_error(RightScale::HttpExceptions::InternalServerError)
+      end
+
       it "converts Errno::ETIMEDOUT error to 504" do
         @headers.http_status = 504
         @response.should_receive(:errback).and_yield.once
