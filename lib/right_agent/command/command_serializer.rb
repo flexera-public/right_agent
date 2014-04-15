@@ -47,20 +47,6 @@ module RightScale
       data += SEPARATOR
     end
 
-    def self.set_encoding(obj, encoding = "UTF-8")
-      if obj.is_a?(Hash)
-        obj.each do |k,v|
-          set_encoding(v, encoding)
-        end
-      elsif obj.is_a?(Array)
-        obj.each do |v|
-          set_encoding(v, encoding)
-        end
-      elsif obj.is_a?(String) && !obj.frozen?
-        obj.force_encoding(encoding) if obj.respond_to?(:force_encoding)
-      end
-    end
-
     # Deserialize command that was previously serialized with +dump+
     #
     # === Parameters
@@ -85,5 +71,28 @@ module RightScale
     rescue Exception => e
       raise RightScale::Exceptions::IO, "Invalid serialized command: #{e.message}\n#{data}"
     end
+
+    private
+    # Force set encodings on ruby strings.
+    #
+    # === Parameters
+    # obj(Object):: String, or Hash/Array of Strings
+    #
+    # === Return
+    # (nil):: Returns nothing, edits object in place 
+    def self.set_encoding(obj, encoding = "UTF-8")
+      if obj.is_a?(Hash)
+        obj.each do |k,v|
+          set_encoding(v, encoding)
+        end
+      elsif obj.is_a?(Array)
+        obj.each do |v|
+          set_encoding(v, encoding)
+        end
+      elsif obj.is_a?(String) && !obj.frozen?
+        obj.force_encoding(encoding) if obj.respond_to?(:force_encoding)
+      end
+    end
+
   end
 end
