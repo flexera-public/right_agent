@@ -159,7 +159,10 @@ module RightScale
       request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
       connect_options, request_options = @http_client.options(verb, path, params, request_headers(request_uuid, options), options)
 
-      Log.send(log_level, "Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
+      t = Thread.current.object_id
+      f = (defined?(Fiber) && Fiber.respond_to?(:current)) ? Fiber.current.object_id : 0
+      u = sprintf("%06u", Time.now.usec)
+      Log.send(log_level, ".#{u} [#{t}][#{f}] Requesting #{verb.to_s.upcase} <#{request_uuid}> " + log_text(path, params, filter))
 
       used = {}
       result, code, body, headers = if verb != :poll
@@ -304,7 +307,10 @@ module RightScale
     def log_success(result, code, body, headers, host, path, request_uuid, started_at, log_level)
       length = (headers && headers[:content_length]) || (body && body.size) || "-"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      completed = "Completed <#{request_uuid}> in #{duration} | #{code || "nil"} [#{host}#{path}] | #{length} bytes"
+      t = Thread.current.object_id
+      f = (defined?(Fiber) && Fiber.respond_to?(:current)) ? Fiber.current.object_id : 0
+      u = sprintf("%06u", Time.now.usec)
+      completed = ".#{u} [#{t}][#{f}] Completed <#{request_uuid}> in #{duration} | #{code || "nil"} [#{host}#{path}] | #{length} bytes"
       completed << " | #{result.inspect}" if Log.level == :debug
       Log.send(log_level, completed)
       true
@@ -325,7 +331,10 @@ module RightScale
     def log_failure(host, path, params, filter, request_uuid, started_at, exception)
       code = exception.respond_to?(:http_code) ? exception.http_code : "nil"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      Log.error("Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, host, exception))
+      t = Thread.current.object_id
+      f = (defined?(Fiber) && Fiber.respond_to?(:current)) ? Fiber.current.object_id : 0
+      u = sprintf("%06u", Time.now.usec)
+      Log.error(".#{u} [#{t}][#{f}] Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, host, exception))
       true
     end
 

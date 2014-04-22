@@ -127,6 +127,7 @@ module RightScale
       http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500,
                                   (http.error && http.error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}") }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
+      Log.info("#{sprintf(".%06u", Time.now.usec)} [#{Thread.current.object_id}][#{Fiber.current.object_id}] LEE REQUEST YIELD")
       response_code, response_body, response_headers = Fiber.yield
       response_headers = beautify_headers(response_headers) if response_headers
       result = BalancedHttpClient.response(response_code, response_body, response_headers, request_options[:head][:accept])

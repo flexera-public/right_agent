@@ -45,8 +45,7 @@ GEM
       http_parser.rb (>= 0.5.3)
     em-socksify (0.3.0)
       eventmachine (>= 1.0.0.beta.4)
-    eventmachine (1.0.0.6)
-    eventmachine (1.0.0.6-x86-mingw32)
+    eventmachine (1.0.0.6.debug)
     faye-websocket (0.7.0)
       eventmachine (>= 0.12.0)
       websocket-driver (>= 0.3.0)
@@ -109,7 +108,7 @@ PLATFORMS
 
 DEPENDENCIES
   em-http-request (= 1.0.3)
-  eventmachine (~> 1.0.0.6)
+  eventmachine (= 1.0.0.6.debug)
   fiber_pool (= 1.0.0)
   flexmock (~> 0.9)
   json (~> 1.4)

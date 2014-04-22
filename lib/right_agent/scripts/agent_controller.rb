@@ -79,6 +79,28 @@ require File.expand_path(File.join(File.dirname(__FILE__), '..', 'minimal'))
 require File.normalize_path(File.join(File.dirname(__FILE__), 'usage'))
 require File.normalize_path(File.join(File.dirname(__FILE__), 'common_parser'))
 
+require 'fiber_pool'
+
+class FiberPool
+  def spawn(&block)
+    # resurrect dead fibers
+    @busy_fibers.values.reject(&:alive?).each do |f|
+      @busy_fibers.delete(f.object_id)
+      add_fiber()
+    end
+
+    if fiber = @fibers.shift
+      @busy_fibers[fiber.object_id] = fiber
+      fiber.resume(block)
+    else
+      RightScale::Log.info("#{sprintf(".%06u", Time.now.usec)} [#{Thread.current.object_id}][#{Fiber.current.object_id}] LEE FIBER_POOL SPAWN QUEUING, BUSY #{@busy_fibers.size}")
+      @queue << block
+    end
+
+    fiber
+  end
+end
+
 module RightScale
 
   class AgentController
@@ -333,7 +355,6 @@ module RightScale
       puts "#{human_readable_name} being started"
 
       if @options[:fiber_pool_size]
-        require 'fiber_pool'
         @options[:fiber_pool] = FiberPool.new(@options[:fiber_pool_size])
         EM_S.fiber_pool = @options[:fiber_pool]
       end
