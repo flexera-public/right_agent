@@ -244,9 +244,14 @@ module RightScale
         return [result, code, body, headers] if (Time.now - started_at) >= request_timeout
       end
       if result.nil? && (connection = @http_client.connections[path]) && Time.now < connection[:expires_at]
-        # Continue to poll using same connection until get result, timeout, or hit error
-        used[:host] = connection[:host]
-        result, code, body, headers = @http_client.poll(connection, request_options, started_at + request_timeout)
+        begin
+          # Continue to poll using same connection until get result, timeout, or hit error
+          used[:host] = connection[:host]
+          result, code, body, headers = @http_client.poll(connection, request_options, started_at + request_timeout)
+        rescue HttpException, RestClient::Exception => e
+          raise NotResponding.new(e.http_body, e) if RETRY_STATUS_CODES.include?(e.http_code)
+          raise
+        end
       end
       [result, code, body, headers]
     end

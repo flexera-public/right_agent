@@ -350,6 +350,16 @@ describe RightScale::BalancedHttpClient do
         @client.send(:poll_request, @path, @connect_options, @request_options, @request_timeout, @started_at, @used)
         @used[:host].should == "http://my.com"
       end
+
+      it "converts retryable exceptions to NotResponding for poll requests" do
+        bad_gateway = RightScale::HttpExceptions.create(502)
+        @connection[:expires_at] = @later + 10
+        @http_client.instance_variable_get(:@connections)[@path] = @connection
+        flexmock(@http_client).should_receive(:poll).with(@connection, @request_options, @stop_at).and_raise(bad_gateway).once
+        lambda do
+          @client.send(:poll_request, @path, @connect_options, @request_options, @request_timeout, @started_at, @used).should == @response
+        end.should raise_error(RightScale::BalancedHttpClient::NotResponding)
+      end
     end
   end
 
