@@ -264,15 +264,15 @@ describe RightScale::NonBlockingClient do
             should raise_error(RightScale::HttpExceptions::InternalServerError)
       end
 
-      it "converts Errno::ETIMEDOUT error to 504" do
-        @headers.http_status = 504
+      it "converts Errno::ETIMEDOUT error to 408 RequestTimeout" do
+        @headers.http_status = 408
         @response.should_receive(:errback).and_yield.once
         @response.should_receive(:error).and_return(Errno::ETIMEDOUT)
-        @fiber.should_receive(:resume).with(504, "Errno::ETIMEDOUT").once
-        flexmock(Fiber).should_receive(:yield).and_return([504, "Errno::ETIMEDOUT"]).once
+        @fiber.should_receive(:resume).with(408, "Request timeout").once
+        flexmock(Fiber).should_receive(:yield).and_return([408, "Request timeout"]).once
         flexmock(EM::HttpRequest).should_receive(:new).with(@host, @connect_options).and_return(@request).once
         lambda { @client.request(:get, @path, @host, @connect_options, @request_options) }.
-            should raise_error(RightScale::HttpExceptions::GatewayTimeout)
+            should raise_error(RightScale::HttpExceptions::RequestTimeout)
       end
 
       it "stores the connection if keepalive enabled" do
@@ -351,7 +351,7 @@ describe RightScale::NonBlockingClient do
         end
 
         it "stops polling if there is an error" do
-          @response.should_receive(:error).and_return("some error").times(3)
+          @response.should_receive(:error).and_return("some error").once
           @response.should_receive(:errback).and_yield.once
           @fiber.should_receive(:resume).with(500, "some error").once
           @client.send(:poll_again, @fiber, @request, @request_options, @stop_at).should be true
@@ -373,6 +373,43 @@ describe RightScale::NonBlockingClient do
           @client.send(:poll_again, @fiber, @request, @request_options, @later + 2).should be true
         end
       end
+    end
+
+    context :close do
+      it "closes all persistent connections" do
+        @request_options.merge!(:keepalive => true)
+        flexmock(EM::HttpRequest).should_receive(:new).and_return(@request).once
+        @client.request(:get, @path, @host, @connect_options, @request_options)
+        @request.should_receive(:close).with("terminating").once
+        @client.connections.should_not be_empty
+        @client.close("terminating").should be true
+        @client.connections.should be_empty
+      end
+    end
+  end
+
+  context :handle_error do
+    before(:each) do
+      @options = {}
+      @client = RightScale::NonBlockingClient.new(@options)
+    end
+
+    ["terminating", "reconnecting"].each do |error|
+      it "converts #{error} error to a 200 OK" do
+        @client.send(:handle_error, :get, error).should == [200, nil]
+      end
+    end
+
+    it "converts Errno::ETIMEDOUT to 408 RequestTimeout" do
+      @client.send(:handle_error, :get, Errno::ETIMEDOUT).should == [408, "Request timeout"]
+    end
+
+    it "converts error to 500 InternalServerError by default" do
+      @client.send(:handle_error, :get, "failed").should == [500, "failed"]
+    end
+
+    it "generates error message for 500 InternalServerError if none specified" do
+      @client.send(:handle_error, :get, nil).should == [500, "HTTP connection failure for GET"]
     end
   end
 

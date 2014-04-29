@@ -214,6 +214,22 @@ describe RightScale::BalancedHttpClient do
     end
   end
 
+  context :close do
+    before(:each) do
+      @client = RightScale::BalancedHttpClient.new(@urls)
+    end
+
+    it "closes HTTP client" do
+      flexmock(@client.instance_variable_get(:@http_client)).should_receive(:close).with("terminating").once
+      @client.close("terminating").should be true
+    end
+
+    it "does nothing if there is no HTTP client" do
+      @client.instance_variable_set(:@http_client, nil)
+      @client.close("terminating").should be true
+    end
+  end
+
   context :request_headers do
     before(:each) do
       @request_uuid = "my uuid"
@@ -360,6 +376,16 @@ describe RightScale::BalancedHttpClient do
           @client.send(:poll_request, @path, @connect_options, @request_options, @request_timeout, @started_at, @used).should == @response
         end.should raise_error(RightScale::BalancedHttpClient::NotResponding)
       end
+
+      it "converts RequestTimeout without a status code to NotResponding for poll requests" do
+        request_timeout = RestClient::Exceptions::EXCEPTIONS_MAP[408].new
+        @connection[:expires_at] = @later + 10
+        @http_client.instance_variable_get(:@connections)[@path] = @connection
+        flexmock(@http_client).should_receive(:poll).with(@connection, @request_options, @stop_at).and_raise(request_timeout).once
+        lambda do
+          @client.send(:poll_request, @path, @connect_options, @request_options, @request_timeout, @started_at, @used).should == @response
+        end.should raise_error(RightScale::BalancedHttpClient::NotResponding, "Request timeout")
+      end
     end
   end
 
@@ -404,7 +430,7 @@ describe RightScale::BalancedHttpClient do
       @yielded.should == gateway_timeout
     end
 
-    it "uses raise NotResponding if status code is 504 and http_body is nil or empty" do
+    it "raises NotResponding if status code is 504 and http_body is nil or empty" do
       gateway_timeout = RightScale::HttpExceptions.create(504, "")
       @no_result = RightSupport::Net::NoResult.new("no result", {@url => gateway_timeout})
       lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.should \
@@ -412,13 +438,21 @@ describe RightScale::BalancedHttpClient do
       @yielded.should == gateway_timeout
     end
 
-    [502, 503].each do |code|
+    [408, 502, 503].each do |code|
       it "uses server name in NotResponding exception if status code is #{code}" do
         e = RightScale::HttpExceptions.create(code)
         @no_result = RightSupport::Net::NoResult.new("no result", {@url => e})
         lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.should \
           raise_error(RightScale::BalancedHttpClient::NotResponding, "http://my.com not responding")
       end
+    end
+
+    it "raises NotResponding for RequestTimeout even if exception has no status code" do
+      request_timeout = RestClient::Exceptions::EXCEPTIONS_MAP[408].new
+      @no_result = RightSupport::Net::NoResult.new("no result", {@url => request_timeout})
+      lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.should \
+        raise_error(RightScale::BalancedHttpClient::NotResponding, "Request timeout")
+      @yielded.should == request_timeout
     end
 
     it "raises last exception in details if not retryable" do

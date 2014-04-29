@@ -147,6 +147,7 @@ module RightScale
         @reconnect_timer.cancel if @reconnect_timer
         @reconnect_timer = nil
       end
+      close_http_client("terminating")
       true
     end
 
@@ -223,21 +224,34 @@ module RightScale
     end
 
     # Create HTTP client
+    # If there is an existing client, close it first
     #
     # @return [TrueClass] always true
     #
     # @return [BalancedHttpClient] client
     def create_http_client
+      close_http_client("reconnecting")
       url = @auth_client.send(@type.to_s + "_url")
       Log.info("Connecting to #{@options[:server_name]} via #{url.inspect}")
-      options = {
-        :server_name => @options[:server_name],
-        :open_timeout => @options[:open_timeout],
-        :request_timeout => @options[:request_timeout], }
+      options = {:server_name => @options[:server_name]}
       options[:api_version] = @options[:api_version] if @options[:api_version]
       options[:non_blocking] = @options[:non_blocking] if @options[:non_blocking]
       options[:filter_params] = @options[:filter_params] if @options[:filter_params]
       @http_client = RightScale::BalancedHttpClient.new(url, options)
+    end
+
+    # Close HTTP client persistent connections
+    #
+    # @param [String] reason for closing
+    #
+    # @return [Boolean] false if failed, otherwise true
+    def close_http_client(reason)
+      @http_client.close(reason) if @http_client
+      true
+    rescue Exception => e
+      Log.error("Failed closing connection", e, :trace)
+      @stats["exceptions"].track("status", e)
+      false
     end
 
     # Perform any other steps needed to make this client fully usable

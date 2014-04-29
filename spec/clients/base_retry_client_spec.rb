@@ -35,7 +35,7 @@ describe RightScale::BaseRetryClient do
     @url = "http://test.com"
     @timer = flexmock("timer", :cancel => true, :interval= => 0).by_default
     flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).by_default
-    @http_client = flexmock("http client", :get => true, :check_health => true).by_default
+    @http_client = flexmock("http client", :get => true, :check_health => true, :close => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @auth_header = {"Authorization" => "Bearer <session>"}
     @auth_client = AuthClientMock.new(@url, @auth_header)
@@ -163,6 +163,11 @@ describe RightScale::BaseRetryClient do
       @client.close(:receive)
       @client.state.should == :closing
     end
+
+    it "closes underlying HTTP client connections" do
+      @http_client.should_receive(:close).with("terminating").once
+      @client.close
+    end
   end
 
   context :state= do
@@ -257,10 +262,33 @@ describe RightScale::BaseRetryClient do
       flexmock(RightScale::BalancedHttpClient).should_receive(:new).with(@url,
           on { |a| a[:server_name] == "Test" &&
                    a[:api_version] == "2.0" &&
-                   a[:open_timeout] == 1 &&
-                   a[:request_timeout] == 2 &&
                    a[:filter_params] == ["secret"] }).and_return(@http_client).once
       @client.send(:create_http_client).should == @http_client
+    end
+
+    it "closes existing client before creating new one" do
+      flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).twice
+      @client.send(:create_http_client).should == @http_client
+      @http_client.should_receive(:close).with("reconnecting").once
+      @client.send(:create_http_client)
+    end
+  end
+
+  context :close_http_client do
+    it "closes HTTP client" do
+      flexmock(@client.instance_variable_get(:@http_client)).should_receive(:close).with("terminating").once
+      @client.send(:close_http_client, "terminating").should be true
+    end
+
+    it "does nothing if there is no HTTP client" do
+      @client.instance_variable_set(:@http_client, nil)
+      @client.send(:close_http_client, "terminating").should be true
+    end
+
+    it "logs any close exceptions" do
+      @log.should_receive(:error).with("Failed closing connection", RuntimeError, :trace).once
+      flexmock(@client.instance_variable_get(:@http_client)).should_receive(:close).and_raise(RuntimeError).once
+      @client.send(:close_http_client, "terminating").should be false
     end
   end
 

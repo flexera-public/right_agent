@@ -112,7 +112,7 @@ module RightScale
       result
     end
 
-    # Make long-polling requests until receive data or timeout
+    # Make long-polling requests until receive data, hit error, or timeout
     #
     # @param [Hash] connection to server from previous request with keys :host, :path,
     #   and :expires_at, with the :expires_at being adjusted on return
@@ -129,6 +129,16 @@ module RightScale
       end until result || Time.now >= stop_at
       connection[:expires_at] = Time.now + BalancedHttpClient::CONNECTION_REUSE_TIMEOUT
       [result, code, body, headers]
+    end
+
+    # Close all persistent connections
+    #
+    # @param [String] reason for closing
+    #
+    # @return [TrueClass] always true
+    def close(reason)
+      @connections = {}
+      true
     end
 
     protected

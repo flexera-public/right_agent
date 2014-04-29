@@ -54,7 +54,7 @@ module RightScale
     RECONNECT_INTERVAL = 2
 
     # Maximum interval between attempts to reconnect or long-poll when router is not responding
-    MAX_RECONNECT_INTERVAL = 60
+    MAX_RECONNECT_INTERVAL = 30
 
     # Interval between checks for lost WebSocket connection
     CHECK_INTERVAL = 5
@@ -344,11 +344,32 @@ module RightScale
         @listen_interval = CHECK_INTERVAL
       end
 
-      # Loop using next_tick or timer
+      listen_loop_wait(Time.now, @listen_interval, routing_keys, &handler)
+    end
+
+    # Wait specified interval before next listen loop
+    # Continue waiting if interval changes while waiting
+    #
+    # @param [Time] started_at time when first started waiting
+    # @param [Numeric] interval to wait
+    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    #
+    # @yield [event] required block called each time event received
+    # @yieldparam [Hash] event received
+    #
+    # @return [TrueClass] always true
+    def listen_loop_wait(started_at, interval, routing_keys, &handler)
       if @listen_interval == 0
         EM_S.next_tick { listen_loop(routing_keys, &handler) }
       else
-        @listen_timer = EM_S::Timer.new(@listen_interval) { listen_loop(routing_keys, &handler) }
+        @listen_timer = EM_S::Timer.new(interval) do
+          remaining = @listen_interval - (Time.now - started_at)
+          if remaining > 0
+            listen_loop_wait(started_at, remaining, routing_keys, &handler)
+          else
+            listen_loop(routing_keys, &handler)
+          end
+        end
       end
       true
     end
@@ -610,7 +631,7 @@ module RightScale
     #
     # @return [Boolean] true if router not responding, otherwise false
     def router_not_responding?
-      @close_code == PROTOCOL_ERROR_CLOSE && @close_reason =~ /502|503/
+      @close_code == PROTOCOL_ERROR_CLOSE && @close_reason =~ /408|502|503/
     end
 
   end # RouterClient
