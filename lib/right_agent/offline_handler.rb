@@ -27,7 +27,7 @@ module RightScale
   class OfflineHandler
 
     # Maximum seconds to wait before starting flushing offline queue when disabling offline mode
-    MAX_QUEUE_FLUSH_DELAY = 2 * 60
+    MAX_QUEUE_FLUSH_DELAY = 60
 
     # Maximum number of offline queued requests before triggering restart vote
     MAX_QUEUED_REQUESTS = 100
