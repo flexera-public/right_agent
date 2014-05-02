@@ -95,6 +95,8 @@ module RightScale
     #     defaults to :any
     # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
     #
     # @return [NilClass] always nil since there is no expected response to the request
     #
@@ -105,10 +107,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def push(type, payload = nil, target = nil, token = nil)
+    def push(type, payload = nil, target = nil, token = nil, time_to_live = nil)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.push(type, payload, target, token)
+      client.push(type, payload, target, token, time_to_live)
     end
 
     # Route a request to a single target with a response expected
@@ -129,6 +131,8 @@ module RightScale
     #     [Integer] :account id that agents must be associated with to be included
     # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
     #
     # @return [Result, NilClass] response from request
     #
@@ -139,10 +143,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def request(type, payload = nil, target = nil, token = nil)
+    def request(type, payload = nil, target = nil, token = nil, time_to_live = nil)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.request(type, payload, target, token)
+      client.request(type, payload, target, token, time_to_live)
     end
 
     # Route event

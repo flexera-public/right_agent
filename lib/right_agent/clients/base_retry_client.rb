@@ -339,6 +339,8 @@ module RightScale
     # @param [String] type of request for use in logging; defaults to path
     # @param [String, NilClass] request_uuid uniquely identifying this request;
     #   defaults to randomly generated UUID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
     # @param [Hash] options augmenting or overriding default options for HTTP request
     #
     # @return [Object, NilClass] result of request with nil meaning no result
@@ -349,10 +351,13 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def make_request(verb, path, params = {}, type = nil, request_uuid = nil, options = {})
+    def make_request(verb, path, params = {}, type = nil, request_uuid = nil, time_to_live = nil, options = {})
       raise Exceptions::Terminating if state == :closed
-      request_uuid ||= RightSupport::Data::UUID.generate
       started_at = Time.now
+      time_to_live = nil if time_to_live && time_to_live <= 0
+      expires_at = started_at + [time_to_live || @options[:retry_timeout], @options[:retry_timeout]].min
+      headers = time_to_live ? @auth_client.headers.merge("X-Expires-At" => started_at + time_to_live) : @auth_client.headers
+      request_uuid ||= RightSupport::Data::UUID.generate
       attempts = 0
       result = nil
       @stats["requests sent"].measure(type || path, request_uuid) do
@@ -362,11 +367,11 @@ module RightScale
             :open_timeout => @options[:open_timeout],
             :request_timeout => @options[:request_timeout],
             :request_uuid => request_uuid,
-            :headers => @auth_client.headers }
+            :headers => headers }
           raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless [:connected, :closing].include?(state)
           result = @http_client.send(verb, path, params, http_options.merge(options))
         rescue StandardError => e
-          request_uuid = handle_exception(e, type || path, request_uuid, started_at, attempts)
+          request_uuid = handle_exception(e, type || path, request_uuid, expires_at, attempts)
           request_uuid ? retry : raise
         end
       end
@@ -380,7 +385,7 @@ module RightScale
     # @param [String] action from request type
     # @param [String] type of request for use in logging
     # @param [String] request_uuid originally created for this request
-    # @param [Time] started_at time for request
+    # @param [Time] expires_at time for request
     # @param [Integer] attempts to make request
     #
     # @return [String, NilClass] request token to be used on retry or nil if to raise instead
@@ -390,7 +395,7 @@ module RightScale
     #   to it, or it is out of service or too busy to respond
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def handle_exception(exception, type, request_uuid, started_at, attempts)
+    def handle_exception(exception, type, request_uuid, expires_at, attempts)
       result = request_uuid
       if exception.respond_to?(:http_code)
         case exception.http_code
@@ -402,7 +407,7 @@ module RightScale
           @auth_client.expired
           raise Exceptions::RetryableError.new("Authorization expired", exception)
         when 449 # RetryWith
-          result = handle_retry_with(exception, type, request_uuid, started_at, attempts)
+          result = handle_retry_with(exception, type, request_uuid, expires_at, attempts)
         when 500 # InternalServerError
           raise Exceptions::InternalServerError.new(exception.http_body, @options[:server_name])
         else
@@ -410,7 +415,7 @@ module RightScale
           result = nil
         end
       elsif exception.is_a?(BalancedHttpClient::NotResponding)
-        handle_not_responding(exception, type, request_uuid, started_at, attempts)
+        handle_not_responding(exception, type, request_uuid, expires_at, attempts)
       else
         @stats["request failures"].update("#{type} - #{exception.class.name}")
         result = nil
@@ -443,7 +448,7 @@ module RightScale
       true
     end
 
-    # Handle retry response by retrying it once
+    # Handle retry response by retrying it only once
     # This indicates the request was received but a retryable error prevented
     # it from being processed; the retry responsibility may be passed on
     # If retrying, this function does not return until it is time to retry
@@ -451,26 +456,24 @@ module RightScale
     # @param [RestClient::RetryWith] retry_result exception raised
     # @param [String] type of request for use in logging
     # @param [String] request_uuid originally created for this request
-    # @param [Time] started_at time for request
+    # @param [Time] expires_at time for request
     # @param [Integer] attempts to make request
     #
     # @return [String] request token to be used on retry
     #
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
-    def handle_retry_with(retry_result, type, request_uuid, started_at, attempts)
-      if @options[:retry_enabled]
-        interval = @options[:retry_intervals][attempts - 1]
-        if attempts == 1 && interval && (Time.now - started_at) < @options[:retry_timeout]
-          Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
-                    "in response to retryable error (#{retry_result.http_body})")
-          wait(interval)
-        else
-          @stats["request failures"].update("#{type} - retry")
-          raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
-        end
-      else
+    def handle_retry_with(retry_result, type, request_uuid, expires_at, attempts)
+      case (interval = retry_interval(expires_at, attempts, 1))
+      when nil
         @stats["request failures"].update("#{type} - retry")
         raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
+      when 0
+        @stats["request failures"].update("#{type} - retry")
+        raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
+      else
+        Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
+                  "in response to retryable error (#{retry_result.http_body})")
+        wait(interval)
       end
       # Change request_uuid so that retried request not rejected as duplicate
       "#{request_uuid}:retry"
@@ -483,31 +486,47 @@ module RightScale
     #   indicating targeted server is too busy or out of service
     # @param [String] type of request for use in logging
     # @param [String] request_uuid originally created for this request
-    # @param [Time] started_at time for request
+    # @param [Time] expires_at time for request
     # @param [Integer] attempts to make request
     #
     # @return [TrueClass] always true
     #
     # @raise [Exceptions::ConnectivityFailure] cannot connect to server, lost connection
     #   to it, or it is out of service or too busy to respond
-    def handle_not_responding(not_responding, type, request_uuid, started_at, attempts)
-      if @options[:retry_enabled]
-        interval = @options[:retry_intervals][attempts - 1]
-        if interval && (Time.now - started_at) < @options[:retry_timeout]
-          Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
-                    "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
-          wait(interval)
-        else
-          @stats["request failures"].update("#{type} - no result")
-          self.state = :disconnected
-          raise Exceptions::ConnectivityFailure.new(not_responding.message + " after #{attempts} attempts")
-        end
-      else
+    def handle_not_responding(not_responding, type, request_uuid, expires_at, attempts)
+      case (interval = retry_interval(expires_at, attempts))
+      when nil
         @stats["request failures"].update("#{type} - no result")
         self.state = :disconnected
         raise Exceptions::ConnectivityFailure.new(not_responding.message)
+      when 0
+        @stats["request failures"].update("#{type} - no result")
+        self.state = :disconnected
+        raise Exceptions::ConnectivityFailure.new(not_responding.message + " after #{attempts} attempts")
+      else
+        Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
+                  "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
+        wait(interval)
       end
       true
+    end
+
+    # Determine time interval before next retry
+    #
+    # @param [Time] expires_at time for request
+    # @param [Integer] attempts so far
+    # @param [Integer] max_retries
+    #
+    # @return [Integer, NilClass] retry interval with 0 meaning no try and nil meaning retry disabled
+    def retry_interval(expires_at, attempts, max_retries = nil)
+      if @options[:retry_enabled]
+        if max_retries.nil? || attempts <= max_retries
+          interval = @options[:retry_intervals][attempts - 1] || @options[:retry_intervals][-1]
+          ((Time.now + interval) < expires_at) ? interval : 0
+        else
+          0
+        end
+      end
     end
 
     # Wait the specified interval in non-blocking fashion if possible

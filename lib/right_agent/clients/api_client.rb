@@ -111,6 +111,8 @@ module RightScale
     #     defaults to :any
     # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
     #
     # @return [NilClass] always nil since there is no expected response to the request
     #
@@ -120,8 +122,8 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def push(type, payload, target, token = nil)
-      map_request(type, payload, token)
+    def push(type, payload, target, token = nil, time_to_live = nil)
+      map_request(type, payload, token, time_to_live)
     end
 
     # Route a request to a single target with a response expected
@@ -142,6 +144,8 @@ module RightScale
     #     [Integer] :account id that agents must be associated with to be included
     # @param [String, NilClass] token uniquely identifying this request;
     #   defaults to randomly generated ID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
     #
     # @return [Result, NilClass] response from request
     #
@@ -151,8 +155,8 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def request(type, payload, target, token = nil)
-      map_request(type, payload, token)
+    def request(type, payload, target, token = nil, time_to_live = nil)
+      map_request(type, payload, token, time_to_live)
     end
 
     # Determine whether request supported by this client
@@ -170,8 +174,8 @@ module RightScale
     #
     # @param [String] type of request as path specifying actor and action
     # @param [Hash, NilClass] payload for request
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    # @param [String, NilClass] token uniquely identifying this request
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored
     #
     # @return [Object, NilClass] response from request
     #
@@ -181,15 +185,15 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def map_request(type, payload, token)
+    def map_request(type, payload, token, time_to_live)
       verb, path = API_MAP[type]
       raise ArgumentError, "Unsupported request type: #{type}" if path.nil?
       actor, action = type.split("/")[1..-1]
       path, params, options = parameterize(actor, action, payload, path)
       if action == "query_tags"
-        map_query_tags(verb, params, action, token, options)
+        map_query_tags(verb, params, action, token, time_to_live, options)
       else
-        map_response(make_request(verb, path, params, action, token, options), path)
+        map_response(make_request(verb, path, params, action, token, time_to_live, options), path)
       end
     end
 
@@ -227,16 +231,16 @@ module RightScale
     # @param [Symbol] verb for HTTP REST request
     # @param [Hash] params for HTTP request
     # @param [String] action from request type
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    # @param [String, NilClass] token uniquely identifying this request
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored
     # @param [Hash] options augmenting or overriding default options for HTTP request
     #
     # @return [Hash] tags retrieved with resource href as key and tags array as value
-    def map_query_tags(verb, params, action, token, options)
+    def map_query_tags(verb, params, action, token, time_to_live, options)
       response = {}
       hrefs = params[:resource_hrefs] || []
-      hrefs.concat(query_by_tag(verb, params[:tags], action, token, options)) if params[:tags]
-      response = query_by_resource(verb, hrefs, action, token, options) if hrefs.any?
+      hrefs.concat(query_by_tag(verb, params[:tags], action, token, time_to_live, options)) if params[:tags]
+      response = query_by_resource(verb, hrefs, action, token, time_to_live, options) if hrefs.any?
       response
     end
 
@@ -245,15 +249,15 @@ module RightScale
     # @param [Symbol] verb for HTTP REST request
     # @param [Array] tags that all resources retrieved must have
     # @param [String] action from request type
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    # @param [String, NilClass] token uniquely identifying this request
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored
     # @param [Hash] options augmenting or overriding default options for HTTP request
     #
     # @return [Array] resource hrefs
-    def query_by_tag(verb, tags, action, token, options)
+    def query_by_tag(verb, tags, action, token, time_to_live, options)
       path = "/tags/by_tag"
       params = {:tags => tags, :match_all => false, :resource_type => "instances"}
-      map_response(make_request(verb, path, params, action, token, options), path).keys
+      map_response(make_request(verb, path, params, action, token, time_to_live, options), path).keys
     end
 
     # Query API for tags associated with a set of resources
@@ -261,15 +265,15 @@ module RightScale
     # @param [Symbol] verb for HTTP REST request
     # @param [Array] hrefs for resources whose tags are to be retrieved
     # @param [String] action from request type
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    # @param [String, NilClass] token uniquely identifying this request
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored
     # @param [Hash] options augmenting or overriding default options for HTTP request
     #
     # @return [Hash] tags retrieved with resource href as key and tags array as value
-    def query_by_resource(verb, hrefs, action, token, options)
+    def query_by_resource(verb, hrefs, action, token, time_to_live, options)
       path = "/tags/by_resource"
       params = {:resource_hrefs => hrefs}
-      map_response(make_request(verb, path, params, action, token, options), path)
+      map_response(make_request(verb, path, params, action, token, time_to_live, options), path)
     end
 
     # Convert payload to HTTP parameters

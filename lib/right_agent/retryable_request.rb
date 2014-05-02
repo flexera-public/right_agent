@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2011 RightScale Inc
+# Copyright (c) 2009-2014 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -74,13 +74,13 @@ module RightScale
     # options(Hash):: Request options
     #   :targets(Array):: Target agent identities from which to randomly choose one
     #   :retry_on_error(Boolean):: Whether request should be retried if recipient returned an error
-    #   :retry_delay(Fixnum):: Number of seconds delay before initial retry with -1 meaning no delay,
+    #   :retry_delay(Numeric):: Number of seconds delay before initial retry with -1 meaning no delay,
     #     defaults to DEFAULT_RETRY_DELAY
-    #   :retry_delay_count(Fixnum):: Minimum number of retries at initial :retry_delay value before
+    #   :retry_delay_count(Numeric):: Minimum number of retries at initial :retry_delay value before
     #     increasing delay exponentially and decreasing this count exponentially, defaults to
     #     DEFAULT_RETRY_DELAY_COUNT
-    #   :max_retry_delay(Fixnum):: Maximum number of seconds of retry delay, defaults to DEFAULT_MAX_RETRY_DELAY
-    #   :timeout(Fixnum):: Number of seconds with no response before error callback gets called, with
+    #   :max_retry_delay(Numeric):: Maximum number of seconds of retry delay, defaults to DEFAULT_MAX_RETRY_DELAY
+    #   :timeout(Numeric):: Number of seconds with no response before error callback gets called, with
     #     -1 meaning never, defaults to DEFAULT_TIMEOUT
     #
     # === Raises
@@ -90,6 +90,7 @@ module RightScale
       raise ArgumentError.new("payload is required") unless (@payload = payload)
       @retry_on_error = options[:retry_on_error]
       @timeout = options[:timeout] || DEFAULT_TIMEOUT
+      @expires_at = Time.now.to_i + @timeout if @timeout > 0
       @retry_delay = options[:retry_delay] || DEFAULT_RETRY_DELAY
       @retry_delay_count = options[:retry_delay_count] || DEFAULT_RETRY_DELAY_COUNT
       @max_retry_delay = options[:max_retry_delay] || DEFAULT_MAX_RETRY_DELAY
@@ -105,13 +106,18 @@ module RightScale
     # === Return
     # true:: Always return true
     def run
-      Sender.instance.send_request(@operation, @payload, retrieve_target(@targets)) { |r| handle_response(r) }
-      if @cancel_timer.nil? && @timeout > 0
-        @cancel_timer = EM::Timer.new(@timeout) do
-          msg = "Request #{@operation} timed out after #{@timeout} seconds"
-          Log.info(msg)
-          cancel(msg)
-        end
+      cancel = Proc.new do
+        msg = "Request #{@operation} timed out after #{@timeout} seconds"
+        Log.info(msg)
+        cancel(msg)
+      end
+
+      time_to_live = nil
+      if @expires_at.nil? || (time_to_live = @expires_at - Time.now.to_i) > 0
+        Sender.instance.send_request(@operation, @payload, retrieve_target(@targets), nil, time_to_live) { |r| handle_response(r) }
+        @cancel_timer = EM::Timer.new(@timeout) { cancel.call } if @cancel_timer.nil? && @timeout > 0
+      else
+        cancel.call
       end
       true
     end

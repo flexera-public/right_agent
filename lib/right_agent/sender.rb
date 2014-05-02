@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2013 RightScale Inc
+# Copyright (c) 2009-2014 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -75,14 +75,14 @@ module RightScale
     #   :offline_queueing(Boolean):: Whether to queue request if client currently disconnected,
     #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below,
     #     as well as enable_offline_mode and disable_offline_mode as client connection status changes
-    #   :ping_interval(Integer):: Minimum number of seconds since last message receipt to ping RightNet
+    #   :ping_interval(Numeric):: Minimum number of seconds since last message receipt to ping RightNet
     #     to check connectivity, defaults to 0 meaning do not ping
     #   :restart_callback(Proc):: Callback that is activated on each restart vote with votes being initiated
     #     by offline queue exceeding MAX_QUEUED_REQUESTS or by repeated failures to access RightNet when online
     #   :retry_timeout(Numeric):: Maximum number of seconds to retry request before give up
     #   :retry_interval(Numeric):: Number of seconds before initial request retry, increases exponentially
-    #   :time_to_live(Integer):: Number of seconds before a request expires and is to be ignored
-    #     by the receiver, 0 means never expire
+    #   :time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #     non-positive value means never expire
     #   :async_response(Boolean):: Whether to handle responses asynchronously or to handle them immediately
     #     upon arrival (for use by applications that were written expecting asynchronous AMQP responses)
     #   :secure(Boolean):: true indicates to use Security features of rabbitmq to restrict agents to themselves
@@ -189,6 +189,8 @@ module RightScale
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :any
     # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
+    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to 0
     #
     # === Block
     # Optional block used to process routing responses asynchronously with the following parameter:
@@ -205,8 +207,8 @@ module RightScale
     # SendFailure:: If sending of request failed unexpectedly
     # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
     #   and offline queueing is disabled
-    def send_push(type, payload = nil, target = nil, token = nil, &callback)
-      build_and_send_packet(:send_push, type, payload, target, token, callback)
+    def send_push(type, payload = nil, target = nil, token = nil, time_to_live = nil, &callback)
+      build_and_send_packet(:send_push, type, payload, target, token, time_to_live || 0, &callback)
     end
 
     # Send a request to a single target with a response expected
@@ -232,6 +234,8 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
+    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to configured :time_to_live
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -243,9 +247,9 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If target invalid or block missing
-    def send_request(type, payload = nil, target = nil, token = nil, &callback)
+    def send_request(type, payload = nil, target = nil, token = nil, time_to_live = nil, &callback)
       raise ArgumentError, "Missing block for response callback" unless callback
-      build_and_send_packet(:send_request, type, payload, target, token, callback)
+      build_and_send_packet(:send_request, type, payload, target, token, time_to_live || @options[:time_to_live], &callback)
     end
 
     # Build and send packet
@@ -254,7 +258,7 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(Hash|NilClass):: Identity of specific target as string, or hash for selecting targets
+    # target(Hash|NilClass):: Target for request
     #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
@@ -263,19 +267,24 @@ module RightScale
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
     # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # callback(Proc|nil):: Block used to process routing response
+    # time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #   non-positive value or nil means never expire
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # true:: Always return true
     #
     # === Raise
     # ArgumentError:: If target invalid
-    def build_and_send_packet(kind, type, payload, target, token, callback)
-      if (packet = build_packet(kind, type, payload, target, token, callback))
+    def build_and_send_packet(kind, type, payload, target, token, time_to_live, &callback)
+      if (packet = build_packet(kind, type, payload, target, token, time_to_live, &callback))
         action = type.split('/').last
         received_at = @request_stats.update(action, packet.token)
         @request_kind_stats.update((packet.selector == :all ? "fanout" : kind.to_s)[5..-1])
-        send("#{@mode}_send", kind, target, packet, received_at, callback)
+        send("#{@mode}_send", kind, target, packet, received_at, &callback)
       end
       true
     end
@@ -286,7 +295,7 @@ module RightScale
     # kind(Symbol):: Kind of request: :send_push or :send_request
     # type(String):: Dispatch route for the request; typically identifies actor and action
     # payload(Object):: Data to be sent with marshalling en route
-    # target(Hash|NilClass):: Identity of specific target as string, or hash for selecting targets
+    # target(Hash|NilClass):: Target for request
     #   :agent_id(String):: Identity of specific target
     #   :tags(Array):: Tags that must all be associated with a target for it to be selected
     #   :scope(Hash):: Scoping to be used to restrict routing
@@ -295,42 +304,47 @@ module RightScale
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
     # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # callback(Boolean):: Whether this request has an associated response callback
+    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
+    #   non-positive value or nil means never expire
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # (Push|Request|NilClass):: Packet created, or nil if queued instead
     #
     # === Raise
     # ArgumentError:: If target is invalid
-    def build_packet(kind, type, payload, target, token, callback = false)
+    def build_packet(kind, type, payload, target, token, time_to_live, &callback)
       validate_target(target, kind == :send_push)
+      if kind == :send_push
+        packet = Push.new(type, payload)
+        packet.selector = target[:selector] || :any if target.is_a?(Hash)
+        packet.persistent = true
+        packet.confirm = true if callback
+      else
+        packet = Request.new(type, payload)
+        packet.selector = :any
+      end
+      packet.from = @identity
+      packet.token = token || RightSupport::Data::UUID.generate
+      packet.expires_at = Time.now.to_i + time_to_live if time_to_live && time_to_live > 0
+      if target.is_a?(Hash)
+        if (agent_id = target[:agent_id])
+          packet.target = agent_id
+        else
+          packet.tags = target[:tags] || []
+          packet.scope = target[:scope]
+        end
+      else
+        packet.target = target
+      end
+
       if queueing?
-        @offline_handler.queue_request(kind, type, payload, target, callback)
+        @offline_handler.queue_request(kind, type, payload, target, packet.token, packet.expires_at, &callback)
         nil
       else
-        if kind == :send_push
-          packet = Push.new(type, payload)
-          packet.selector = target[:selector] || :any if target.is_a?(Hash)
-          packet.persistent = true
-          packet.confirm = true if callback
-        else
-          packet = Request.new(type, payload)
-          ttl = @options[:time_to_live]
-          packet.expires_at = Time.now.to_i + ttl if ttl && ttl != 0
-          packet.selector = :any
-        end
-        packet.from = @identity
-        packet.token = token || RightSupport::Data::UUID.generate
-        if target.is_a?(Hash)
-          if (agent_id = target[:agent_id])
-            packet.target = agent_id
-          else
-            packet.tags = target[:tags] || []
-            packet.scope = target[:scope]
-          end
-        else
-          packet.target = target
-        end
         packet
       end
     end
@@ -577,25 +591,28 @@ module RightScale
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
-    # target(Hash|String|nil):: Target for request
+    # target(Hash|NilClass):: Target for request
     # packet(Push|Request):: Request packet to send
     # received_at(Time):: Time when request received
-    # callback(Proc|nil):: Block used to process response
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # true:: Always return true
-    def http_send(kind, target, packet, received_at, callback)
+    def http_send(kind, target, packet, received_at, &callback)
       if @options[:async_response]
         EM_S.next_tick do
           begin
-            http_send_once(kind, target, packet, received_at, callback)
+            http_send_once(kind, target, packet, received_at, &callback)
           rescue Exception => e
             Log.error("Failed sending or handling response for #{packet.trace} #{packet.type}", e, :trace)
             @exception_stats.track("request", e)
           end
         end
       else
-        http_send_once(kind, target, packet, received_at, callback)
+        http_send_once(kind, target, packet, received_at, &callback)
       end
       true
     end
@@ -604,22 +621,26 @@ module RightScale
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
-    # target(Hash|String|nil):: Target for request
+    # target(Hash|NilClass):: Target for request
     # packet(Push|Request):: Request packet to send
     # received_at(Time):: Time when request received
-    # callback(Proc|nil):: Block used to process response
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # true:: Always return true
-    def http_send_once(kind, target, packet, received_at, callback)
+    def http_send_once(kind, target, packet, received_at, &callback)
       begin
         method = packet.class.name.split("::").last.downcase
-        result = success_result(@agent.client.send(method, packet.type, packet.payload, target, packet.token))
+        time_to_live = packet.expires_at != 0 ? (packet.expires_at - Time.now.to_i) : nil
+        result = success_result(@agent.client.send(method, packet.type, packet.payload, target, packet.token, time_to_live))
       rescue Exceptions::Unauthorized => e
         result = error_result(e.message)
       rescue Exceptions::ConnectivityFailure => e
         if queueing?
-          @offline_handler.queue_request(kind, packet.type, packet.payload, target, callback)
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, &callback)
           result = nil
         else
           result = retry_result(e.message)
@@ -658,14 +679,17 @@ module RightScale
     #
     # === Parameters
     # kind(Symbol):: Kind of request: :send_push or :send_request
-    # target(Hash|String|nil):: Target for request
-    # received_at(Time):: Time when request received
+    # target(Hash|NilClass):: Target for request
     # packet(Push|Request):: Request packet to send
-    # callback(Proc|nil):: Block used to process response
+    # received_at(Time):: Time when request received
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # true:: Always return true
-    def amqp_send(kind, target, packet, received_at, callback)
+    def amqp_send(kind, target, packet, received_at, &callback)
       begin
         @pending_requests[packet.token] = PendingRequest.new(kind, received_at, callback) if callback
         if packet.class == Request
@@ -676,7 +700,7 @@ module RightScale
       rescue TemporarilyOffline => e
         if queueing?
           # Queue request until come back online
-          @offline_handler.queue_request(kind, packet.type, packet.payload, target, callback)
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, &callback)
           @pending_requests.delete(packet.token) if callback
         else
           # Send retry response so that requester, e.g., RetryableRequest, can retry
@@ -751,7 +775,7 @@ module RightScale
             if @pending_requests[parent_token]
               count += 1
               elapsed += interval
-              if elapsed < @retry_timeout
+              if elapsed < @retry_timeout && (packet.expires_at == 0 || Time.now.to_i < packet.expires_at)
                 packet.tries << packet.token
                 packet.token = RightSupport::Data::UUID.generate
                 @pending_requests[parent_token].retry_parent_token = parent_token if count == 1

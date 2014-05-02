@@ -35,6 +35,7 @@ describe RightScale::RetryableRequest do
       RightScale.module_eval('OldSender = Sender')
     end
     RightScale.module_eval('Sender = SenderMock')
+    @ttl = RightScale::RetryableRequest::DEFAULT_TIMEOUT
   end
 
   after(:all) do
@@ -48,7 +49,7 @@ describe RightScale::RetryableRequest do
     context 'when :targets => nil' do
       it 'should send target-less requests' do
         request = RightScale::RetryableRequest.new('type', 'payload')
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.non_delivery('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -59,7 +60,7 @@ describe RightScale::RetryableRequest do
     context 'when one target is specified' do
       it 'should send a targeted request' do
         request = RightScale::RetryableRequest.new('type', 'payload', :targets => ["rs-agent-1-1"])
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', {:agent_id => "rs-agent-1-1"}, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', {:agent_id => "rs-agent-1-1"}, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.non_delivery('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -70,10 +71,12 @@ describe RightScale::RetryableRequest do
     context 'when many targets are specified' do
       it 'should choose a random target' do
         request = RightScale::RetryableRequest.new('type', 'payload', :targets => ["rs-agent-1-1", "rs-agent-2-2", "rs-agent-3-3"])
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |type, payload, target, block|
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |type, payload, target, token, ttl, block|
           type.should == 'type'
           payload.should == 'payload'
           ["rs-agent-1-1", "rs-agent-2-2", "rs-agent-3-3"].should include(target[:agent_id])
+          token.should == nil
+          ttl.should == @ttl
           block.call(RightScale::OperationResult.non_delivery('test'))
         end
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
@@ -89,7 +92,7 @@ describe RightScale::RetryableRequest do
     context 'when not specified' do
       it 'should fail if receives error response' do
         request = RightScale::RetryableRequest.new('type', 'payload')
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.error('test')).once
         flexmock(request).should_receive(:fail).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
@@ -100,7 +103,7 @@ describe RightScale::RetryableRequest do
     context 'when specified as true' do
       it 'should retry if receives error response' do
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_on_error => true)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.error('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -109,7 +112,7 @@ describe RightScale::RetryableRequest do
 
       it 'should ignore duplicate responses' do
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_on_error => true)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |t, p, tgt, b|
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).and_return do |t, p, tgt, token, ttl, b|
           5.times { b.call(RightScale::OperationResult.success('test')) }
         end
         flexmock(request).should_receive(:fail).never
@@ -122,7 +125,7 @@ describe RightScale::RetryableRequest do
       it 'should never retry after cancel response' do
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_on_error => true)
         flexmock(RightScale::Log).should_receive(:info).with("Request type canceled (enough already)").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.cancel('enough already')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).never
@@ -139,7 +142,7 @@ describe RightScale::RetryableRequest do
         request = RightScale::RetryableRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with(/Retrying in 5 seconds/).once
         flexmock(RightScale::Log).should_receive(:info).with("Request non-delivery (test) for type").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.non_delivery('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -150,7 +153,7 @@ describe RightScale::RetryableRequest do
         request = RightScale::RetryableRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with(/Retrying in 5 seconds/).once
         flexmock(RightScale::Log).should_receive(:info).with("Request type failed (test) and should be retried").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -161,7 +164,7 @@ describe RightScale::RetryableRequest do
         request = RightScale::RetryableRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with(/Retrying in 5 seconds/).once
         flexmock(RightScale::Log).should_receive(:info).with("Request type failed (RightScale not ready) and should be retried").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).once
@@ -170,7 +173,7 @@ describe RightScale::RetryableRequest do
 
       it 'should ignore responses that arrive post-cancel' do
         request = RightScale::RetryableRequest.new('type', 'payload')
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.success('test')).once
         flexmock(request).should_receive(:fail).once
         flexmock(request).should_receive(:succeed).never
@@ -183,7 +186,7 @@ describe RightScale::RetryableRequest do
       it 'should never retry after cancel response' do
         request = RightScale::RetryableRequest.new('type', 'payload')
         flexmock(RightScale::Log).should_receive(:info).with("Request type canceled (enough already)").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.cancel('enough already')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_RETRY_DELAY, Proc).never
@@ -195,7 +198,7 @@ describe RightScale::RetryableRequest do
       it 'should control the initial retry delay' do
         retry_delay = 10
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_delay => retry_delay)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).once
@@ -206,7 +209,7 @@ describe RightScale::RetryableRequest do
       it 'should treat -1 as meaning no delay' do
         retry_delay = -1
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_delay => retry_delay)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).once
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).never
@@ -222,7 +225,7 @@ describe RightScale::RetryableRequest do
         backoff_factor = RightScale::RetryableRequest::RETRY_BACKOFF_FACTOR
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_delay => retry_delay,
                                                     :retry_delay_count => retry_delay_count)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).twice
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.once
@@ -239,7 +242,7 @@ describe RightScale::RetryableRequest do
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_delay => retry_delay,
                                                     :retry_delay_count => retry_delay_count,
                                                     :max_retry_delay => max_retry_delay)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).times(4)
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.twice
@@ -260,7 +263,7 @@ describe RightScale::RetryableRequest do
         request = RightScale::RetryableRequest.new('type', 'payload', :retry_delay => retry_delay,
                                                     :retry_delay_count => retry_delay_count,
                                                     :max_retry_delay => max_retry_delay)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, @ttl, Proc).
             and_yield(RightScale::OperationResult.retry('test')).times(3)
         flexmock(EM).should_receive(:add_timer).with(RightScale::RetryableRequest::DEFAULT_TIMEOUT, Proc).once
         flexmock(EM).should_receive(:add_timer).with(retry_delay, Proc).and_yield.once
@@ -277,7 +280,7 @@ describe RightScale::RetryableRequest do
     context 'when disable timeout' do
       it 'should not timeout' do
         request = RightScale::RetryableRequest.new('type', 'payload', :timeout => -1)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).once
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, nil, Proc).once
         flexmock(EM).should_receive(:add_timer).never
         request.run
       end
@@ -287,7 +290,7 @@ describe RightScale::RetryableRequest do
       it 'should time the response' do
         timeout = 10
         request = RightScale::RetryableRequest.new('type', 'payload', :timeout => timeout)
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).once
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, timeout, Proc).once
         flexmock(EM).should_receive(:add_timer).with(timeout, Proc).once
         request.run
       end
@@ -296,8 +299,18 @@ describe RightScale::RetryableRequest do
         timeout = 10
         request = RightScale::RetryableRequest.new('type', 'payload', :timeout => timeout)
         flexmock(RightScale::Log).should_receive(:info).with("Request type timed out after 10 seconds").once
-        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, Proc).once
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).with('type', 'payload', nil, nil, timeout, Proc).once
         flexmock(EM).should_receive(:add_timer).with(timeout, Proc).and_yield.once
+        request.run
+      end
+
+      it "should cancel request if time has expired" do
+        timeout = 10
+        now = Time.now
+        flexmock(Time).should_receive(:now).and_return(now, now + 10)
+        request = RightScale::RetryableRequest.new('type', 'payload', :timeout => timeout)
+        flexmock(request).should_receive(:fail).once
+        flexmock(RightScale::Sender.instance).should_receive(:send_request).never
         request.run
       end
     end

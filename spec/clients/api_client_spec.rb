@@ -52,6 +52,7 @@ describe RightScale::ApiClient do
     @payload = {:agent_identity => @agent_id}
     @target = nil
     @token = "random token"
+    @time_to_live = 60
   end
 
   context :initialize do
@@ -78,22 +79,28 @@ describe RightScale::ApiClient do
   context :push do
     it "makes mapped request" do
       flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries/111/append", {:detail => "details"},
-          "update_entry", @token, Hash).and_return(nil).once
-      @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target, @token).should be_nil
+          "update_entry", @token, @time_to_live, Hash).and_return(nil).once
+      @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target, @token, @time_to_live).should be_nil
     end
 
     it "does not require token" do
       flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries/111/append", {:detail => "details"},
-          "update_entry", nil, Hash).and_return(nil).once
+          "update_entry", nil, nil, Hash).and_return(nil).once
       @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target).should be_nil
+    end
+
+    it "does not require time-to-live" do
+      flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries/111/append", {:detail => "details"},
+          "update_entry", @token, nil, Hash).and_return(nil).once
+      @client.push("/auditor/update_entry", @payload.merge(:audit_id => 111, :detail => "details"), @target, @token).should be_nil
     end
   end
 
   context :request do
     it "makes mapped request" do
       flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
-          "declare", @token, Hash).and_return(nil).once
-      @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
+          "declare", @token, @time_to_live, Hash).and_return(nil).once
+      @client.request("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token, @time_to_live).should be_nil
     end
 
     # Currently not supporting query_tags via RightApi
@@ -105,8 +112,14 @@ describe RightScale::ApiClient do
 
     it "does not require token" do
       flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
-          "declare", nil, Hash).and_return(nil).once
-      @client.push("/booter/declare", @payload.merge(:r_s_version => @version), @target).should be_nil
+          "declare", nil, nil, Hash).and_return(nil).once
+      @client.request("/booter/declare", @payload.merge(:r_s_version => @version), @target).should be_nil
+    end
+
+    it "does not require time-to-live" do
+      flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
+          "declare", @token, nil, Hash).and_return(nil).once
+      @client.request("/booter/declare", @payload.merge(:r_s_version => @version), @target, @token).should be_nil
     end
   end
 
@@ -122,21 +135,21 @@ describe RightScale::ApiClient do
 
   context :map_request do
     it "raises if request type not supported" do
-      lambda { @client.send(:map_request, "/instance_scheduler/execute", @payload, @token) }.should \
+      lambda { @client.send(:map_request, "/instance_scheduler/execute", @payload, @token, @time_to_live) }.should \
           raise_error(ArgumentError, "Unsupported request type: /instance_scheduler/execute")
     end
 
     it "makes request" do
       flexmock(@client).should_receive(:make_request).with(:post, "/right_net/booter/declare", {:r_s_version => @version},
-          "declare", @token, Hash).and_return(nil).once
-      @client.send(:map_request, "/booter/declare", @payload.merge(:r_s_version => @version), @token).should be_nil
+          "declare", @token, @time_to_live, Hash).and_return(nil).once
+      @client.send(:map_request, "/booter/declare", @payload.merge(:r_s_version => @version), @token, @time_to_live).should be_nil
     end
 
     it "returns mapped response" do
       flexmock(@client).should_receive(:make_request).with(:post, "/audit_entries",
-          {:audit_entry => {:auditee_href => @agent_href, :summary => "summary"}}, "create_entry", @token, Hash).
+          {:audit_entry => {:auditee_href => @agent_href, :summary => "summary"}}, "create_entry", @token, @time_to_live, Hash).
           and_return("/api/audit_entries/111").once
-      @client.send(:map_request, "/auditor/create_entry", @payload.merge(:summary => "summary"), @token).should == "111"
+      @client.send(:map_request, "/auditor/create_entry", @payload.merge(:summary => "summary"), @token, @time_to_live).should == "111"
     end
   end
 
@@ -181,23 +194,28 @@ describe RightScale::ApiClient do
         params = {:tags => @tags}
         params2 = params.merge(:match_all => false, :resource_type => "instances")
         flexmock(@client).should_receive(:query_by_resource).never
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", params2, @action, @token, @options).and_return({}).once
-        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {}
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", params2, @action, @token,
+                                                             @time_to_live, @options).and_return({}).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @time_to_live, @options).should == {}
       end
 
       it "appends retrieved hrefs to any specified resource hrefs" do
         params = {:tags => @tags, :resource_hrefs => @hrefs}
         params2 = {:resource_hrefs => [@agent_href2, @agent_href]}
-        flexmock(@client).should_receive(:query_by_tag).with(:post, @tags, @action, @token, @options).and_return([@agent_href]).once
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params2, @action, @token, @options).and_return({}).once
-        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {}
+        flexmock(@client).should_receive(:query_by_tag).with(:post, @tags, @action, @token,
+                                                             @time_to_live, @options).and_return([@agent_href]).once
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params2, @action, @token,
+                                                             @time_to_live, @options).and_return({}).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @time_to_live, @options).should == {}
       end
 
       it "queries for tags for each resource href" do
         params = {:resource_hrefs => @hrefs}
         flexmock(@client).should_receive(:query_by_tag).never
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params, @action, @token, @options).and_return(@response).once
-        @client.send(:map_query_tags, :post, params, @action, @token, @options).should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", params, @action, @token,
+                                                             @time_to_live, @options).and_return(@response).once
+        @client.send(:map_query_tags, :post, params, @action, @token, @time_to_live, @options).
+            should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
       end
     end
 
@@ -208,13 +226,15 @@ describe RightScale::ApiClient do
       end
 
       it "queries for tags using specified tags" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token, @options).and_return({}).once
-        @client.send(:query_by_tag, :post, @tags, @action, @token, @options).should == []
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token,
+                                                             @time_to_live, @options).and_return({}).once
+        @client.send(:query_by_tag, :post, @tags, @action, @token, @time_to_live, @options).should == []
       end
 
       it "maps response" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token, @options).and_return(@response).once
-        @client.send(:query_by_tag, :post, @tags, @action, @token, @options).should == [@agent_href]
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_tag", @params2, @action, @token,
+                                                             @time_to_live, @options).and_return(@response).once
+        @client.send(:query_by_tag, :post, @tags, @action, @token, @time_to_live, @options).should == [@agent_href]
       end
     end
 
@@ -224,13 +244,16 @@ describe RightScale::ApiClient do
       end
 
       it "queries for tags using specified hrefs" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token, @options).and_return({}).once
-        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @options).should == {}
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token,
+                                                             @time_to_live, @options).and_return({}).once
+        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @time_to_live, @options).should == {}
       end
 
       it "maps response" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token, @options).and_return(@response).once
-        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @options).should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
+        flexmock(@client).should_receive(:make_request).with(:post, "/tags/by_resource", @params, @action, @token,
+                                                             @time_to_live, @options).and_return(@response).once
+        @client.send(:query_by_resource, :post, @hrefs, @action, @token, @time_to_live, @options).
+            should == {@agent_href => {"tags" => ["a:b=c", "x:y=z"]}}
       end
     end
   end
