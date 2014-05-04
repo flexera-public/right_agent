@@ -215,11 +215,12 @@ module RightScale
         Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless again || @mode == :initializing
         if @queue.any?
           r = @queue.shift
-          time_to_live = nil
-          if r[:expires_at] != 0 && (time_to_live = r[:expires_at] - Time.now.to_i) <= 0
-            Log.info("[offline] Dropping queued request <#{r[:token]}> because it expired #{(-time_to_live).round} sec ago")
+          options = {:token => r[:token]}
+          if r[:expires_at] != 0 && (options[:time_to_live] = r[:expires_at] - Time.now.to_i) <= 0
+            Log.info("[offline] Dropping queued request <#{r[:token]}> because it expired " +
+                     "#{(-options[:time_to_live]).round} sec ago")
           else
-            Sender.instance.send(r[:kind], r[:type], r[:payload], r[:target], r[:token], time_to_live, &r[:callback])
+            Sender.instance.send(r[:kind], r[:type], r[:payload], r[:target], options, &r[:callback])
           end
         end
         if @queue.empty?

@@ -116,10 +116,11 @@ module RightScale
     #       Packet::GLOBAL, ones with no shard id
     #   [Symbol] :selector for picking from qualified targets: :any or :all;
     #     defaults to :any
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
-    # @param [Numeric, NilClass] time_to_live for request before expires and is to be ignored;
-    #   non-positive value or nil means never expire; defaults to nil
+    #
+    # @option options [String] :request_uuid uniquely identifying this request; defaults to
+    #   randomly generated
+    # @option options [Numeric] :time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire
     #
     # @return [NilClass] always nil since there is no expected response to the request
     #
@@ -129,12 +130,12 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def push(type, payload, target, token = nil, time_to_live = nil)
+    def push(type, payload, target, options = {})
       params = {
         :type => type,
         :payload => payload,
         :target => target }
-      make_request(:post, "/push", params, type.split("/")[2], token, time_to_live)
+      make_request(:post, "/push", params, type.split("/")[2], options)
     end
 
     # Route a request to a single target with a response expected
@@ -154,10 +155,11 @@ module RightScale
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
-    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
-    #   non-positive value or nil means never expire; defaults to nil
+    #
+    # @option options [String] :request_uuid uniquely identifying this request; defaults to
+    #   randomly generated
+    # @option options [Numeric] :time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire
     #
     # @return [Result, NilClass] response from request
     #
@@ -167,12 +169,12 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def request(type, payload, target, token = nil, time_to_live = nil)
+    def request(type, payload, target, options = {})
       params = {
         :type => type,
         :payload => payload,
         :target => target }
-      make_request(:post, "/request", params, type.split("/")[2], token, time_to_live)
+      make_request(:post, "/request", params, type.split("/")[2], options)
     end
 
     # Route event
@@ -202,7 +204,7 @@ module RightScale
         Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
         @websocket.send(JSON.dump(params))
       else
-        make_request(:post, "/notify", params, "notify", event[:uuid], nil, :filter_params => ["event"])
+        make_request(:post, "/notify", params, "notify", :request_uuid => event[:uuid], :filter_params => ["event"])
       end
       true
     end
@@ -580,7 +582,7 @@ module RightScale
         :poll_timeout => @options[:listen_timeout] }
 
       event_uuids = []
-      events = make_request(:poll, "/listen", params, "listen", nil, nil, options)
+      events = make_request(:poll, "/listen", params, "listen", options)
       if events
         events.each do |event|
           event = SerializationHelper.symbolize_keys(event)

@@ -317,6 +317,7 @@ module RightScale
     #   - Underlying BalancedHttpClient connection open timeout (:open_timeout)
     #   - Underlying BalancedHttpClient request timeout (:request_timeout)
     #   - Retry timeout for this method and its handlers (:retry_timeout)
+    #   - Seconds before request expires and is to be ignored (:time_to_live)
     # and if the target server is a RightNet router:
     #   - Router response timeout (ideally > :retry_timeout and < :request_timeout)
     #   - Router retry timeout (ideally = :retry_timeout)
@@ -351,13 +352,13 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def make_request(verb, path, params = {}, type = nil, request_uuid = nil, time_to_live = nil, options = {})
+    def make_request(verb, path, params = {}, type = nil, options = {})
       raise Exceptions::Terminating if state == :closed
       started_at = Time.now
-      time_to_live = nil if time_to_live && time_to_live <= 0
+      time_to_live = (options[:time_to_live] && options[:time_to_live] > 0) ? options[:time_to_live] : nil
       expires_at = started_at + [time_to_live || @options[:retry_timeout], @options[:retry_timeout]].min
       headers = time_to_live ? @auth_client.headers.merge("X-Expires-At" => started_at + time_to_live) : @auth_client.headers
-      request_uuid ||= RightSupport::Data::UUID.generate
+      request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
       attempts = 0
       result = nil
       @stats["requests sent"].measure(type || path, request_uuid) do
@@ -388,7 +389,7 @@ module RightScale
     # @param [Time] expires_at time for request
     # @param [Integer] attempts to make request
     #
-    # @return [String, NilClass] request token to be used on retry or nil if to raise instead
+    # @return [String, NilClass] request UUID to be used on retry or nil if to raise instead
     #
     # @raise [Exceptions::Unauthorized] authorization failed
     # @raise [Exceptions::ConnectivityFailure] cannot connect to server, lost connection
@@ -459,7 +460,7 @@ module RightScale
     # @param [Time] expires_at time for request
     # @param [Integer] attempts to make request
     #
-    # @return [String] request token to be used on retry
+    # @return [String] request UUID to be used on retry
     #
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     def handle_retry_with(retry_result, type, request_uuid, expires_at, attempts)

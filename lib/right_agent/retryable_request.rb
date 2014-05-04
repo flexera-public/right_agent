@@ -112,9 +112,9 @@ module RightScale
         cancel(msg)
       end
 
-      time_to_live = nil
-      if @expires_at.nil? || (time_to_live = @expires_at - Time.now.to_i) > 0
-        Sender.instance.send_request(@operation, @payload, retrieve_target(@targets), nil, time_to_live) { |r| handle_response(r) }
+      options = {}
+      if @expires_at.nil? || (options[:time_to_live] = @expires_at - Time.now.to_i) > 0
+        Sender.instance.send_request(@operation, @payload, retrieve_target(@targets), options) { |r| handle_response(r) }
         @cancel_timer = EM::Timer.new(@timeout) { cancel.call } if @cancel_timer.nil? && @timeout > 0
       else
         cancel.call

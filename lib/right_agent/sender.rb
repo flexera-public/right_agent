@@ -188,9 +188,10 @@ module RightScale
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected, either :any or :all,
     #     defaults to :any
-    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
-    #   non-positive value or nil means never expire; defaults to 0
+    # options(Hash):: Request options
+    #   :token(String):: Universally unique ID for request; defaults to random generated
+    #   :time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #     non-positive value or nil means never expire; defaults to 0
     #
     # === Block
     # Optional block used to process routing responses asynchronously with the following parameter:
@@ -207,8 +208,8 @@ module RightScale
     # SendFailure:: If sending of request failed unexpectedly
     # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
     #   and offline queueing is disabled
-    def send_push(type, payload = nil, target = nil, token = nil, time_to_live = nil, &callback)
-      build_and_send_packet(:send_push, type, payload, target, token, time_to_live || 0, &callback)
+    def send_push(type, payload = nil, target = nil, options = {}, &callback)
+      build_and_send_packet(:send_push, type, payload, target, options, &callback)
     end
 
     # Send a request to a single target with a response expected
@@ -233,9 +234,10 @@ module RightScale
     #     :account(Integer):: Restrict to agents with this account id
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
-    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
-    #   non-positive value or nil means never expire; defaults to configured :time_to_live
+    # options(Hash):: Request options
+    #   :token(String):: Universally unique ID for request; defaults to random generated
+    #   :time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #     non-positive value or nil means never expire; defaults to configured :time_to_live
     #
     # === Block
     # Required block used to process response asynchronously with the following parameter:
@@ -247,9 +249,9 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If target invalid or block missing
-    def send_request(type, payload = nil, target = nil, token = nil, time_to_live = nil, &callback)
+    def send_request(type, payload = nil, target = nil, options = {}, &callback)
       raise ArgumentError, "Missing block for response callback" unless callback
-      build_and_send_packet(:send_request, type, payload, target, token, time_to_live || @options[:time_to_live], &callback)
+      build_and_send_packet(:send_request, type, payload, target, options, &callback)
     end
 
     # Build and send packet
@@ -266,9 +268,11 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
-    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
-    #   non-positive value or nil means never expire
+    # options(Hash):: Request options
+    #   :token(String):: Universally unique ID for request; defaults to random generated
+    #   :time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #     non-positive value or nil means never expire for :send_push and means use configured
+    #     time-to-live for :send_request
     #
     # === Block
     # Optional block used to process response asynchronously with the following parameter:
@@ -279,8 +283,8 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If target invalid
-    def build_and_send_packet(kind, type, payload, target, token, time_to_live, &callback)
-      if (packet = build_packet(kind, type, payload, target, token, time_to_live, &callback))
+    def build_and_send_packet(kind, type, payload, target, options = {}, &callback)
+      if (packet = build_packet(kind, type, payload, target, options, &callback))
         action = type.split('/').last
         received_at = @request_stats.update(action, packet.token)
         @request_kind_stats.update((packet.selector == :all ? "fanout" : kind.to_s)[5..-1])
@@ -303,9 +307,11 @@ module RightScale
     #     :shard(Integer):: Restrict to agents with this shard id, or if value is Packet::GLOBAL,
     #       ones with no shard id
     #   :selector(Symbol):: Which of the matched targets to be selected: :any or :all
-    # token(String|NilClass):: Token uniquely identifying request; defaults to random generated
-    # time_to_live(Numeric|NilClass):: Number of seconds before a request expires and is to be ignored;
-    #   non-positive value or nil means never expire
+    # options(Hash):: Request options
+    #   :token(String):: Universally unique ID for request; defaults to random generated
+    #   :time_to_live(Numeric):: Number of seconds before a request expires and is to be ignored;
+    #     non-positive value or nil means never expire for :send_push and means use configured
+    #     time-to-live for :send_request
     #
     # === Block
     # Optional block used to process response asynchronously with the following parameter:
@@ -316,19 +322,21 @@ module RightScale
     #
     # === Raise
     # ArgumentError:: If target is invalid
-    def build_packet(kind, type, payload, target, token, time_to_live, &callback)
+    def build_packet(kind, type, payload, target, options = {}, &callback)
       validate_target(target, kind == :send_push)
       if kind == :send_push
         packet = Push.new(type, payload)
         packet.selector = target[:selector] || :any if target.is_a?(Hash)
         packet.persistent = true
         packet.confirm = true if callback
+        time_to_live = options[:time_to_live] || 0
       else
         packet = Request.new(type, payload)
         packet.selector = :any
+        time_to_live = options[:time_to_live] || @options[:time_to_live]
       end
       packet.from = @identity
-      packet.token = token || RightSupport::Data::UUID.generate
+      packet.token = options[:token] || RightSupport::Data::UUID.generate
       packet.expires_at = Time.now.to_i + time_to_live if time_to_live && time_to_live > 0
       if target.is_a?(Hash)
         if (agent_id = target[:agent_id])
@@ -634,8 +642,9 @@ module RightScale
     def http_send_once(kind, target, packet, received_at, &callback)
       begin
         method = packet.class.name.split("::").last.downcase
-        time_to_live = packet.expires_at != 0 ? (packet.expires_at - Time.now.to_i) : nil
-        result = success_result(@agent.client.send(method, packet.type, packet.payload, target, packet.token, time_to_live))
+        options = {:request_uuid => packet.token}
+        options[:time_to_live] = (packet.expires_at - Time.now.to_i) if packet.expires_at > 0
+        result = success_result(@agent.client.send(method, packet.type, packet.payload, target, options))
       rescue Exceptions::Unauthorized => e
         result = error_result(e.message)
       rescue Exceptions::ConnectivityFailure => e
@@ -652,7 +661,7 @@ module RightScale
       rescue Exceptions::Terminating => e
         result = nil
       rescue StandardError => e
-        # These errors are either unexpected errors or RestClient errors with an http_body
+        # These errors are either unexpected errors or HttpExceptions with an http_body
         # giving details about the error that are conveyed in the error_result
         if e.respond_to?(:http_body)
           # No need to log here since any HTTP request errors have already been logged
@@ -775,7 +784,7 @@ module RightScale
             if @pending_requests[parent_token]
               count += 1
               elapsed += interval
-              if elapsed < @retry_timeout && (packet.expires_at == 0 || Time.now.to_i < packet.expires_at)
+              if elapsed < @retry_timeout && (packet.expires_at <= 0 || Time.now.to_i < packet.expires_at)
                 packet.tries << packet.token
                 packet.token = RightSupport::Data::UUID.generate
                 @pending_requests[parent_token].retry_parent_token = parent_token if count == 1

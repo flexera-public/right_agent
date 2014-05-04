@@ -447,27 +447,26 @@ describe RightScale::BaseRetryClient do
                    a[:request_timeout] == 35 &&
                    a[:request_uuid] == "uuid" &&
                    a[:headers] == @auth_header }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid")
+      @client.send(:make_request, :get, @path, @params, nil, :request_uuid => "uuid")
     end
 
     it "overrides HTTP options with those supplied on request" do
       @http_client.should_receive(:get).with(@path, @params,
           on { |a| a[:open_timeout] == 2 &&
                    a[:request_timeout] == 20 &&
-                   a[:request_uuid] == "uuid" &&
                    a[:headers] == @auth_header }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid", nil, {:request_timeout => 20})
+      @client.send(:make_request, :get, @path, @params, nil, {:request_timeout => 20})
     end
 
     it "sets X-Expires-At header if time-to-live specified" do
       @http_client.should_receive(:get).with(@path, @params,
           on { |a| a[:headers] == @auth_header.merge("X-Expires-At" => @now + 99) }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid", 99)
+      @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 99)
     end
 
     it "does not set X-Expires-At header if time-to-live is non-positive" do
       @http_client.should_receive(:get).with(@path, @params, on { |a| a[:headers] == @auth_header }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid", -1)
+      @client.send(:make_request, :get, @path, @params, nil, :time_to_live => -1)
     end
 
     it "makes request using HTTP client" do
@@ -502,14 +501,14 @@ describe RightScale::BaseRetryClient do
         @http_client.should_receive(:get).and_raise(StandardError, "test").once
         flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @now + 19, 1).
             and_raise(StandardError, "failed").once
-        lambda { @client.send(:make_request, :get, @path, @params, nil, nil, 19) }.should raise_error(StandardError, "failed")
+        lambda { @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 19) }.should raise_error(StandardError, "failed")
       end
 
       it "uses configure retry timeout to control how long to retry if time-to-live exceeds it" do
         @http_client.should_receive(:get).and_raise(StandardError, "test").once
         flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @expires_at, 1).
             and_raise(StandardError, "failed").once
-        lambda { @client.send(:make_request, :get, @path, @params, nil, nil, 99) }.should raise_error(StandardError, "failed")
+        lambda { @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 99) }.should raise_error(StandardError, "failed")
       end
 
       it "retries if exception handling does not result in raise" do

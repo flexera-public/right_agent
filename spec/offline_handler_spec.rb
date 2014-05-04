@@ -264,8 +264,9 @@ describe RightScale::OfflineHandler do
         @handler.queue_request(:send_request, @type, @payload, @target, @token, @now.to_i, &@callback)
         @handler.queue.size.should == 3
         flexmock(EM).should_receive(:next_tick).and_yield.twice
-        @sender.should_receive(:send_push).with(@type, @payload, @target, @token, nil).once.ordered
-        @sender.should_receive(:send_request).with(@type, @payload, @target, @token, 25, Proc).and_yield("result").once.ordered
+        @sender.should_receive(:send_push).with(@type, @payload, @target, {:token => @token}).once.ordered
+        @sender.should_receive(:send_request).
+            with(@type, @payload, @target, {:token => @token, :time_to_live => 25}, Proc).and_yield("result").once.ordered
         flexmock(EM).should_receive(:add_timer).and_yield.once
         log = flexmock(RightScale::Log)
         log.should_receive(:info).with(/Connection to RightNet re-established/).once.ordered
