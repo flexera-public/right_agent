@@ -35,7 +35,7 @@ describe RightScale::BaseRetryClient do
     @url = "http://test.com"
     @timer = flexmock("timer", :cancel => true, :interval= => 0).by_default
     flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).by_default
-    @http_client = flexmock("http client", :get => true, :check_health => true).by_default
+    @http_client = flexmock("http client", :get => true, :check_health => true, :close => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @auth_header = {"Authorization" => "Bearer <session>"}
     @auth_client = AuthClientMock.new(@url, @auth_header)
@@ -163,6 +163,11 @@ describe RightScale::BaseRetryClient do
       @client.close(:receive)
       @client.state.should == :closing
     end
+
+    it "closes underlying HTTP client connections" do
+      @http_client.should_receive(:close).with("terminating").once
+      @client.close
+    end
   end
 
   context :state= do
@@ -257,10 +262,33 @@ describe RightScale::BaseRetryClient do
       flexmock(RightScale::BalancedHttpClient).should_receive(:new).with(@url,
           on { |a| a[:server_name] == "Test" &&
                    a[:api_version] == "2.0" &&
-                   a[:open_timeout] == 1 &&
-                   a[:request_timeout] == 2 &&
                    a[:filter_params] == ["secret"] }).and_return(@http_client).once
       @client.send(:create_http_client).should == @http_client
+    end
+
+    it "closes existing client before creating new one" do
+      flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).twice
+      @client.send(:create_http_client).should == @http_client
+      @http_client.should_receive(:close).with("reconnecting").once
+      @client.send(:create_http_client)
+    end
+  end
+
+  context :close_http_client do
+    it "closes HTTP client" do
+      flexmock(@client.instance_variable_get(:@http_client)).should_receive(:close).with("terminating").once
+      @client.send(:close_http_client, "terminating").should be true
+    end
+
+    it "does nothing if there is no HTTP client" do
+      @client.instance_variable_set(:@http_client, nil)
+      @client.send(:close_http_client, "terminating").should be true
+    end
+
+    it "logs any close exceptions" do
+      @log.should_receive(:error).with("Failed closing connection", RuntimeError, :trace).once
+      flexmock(@client.instance_variable_get(:@http_client)).should_receive(:close).and_raise(RuntimeError).once
+      @client.send(:close_http_client, "terminating").should be false
     end
   end
 
@@ -389,6 +417,7 @@ describe RightScale::BaseRetryClient do
       @params = {:some => "data"}
       @request_uuid = "random uuid"
       @now = Time.now
+      @expires_at = @now + 25
       flexmock(Time).should_receive(:now).and_return(@now).by_default
       flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@request_uuid)
       flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield
@@ -418,16 +447,26 @@ describe RightScale::BaseRetryClient do
                    a[:request_timeout] == 35 &&
                    a[:request_uuid] == "uuid" &&
                    a[:headers] == @auth_header }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid")
+      @client.send(:make_request, :get, @path, @params, nil, :request_uuid => "uuid")
     end
 
     it "overrides HTTP options with those supplied on request" do
       @http_client.should_receive(:get).with(@path, @params,
           on { |a| a[:open_timeout] == 2 &&
                    a[:request_timeout] == 20 &&
-                   a[:request_uuid] == "uuid" &&
                    a[:headers] == @auth_header }).once
-      @client.send(:make_request, :get, @path, @params, nil, "uuid", {:request_timeout => 20})
+      @client.send(:make_request, :get, @path, @params, nil, {:request_timeout => 20})
+    end
+
+    it "sets X-Expires-At header if time-to-live specified" do
+      @http_client.should_receive(:get).with(@path, @params,
+          on { |a| a[:headers] == @auth_header.merge("X-Expires-At" => @now + 99) }).once
+      @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 99)
+    end
+
+    it "does not set X-Expires-At header if time-to-live is non-positive" do
+      @http_client.should_receive(:get).with(@path, @params, on { |a| a[:headers] == @auth_header }).once
+      @client.send(:make_request, :get, @path, @params, nil, :time_to_live => -1)
     end
 
     it "makes request using HTTP client" do
@@ -446,23 +485,37 @@ describe RightScale::BaseRetryClient do
     context "when exception" do
       it "handles any exceptions" do
         @http_client.should_receive(:get).and_raise(StandardError, "test").once
-        flexmock(@client).should_receive(:handle_exception).with(StandardError, "type", @request_uuid, @now, 1).
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, "type", @request_uuid, @expires_at, 1).
             and_raise(StandardError, "failed").once
         lambda { @client.send(:make_request, :get, @path, @params, "type") }.should raise_error(StandardError, "failed")
       end
 
       it "uses path for request type if no request type specified" do
         @http_client.should_receive(:get).and_raise(StandardError, "test").once
-        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @now, 1).
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @expires_at, 1).
             and_raise(StandardError, "failed").once
         lambda { @client.send(:make_request, :get, @path, @params) }.should raise_error(StandardError, "failed")
       end
 
+      it "uses specified time-to-live to control how long to retry if less than configured retry timeout" do
+        @http_client.should_receive(:get).and_raise(StandardError, "test").once
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @now + 19, 1).
+            and_raise(StandardError, "failed").once
+        lambda { @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 19) }.should raise_error(StandardError, "failed")
+      end
+
+      it "uses configure retry timeout to control how long to retry if time-to-live exceeds it" do
+        @http_client.should_receive(:get).and_raise(StandardError, "test").once
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @expires_at, 1).
+            and_raise(StandardError, "failed").once
+        lambda { @client.send(:make_request, :get, @path, @params, nil, :time_to_live => 99) }.should raise_error(StandardError, "failed")
+      end
+
       it "retries if exception handling does not result in raise" do
         @http_client.should_receive(:get).and_raise(StandardError, "test").twice
-        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @now, 1).
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, @request_uuid, @expires_at, 1).
             and_return("updated uuid").once.ordered
-        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, "updated uuid", @now, 2).
+        flexmock(@client).should_receive(:handle_exception).with(StandardError, @path, "updated uuid", @expires_at, 2).
             and_raise(StandardError, "failed").once.ordered
         lambda { @client.send(:make_request, :get, @path, @params) }.should raise_error(StandardError, "failed")
       end
@@ -478,8 +531,9 @@ describe RightScale::BaseRetryClient do
     before(:each) do
       @type = "type"
       @request_uuid = "random uuid"
-      @now = Time.now
-      flexmock(Time).should_receive(:now).and_return(@now, @now + 10, @now + 20)
+      @later = (@now = Time.now)
+      flexmock(Time).should_receive(:now).and_return { @later += 1 }
+      @expires_at = @now + 25
       flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@request_uuid)
       flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield
       @client.instance_variable_set(:@reconnecting, nil)
@@ -492,50 +546,50 @@ describe RightScale::BaseRetryClient do
           it "handles #{http_code} redirect" do
             e = RightScale::HttpExceptions.create(http_code, "redirect")
             flexmock(@client).should_receive(:handle_redirect).with(e, @type, @request_uuid).once
-            @client.send(:handle_exception, e, @type, @request_uuid, @now, 1)
+            @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1)
           end
         end
       end
 
       it "raises if unauthorized" do
         e = RightScale::HttpExceptions.create(401, "unauthorized")
-        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1) }.should \
             raise_error(RightScale::Exceptions::Unauthorized, "unauthorized")
       end
 
       it "notifies auth client and raises retryable if session expired" do
         e = RightScale::HttpExceptions.create(403, "forbidden")
-        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1) }.should \
             raise_error(RightScale::Exceptions::RetryableError, "Authorization expired")
         @auth_client.expired_called.should be_true
       end
 
       it "handles retry with and updates request_uuid to distinguish for retry" do
         e = RightScale::HttpExceptions.create(449, "retry with")
-        flexmock(@client).should_receive(:handle_retry_with).with(e, @type, @request_uuid, @now, 1).
+        flexmock(@client).should_receive(:handle_retry_with).with(e, @type, @request_uuid, @expires_at, 1).
             and_return("modified uuid").once
-        @client.send(:handle_exception, e, @type, @request_uuid, @now, 1).should == "modified uuid"
+        @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1).should == "modified uuid"
       end
 
       it "handles internal server error" do
         e = RightScale::HttpExceptions.create(500, "test internal error")
-        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1) }.should \
             raise_error(RightScale::Exceptions::InternalServerError, "test internal error")
       end
 
       it "handles not responding" do
         e = RightScale::BalancedHttpClient::NotResponding.new("not responding")
-        flexmock(@client).should_receive(:handle_not_responding).with(e, @type, @request_uuid, @now, 1).once
-        @client.send(:handle_exception, e, @type, @request_uuid, @now, 1)
+        flexmock(@client).should_receive(:handle_not_responding).with(e, @type, @request_uuid, @expires_at, 1).once
+        @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1)
       end
 
       it "causes other HTTP exceptions to be re-raised by returning nil" do
         e = RightScale::HttpExceptions.create(400, "bad request")
-        @client.send(:handle_exception, e, @type, @request_uuid, @now, 1).should be_nil
+        @client.send(:handle_exception, e, @type, @request_uuid, @expires_at, 1).should be_nil
       end
 
       it "causes other non-HTTP exceptions to be re-raised by returning nil" do
-        @client.send(:handle_exception, StandardError, @type, @request_uuid, @now, 1).should be_nil
+        @client.send(:handle_exception, StandardError, @type, @request_uuid, @expires_at, 1).should be_nil
       end
     end
 
@@ -566,29 +620,29 @@ describe RightScale::BaseRetryClient do
       it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
-        @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1)
+        @client.send(:handle_retry_with, @exception, @type, @request_uuid, @expires_at, 1)
       end
 
       it "returns modified request_uuid" do
         @log.should_receive(:error)
         flexmock(@client).should_receive(:sleep)
-        @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1).should == "#{@request_uuid}:retry"
+        @client.send(:handle_retry_with, @exception, @type, @request_uuid, @expires_at, 1).should == "#{@request_uuid}:retry"
       end
 
       it "does not retry more than once" do
-        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 2) }.should \
+        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @expires_at, 2) }.should \
             raise_error(RightScale::Exceptions::RetryableError)
       end
 
       it "raises retryable error if retry timed out" do
         @client.init(:test, @auth_client, @options.merge(:retry_enabled => true, :retry_timeout => 10))
-        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now + 10, 1) }.should \
             raise_error(RightScale::Exceptions::RetryableError)
       end
 
       it "raises retryable error if retry disabled" do
         @client.init(:test, @auth_client, @options.merge(:retry_enabled => false))
-        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_retry_with, @exception, @type, @request_uuid, @expires_at, 1) }.should \
             raise_error(RightScale::Exceptions::RetryableError)
       end
     end
@@ -601,18 +655,13 @@ describe RightScale::BaseRetryClient do
       it "waits for configured interval and does not raise if retry still viable" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(4).once
-        @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 1)
+        @client.send(:handle_not_responding, @exception, @type, @request_uuid, @expires_at, 1)
       end
 
       it "changes wait interval for successive retries" do
         @log.should_receive(:error).with(/Retrying type request/).once
         flexmock(@client).should_receive(:sleep).with(12).once
-        @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 2)
-      end
-
-      it "does not retry more than configured number of retry intervals" do
-        lambda { @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 4) }.should \
-            raise_error(RightScale::Exceptions::ConnectivityFailure, "Server not responding after 4 attempts")
+        @client.send(:handle_not_responding, @exception, @type, @request_uuid, @expires_at, 2)
       end
 
       it "sets state to :disconnected and raises connectivity error if retry timed out" do
@@ -620,7 +669,7 @@ describe RightScale::BaseRetryClient do
         # Need to shut off reconnect, otherwise since timers are always yielding,
         # setting state to :disconnected sets it to :connected
         flexmock(@client).should_receive(:reconnect).once
-        lambda { @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 3) }.should \
+        lambda { @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now + 10, 3) }.should \
             raise_error(RightScale::Exceptions::ConnectivityFailure, "Server not responding after 3 attempts")
         @client.state.should == :disconnected
       end
@@ -630,26 +679,47 @@ describe RightScale::BaseRetryClient do
         # Need to shut off reconnect, otherwise since timers are always yielding,
         # setting state to :disconnected sets it to :connected
         flexmock(@client).should_receive(:reconnect).once
-        lambda { @client.send(:handle_not_responding, @exception, @type, @request_uuid, @now, 1) }.should \
+        lambda { @client.send(:handle_not_responding, @exception, @type, @request_uuid, @expires_at, 1) }.should \
             raise_error(RightScale::Exceptions::ConnectivityFailure, "Server not responding")
         @client.state.should == :disconnected
       end
     end
-  end
 
-  context :wait do
-    it "waits using timer if non-blocking enabled" do
-      @fiber = flexmock("fiber", :resume => true).by_default
-      flexmock(Fiber).should_receive(:current).and_return(@fiber)
-      flexmock(Fiber).should_receive(:yield).once
-      flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.once
-      @client.init(:test, @auth_client, @options.merge(:non_blocking => true))
-      @client.send(:wait, 1).should be true
+    context :retry_interval do
+      [[1, 4], [2, 12], [3, 36], [4, 36]].each do |attempt, interval|
+        it "returns retry interval when should retry after attempt #{attempt}" do
+          @client.send(:retry_interval, @now + 120, attempt).should == interval
+        end
+      end
+
+      it "returns 0 if another retry would exceed expiration time" do
+        @client.send(:retry_interval, @now + 11, 2).should == 0
+      end
+
+      it "returns 0 if exceeded max retries" do
+        @client.send(:retry_interval, @expires_at, 2, 1).should == 0
+      end
+
+      it "returns nil if retry disabled" do
+        @client.init(:test, @auth_client, @options.merge(:retry_enabled => false))
+        @client.send(:retry_interval, @expires_at, 1).should be nil
+      end
     end
 
-    it " waits using sleep if non-blocking disabled" do
-      flexmock(@client).should_receive(:sleep).with(1).once
-      @client.send(:wait, 1).should be true
+    context :wait do
+      it "waits using timer if non-blocking enabled" do
+        @fiber = flexmock("fiber", :resume => true).by_default
+        flexmock(Fiber).should_receive(:current).and_return(@fiber)
+        flexmock(Fiber).should_receive(:yield).once
+        flexmock(EM).should_receive(:add_timer).with(1, Proc).and_yield.once
+        @client.init(:test, @auth_client, @options.merge(:non_blocking => true))
+        @client.send(:wait, 1).should be true
+      end
+
+      it " waits using sleep if non-blocking disabled" do
+        flexmock(@client).should_receive(:sleep).with(1).once
+        @client.send(:wait, 1).should be true
+      end
     end
   end
 end

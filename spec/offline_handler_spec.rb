@@ -192,14 +192,18 @@ describe RightScale::OfflineHandler do
       @type = "/foo/bar"
       @payload = {:pay => "load"}
       @target = "target"
+      @token = "token"
+      @now = Time.now
+      flexmock(Time).should_receive(:now).and_return(@now)
+      @expires_at = @now + 25
       @callback = lambda { |_| }
     end
 
     it "queues request at head of queue if still initializing" do
       @handler.init
-      @handler.queue_request(@kind, @type, @payload, "target1", @callback).should be_true
+      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, &@callback).should be_true
       @handler.queue.size.should == 1
-      @handler.queue_request(@kind, @type, @payload, "target2", @callback).should be_true
+      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, &@callback).should be_true
       @handler.queue.size.should == 2
       @handler.queue.first[:target] == "target2"
     end
@@ -207,9 +211,9 @@ describe RightScale::OfflineHandler do
     it "queues request at end of queue if no longer initializing" do
       @handler.init
       @handler.start
-      @handler.queue_request(@kind, @type, @payload, "target1", @callback)
+      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, &@callback)
       @handler.queue.size.should == 1
-      @handler.queue_request(@kind, @type, @payload, "target2", @callback)
+      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, &@callback)
       @handler.queue.size.should == 2
       @handler.queue.first[:target] == "target1"
     end
@@ -219,7 +223,7 @@ describe RightScale::OfflineHandler do
       @handler.start
       flexmock(@handler).should_receive(:vote_to_restart).once
       RightScale::OfflineHandler::MAX_QUEUED_REQUESTS.times do |i|
-        @handler.queue_request(@kind, @type, @payload, @target, @callback)
+        @handler.queue_request(@kind, @type, @payload, @target, @token, @expires_at, &@callback)
       end
     end
   end
@@ -241,6 +245,10 @@ describe RightScale::OfflineHandler do
       @type = "/foo/bar"
       @payload = {:pay => "load"}
       @target = "target"
+      @token = "token"
+      @now = Time.now
+      flexmock(Time).should_receive(:now).and_return(@now)
+      @expires_at = (@now + 25).to_i
       @result = nil
       @callback = lambda { |result| @result = result }
     end
@@ -251,16 +259,19 @@ describe RightScale::OfflineHandler do
         @handler.start
         flexmock(@handler).should_receive(:start_timer)
         @handler.enable
-        @handler.queue_request(:send_push, @type, @payload, @target, nil)
-        @handler.queue_request(:send_request, @type, @payload, @target, @callback)
-        @handler.queue.size.should == 2
-        flexmock(EM).should_receive(:next_tick).and_yield.once
-        @sender.should_receive(:send_push).with(@type, @payload, @target).once.ordered
-        @sender.should_receive(:send_request).with(@type, @payload, @target, Proc).and_yield("result").once.ordered
+        @handler.queue_request(:send_push, @type, @payload, @target, @token, 0)
+        @handler.queue_request(:send_request, @type, @payload, @target, @token, @expires_at, &@callback)
+        @handler.queue_request(:send_request, @type, @payload, @target, @token, @now.to_i, &@callback)
+        @handler.queue.size.should == 3
+        flexmock(EM).should_receive(:next_tick).and_yield.twice
+        @sender.should_receive(:send_push).with(@type, @payload, @target, {:token => @token}).once.ordered
+        @sender.should_receive(:send_request).
+            with(@type, @payload, @target, {:token => @token, :time_to_live => 25}, Proc).and_yield("result").once.ordered
         flexmock(EM).should_receive(:add_timer).and_yield.once
         log = flexmock(RightScale::Log)
         log.should_receive(:info).with(/Connection to RightNet re-established/).once.ordered
         log.should_receive(:info).with(/Starting to flush request queue/).once.ordered
+        log.should_receive(:info).with(/Dropping queued request/).once.ordered
         log.should_receive(:info).with(/Request queue flushed/).once.ordered
         @handler.disable.should be_true
       end

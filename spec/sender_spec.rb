@@ -63,11 +63,17 @@ describe RightScale::Sender do
       @log.should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
       @sender = create_sender(:http)
       @token = "token"
+      @ttl = 30
       @type = "/foo/bar"
       @action = "bar"
       @payload = {:pay => "load"}
       @target = "target"
-      @callback = lambda { |_| }
+      @options = {}
+      @response = nil
+      @callback = lambda { |response| @response = response }
+      @now = Time.now
+      flexmock(Time).should_receive(:now).and_return(@now).by_default
+      @received_at = @now
     end
 
     context :initialize do
@@ -137,24 +143,24 @@ describe RightScale::Sender do
         flexmock(RightSupport::Data::UUID, :generate => "random token")
         flexmock(@sender).should_receive(:http_send).with(:send_push, nil, on { |a| a.class == RightScale::Push &&
             a.type == @type && a.from == @agent_id && a.target.nil? && a.persistent == true && a.confirm.nil? &&
-            a.token == "random token" && a.expires_at == 0 }, Time, nil).once
+            a.token == "random token" && a.expires_at == 0 }, Time).once
         @sender.send_push(@type).should be_true
       end
 
       it "stores payload" do
-        flexmock(@sender).should_receive(:http_send).with(:send_push, nil, on { |a| a.payload == @payload }, Time, nil).once
+        flexmock(@sender).should_receive(:http_send).with(:send_push, nil, on { |a| a.payload == @payload }, Time).once
         @sender.send_push(@type, @payload).should be_true
       end
 
       it "sets specific target using string" do
         flexmock(@sender).should_receive(:http_send).with(:send_push, @target, on { |a| a.target == @target &&
-            a.selector == :any }, Time, nil).once
+            a.selector == :any }, Time).once
         @sender.send_push(@type, nil, @target).should be_true
       end
 
       it "sets specific target using :agent_id" do
         target = {:agent_id => @agent_id}
-        flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.target == @agent_id }, Time, nil).once
+        flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.target == @agent_id }, Time).once
         @sender.send_push(@type, nil, target).should be_true
       end
 
@@ -162,7 +168,7 @@ describe RightScale::Sender do
         tags = ["a:b=c"]
         target = {:tags => tags}
         flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.tags == tags &&
-            a.selector == :any }, Time, nil).once
+            a.selector == :any }, Time).once
         @sender.send_push(@type, nil, target).should be_true
       end
 
@@ -170,20 +176,31 @@ describe RightScale::Sender do
         scope = {:shard => 1, :account => 123}
         target = {:scope => scope}
         flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.scope == scope &&
-            a.selector == :any }, Time, nil).once
+            a.selector == :any }, Time).once
         @sender.send_push(@type, nil, target).should be_true
       end
 
       it "sets target selector" do
         tags = ["a:b=c"]
         target = {:tags => tags, :selector => :all}
-        flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.selector == :all }, Time, nil).once
+        flexmock(@sender).should_receive(:http_send).with(:send_push, target, on { |a| a.selector == :all }, Time).once
         @sender.send_push(@type, nil, target).should be_true
       end
 
       it "sets token" do
-        flexmock(@sender).should_receive(:http_send).with(:send_push, @target, on { |a| a.token == "token2" }, Time, nil).once
-        @sender.send_push(@type, nil, @target, "token2").should be_true
+        flexmock(@sender).should_receive(:http_send).with(:send_push, @target, on { |a| a.token == "token2" }, Time).once
+        @sender.send_push(@type, nil, @target, :token => "token2").should be_true
+      end
+
+      it "defaults to no expiration time" do
+        @sender = create_sender(:http, :time_to_live => 99)
+        flexmock(@sender).should_receive(:http_send).with(:send_push, nil, on { |a| a.expires_at == 0 }, Time).once
+        @sender.send_push(@type).should be_true
+      end
+
+      it "sets expiration time if time-to-live if specified" do
+        flexmock(@sender).should_receive(:http_send).with(:send_push, @target, on { |a| a.expires_at == (@now + @ttl).to_i }, Time).once
+        @sender.send_push(@type, nil, @target, :time_to_live => @ttl).should be_true
       end
 
       it "sets applies callback for returning response" do
@@ -236,13 +253,19 @@ describe RightScale::Sender do
 
       it "sets token" do
         flexmock(@sender).should_receive(:http_send).with(:send_request, @target, on { |a| a.token == "token2" }, Time, Proc).once
-        @sender.send_request(@type, nil, @target, "token2") { |_| }.should be_true
+        @sender.send_request(@type, nil, @target, :token => "token2") { |_| }.should be_true
       end
 
-      it "sets expiration time if TTL enabled" do
-        @sender = create_sender(:http, :time_to_live => 60)
-        flexmock(@sender).should_receive(:http_send).with(:send_request, nil, on { |a| a.expires_at != 0 }, Time, Proc).once
+      it "sets expiration time if time-to-live configured" do
+        @sender = create_sender(:http, :time_to_live => 99)
+        flexmock(@sender).should_receive(:http_send).with(:send_request, nil, on { |a| a.expires_at == (@now + 99).to_i }, Time, Proc).once
         @sender.send_request(@type) { |_| }.should be_true
+      end
+
+      it "overrides configured time-to-live with specified time-to-live" do
+        @sender = create_sender(:http, :time_to_live => 99)
+        flexmock(@sender).should_receive(:http_send).with(:send_request, @target, on { |a| a.expires_at == (@now + @ttl).to_i }, Time, Proc).once
+        @sender.send_request(@type, nil, @target, :time_to_live => @ttl) { |_| }.should be_true
       end
 
       it "does not allow fanout" do
@@ -256,29 +279,32 @@ describe RightScale::Sender do
 
     context :build_and_send_packet do
       [:http, :amqp].each do |mode|
-
         context "when #{mode}" do
           before(:each) do
             @sender = create_sender(mode)
           end
 
-          it "builds packet" do
-            packet = flexmock("packet", :type => @type, :token => @token, :selector => :any)
-            flexmock(@sender).should_receive(:build_packet).with(:send_push, @type, @payload, @target, @token, nil).and_return(packet).once
-            flexmock(@sender).should_receive("#{mode}_send".to_sym)
-            @sender.build_and_send_packet(:send_push, @type, @payload, @target, @token, callback = nil).should be_true
-          end
+          [[:send_push, RightScale::Push, nil], [:send_request, RightScale::Request, @callback]].each do |kind, klass, callback|
+            it "builds packet" do
+              packet = flexmock("packet", :type => @type, :token => @token, :selector => :any)
+              flexmock(@sender).should_receive(:build_packet).
+                  with(kind, @type, @payload, @target, @options, &callback).and_return(packet).once
+              flexmock(@sender).should_receive("#{mode}_send".to_sym)
+              @sender.build_and_send_packet(kind, @type, @payload, @target, @options, &callback).should be_true
+            end
 
-          it "sends packet" do
-            flexmock(@sender).should_receive("#{mode}_send".to_sym).with(:send_push, @target,
-                on { |a| a.class == RightScale::Push }, Time, nil).once
-            @sender.build_and_send_packet(:send_push, @type, @payload, @target, @token, callback = nil).should be_true
-          end
+            it "sends packet" do
+              flexmock(@sender).should_receive("#{mode}_send".to_sym).
+                  with(kind, @target, on { |a| a.class == klass }, Time, &callback).once
+              @sender.build_and_send_packet(kind, @type, @payload, @target, @options, &callback).should be_true
+            end
 
-          it "ignores nil packet result when queueing" do
-            flexmock(@sender).should_receive(:build_packet).with(:send_push, @type, @payload, @target, @token, nil).and_return(nil).once
-            flexmock(@sender).should_receive("#{mode}_send".to_sym).never
-            @sender.build_and_send_packet(:send_push, @type, @payload, @target, @token, callback = nil).should be_true
+            it "ignores nil packet result when queueing" do
+              flexmock(@sender).should_receive(:build_packet).
+                  with(kind, @type, @payload, @target, @options, &callback).and_return(nil).once
+              flexmock(@sender).should_receive("#{mode}_send".to_sym).never
+              @sender.build_and_send_packet(kind, @type, @payload, @target, @options, &callback).should be_true
+            end
           end
         end
       end
@@ -286,50 +312,55 @@ describe RightScale::Sender do
 
     context :build_packet do
       [:send_push, :send_request].each do |kind|
-
         context "when #{kind}" do
           it "validates target" do
             flexmock(@sender).should_receive(:validate_target).with(@target, kind == :send_push).once
-            @sender.build_packet(kind, @type, nil, @target, @token).should_not be_nil
+            @sender.build_packet(kind, @type, nil, @target).should_not be_nil
           end
 
           it "submits request to offline handler and returns nil if queueing" do
             flexmock(@sender).should_receive(:queueing?).and_return(true).once
-            @sender.build_packet(kind, @type, nil, @target, @token).should be_nil
+            @sender.build_packet(kind, @type, nil, @target).should be_nil
+          end
+
+          it "uses specified request token" do
+            flexmock(RightSupport::Data::UUID, :generate => "random token")
+            packet = @sender.build_packet(kind, @type, nil, @target, :token => @token)
+            packet.token.should == @token
           end
 
           it "generates a request token if none provided" do
             flexmock(RightSupport::Data::UUID, :generate => "random token")
-            packet = @sender.build_packet(kind, @type, nil, @target, token = nil)
+            packet = @sender.build_packet(kind, @type, nil, @target)
             packet.token.should == "random token"
           end
 
           it "sets payload" do
-            packet = @sender.build_packet(kind, @type, @payload, @target, @token)
+            packet = @sender.build_packet(kind, @type, @payload, @target)
             packet.payload.should == @payload
           end
 
           it "sets the packet from this agent" do
-            packet = @sender.build_packet(kind, @type, nil, @target, @token)
+            packet = @sender.build_packet(kind, @type, nil, @target)
             packet.from.should == @agent_id
           end
 
           it "sets target if target is not a hash" do
-            packet = @sender.build_packet(kind, @type, nil, @target, @token)
+            packet = @sender.build_packet(kind, @type, nil, @target)
             packet.target.should == @target
           end
 
           context "when target is a hash" do
             it "sets agent ID" do
               target = {:agent_id => @agent_id}
-              packet = @sender.build_packet(kind, @type, nil, target, @token)
+              packet = @sender.build_packet(kind, @type, nil, target)
               packet.target.should == @agent_id
             end
 
             it "sets tags" do
               tags = ["a:b=c"]
               target = {:tags => tags}
-              packet = @sender.build_packet(kind, @type, nil, target, @token)
+              packet = @sender.build_packet(kind, @type, nil, target)
               packet.tags.should == tags
               packet.scope.should be_nil
             end
@@ -337,55 +368,67 @@ describe RightScale::Sender do
             it "sets scope" do
               scope = {:shard => 1, :account => 123}
               target = {:scope => scope}
-              packet = @sender.build_packet(kind, @type, nil, target, @token)
+              packet = @sender.build_packet(kind, @type, nil, target)
               packet.tags.should == []
             end
           end
 
           if kind == :send_push
             it "defaults selector to :any" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
+              packet = @sender.build_packet(kind, @type, nil, @target)
               packet.selector.should == :any
             end
 
             it "sets selector" do
               target = {:selector => :all}
-              packet = @sender.build_packet(kind, @type, nil, target, @token)
+              packet = @sender.build_packet(kind, @type, nil, target)
               packet.selector.should == :all
             end
 
             it "sets persistent flag" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
+              packet = @sender.build_packet(kind, @type, nil, @target)
               packet.persistent.should be_true
             end
 
             it "enables confirm if callback provided" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token, @callback)
+              packet = @sender.build_packet(kind, @type, nil, @target, &@callback)
               packet.confirm.should be_true
             end
 
             it "does not enable confirm if not callback provided" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
+              packet = @sender.build_packet(kind, @type, nil, @target)
               packet.confirm.should be_false
             end
 
-            it "does not set expiration time" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
+            it "does not set expiration time by default" do
+              @sender = create_sender(:http, :time_to_live => 99)
+              packet = @sender.build_packet(kind, @type, nil, @target)
               packet.expires_at.should == 0
+            end
+
+            it "sets expiration time if specified" do
+              packet = @sender.build_packet(kind, @type, nil, @target, :time_to_live => @ttl)
+              packet.expires_at.should == (@now + @ttl).to_i
             end
           else
             it "always sets selector to :any" do
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
+              packet = @sender.build_packet(kind, @type, nil, @target)
               packet.selector.should == :any
             end
 
-            it "sets expiration time to specified TTL" do
-              @sender = create_sender(:http, :time_to_live => 99)
-              now = Time.now
-              flexmock(Time).should_receive(:now).and_return(now)
-              packet = @sender.build_packet(kind, @type, nil, @target, @token)
-              packet.expires_at.should == (now + 99).to_i
+            it "sets expiration time to specified time-to-live" do
+              packet = @sender.build_packet(kind, @type, nil, @target, :time_to_live => @ttl)
+              packet.expires_at.should == (@now + @ttl).to_i
             end
+          end
+
+          it "queues request if currently queuing and returns nil" do
+            @options = {:token => @token, :time_to_live => @ttl}
+            @sender = create_sender(:http, :offline_queueing => true)
+            flexmock(@sender.offline_handler).should_receive(:queueing?).and_return(true)
+            flexmock(@sender.offline_handler).should_receive(:queue_request).
+                with(kind, @type, @payload, @target, @token, (@now + @ttl).to_i, @callback).once
+            @sender.build_packet(kind, @type, @payload, @target, @options, &@callback).should be nil
           end
         end
       end
@@ -394,9 +437,6 @@ describe RightScale::Sender do
     context :handle_response do
       before(:each) do
         flexmock(RightSupport::Data::UUID, :generate => @token)
-        @received_at = Time.now
-        flexmock(Time).should_receive(:now).and_return(@received_at)
-        @callback = lambda { |_| }
         @pending_request = RightScale::PendingRequest.new(:send_request, @received_at, @callback)
         @sender.pending_requests[@token] = @pending_request
       end
@@ -657,18 +697,15 @@ describe RightScale::Sender do
 
       context :http_send do
         before(:each) do
-          @received_at = Time.now
-          flexmock(Time).should_receive(:now).and_return(@received_at)
+          @token = "random token"
           flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@token).by_default
-          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
-          @response = nil
-          @callback = lambda { |response| @response = response }
+          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
         end
 
         it "sends request using configured client" do
-          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
-          @client.should_receive(:push).with(@type, @payload, @target, @token).and_return(nil).once
-          @sender.send(:http_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options, &@callback)
+          @client.should_receive(:push).with(@type, @payload, @target, :request_uuid => @token).and_return(nil).once
+          @sender.send(:http_send, :send_push, @target, @packet, @received_at, &@callback).should be_true
         end
 
         context "when :async_response enabled" do
@@ -678,40 +715,43 @@ describe RightScale::Sender do
           end
 
           it "sends in next_tick if :async_response option set" do
-            @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
-            @client.should_receive(:push).with(@type, @payload, @target, @token).and_return(nil).once
-            @sender.send(:http_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+            @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options, &@callback)
+            @client.should_receive(:push).with(@type, @payload, @target, :request_uuid => @token).and_return(nil).once
+            @sender.send(:http_send, :send_push, @target, @packet, @received_at, &@callback).should be_true
           end
 
           it "logs unexpected exception" do
             flexmock(@sender).should_receive(:handle_response).and_raise(RuntimeError).once
             @log.should_receive(:error).with(/Failed sending or handling response/, RuntimeError, :trace).once
-            @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
-            @client.should_receive(:request).with(@type, @payload, @target, @token).and_return("result").once
-            @sender.send(:http_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
+            @client.should_receive(:request).with(@type, @payload, @target, :request_uuid => @token).and_return("result").once
+            @sender.send(:http_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
           end
         end
       end
 
       context :http_send_once do
         before(:each) do
-          @received_at = Time.now
-          flexmock(Time).should_receive(:now).and_return(@received_at)
+          @token = "random token"
           flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@token).by_default
-          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
-          @response = nil
-          @callback = lambda { |response| @response = response }
+          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
         end
 
         it "sends request using configured client" do
-          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
-          @client.should_receive(:push).with(@type, @payload, @target, @token).and_return(nil).once
-          @sender.send(:http_send_once, :send_push, @target, @packet, @received_at, @callback).should be_true
+          @packet = @sender.build_packet(:send_push, @type, @payload, @target)
+          @client.should_receive(:push).with(@type, @payload, @target, :request_uuid => @token).and_return(nil).once
+          @sender.send(:http_send_once, :send_push, @target, @packet, @received_at).should be_true
+        end
+
+        it "sends request with time-to-live to configured client" do
+          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options, &@callback)
+          @client.should_receive(:push).with(@type, @payload, @target, :request_uuid => @token).and_return(nil).once
+          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
         end
 
         it "responds with success result containing response" do
-          @client.should_receive(:request).with(@type, @payload, @target, @token).and_return("result").once
-          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+          @client.should_receive(:request).with(@type, @payload, @target, :request_uuid => @token).and_return("result").once
+          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
           @response.token.should == @token
           @response.results.success?.should be_true
           @response.results.content.should == "result"
@@ -720,8 +760,8 @@ describe RightScale::Sender do
         end
 
         it "responds with success result when response is nil" do
-          @client.should_receive(:request).with(@type, @payload, @target, @token).and_return(nil).once
-          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+          @client.should_receive(:request).with(@type, @payload, @target, :request_uuid => @token).and_return(nil).once
+          @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
           @response.token.should == @token
           @response.results.success?.should be_true
           @response.results.content.should be_nil
@@ -731,20 +771,35 @@ describe RightScale::Sender do
 
         context "when fails" do
           context "with connectivity error" do
-            it "queues request if queueing and does not respond" do
+            it "queues push if queueing and does not respond" do
+              @options = {:time_to_live => @ttl}
+              @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
               @sender = create_sender(:http, :offline_queueing => true)
               @sender.initialize_offline_queue
               @sender.enable_offline_mode
               @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "disconnected").once
-              flexmock(@sender.offline_handler).should_receive(:queue_request).with(:send_request, @type,
-                  @payload, @target, @callback).once
+              flexmock(@sender.offline_handler).should_receive(:queue_request).
+                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i).once
               flexmock(@sender).should_receive(:handle_response).never
-              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:http_send_once, :send_push, @target, @packet, @received_at).should be_true
+            end
+
+            it "queues request if queueing and does not respond" do
+              @options = {:time_to_live => @ttl}
+              @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
+              @sender = create_sender(:http, :offline_queueing => true)
+              @sender.initialize_offline_queue
+              @sender.enable_offline_mode
+              @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "disconnected").once
+              flexmock(@sender.offline_handler).should_receive(:queue_request).
+                  with(:send_request, @type, @payload, @target, @token, (@now + @ttl).to_i, @callback).once
+              flexmock(@sender).should_receive(:handle_response).never
+              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             end
 
             it "responds with retry result if not queueing" do
               @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "Server not responding").once
-              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
               @response.results.retry?.should be_true
               @response.results.content.should == "Server not responding"
             end
@@ -752,14 +807,14 @@ describe RightScale::Sender do
 
           it "responds with retry result if retryable error" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::RetryableError, "try again").once
-            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @response.results.retry?.should be_true
             @response.results.content.should == "try again"
           end
 
           it "responds with error result if internal error" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::InternalServerError.new("unprocessable", "Router")).once
-            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "Router internal error"
           end
@@ -767,12 +822,12 @@ describe RightScale::Sender do
           it "does not respond to request if terminating" do
             @client.should_receive(:request).and_raise(RightScale::Exceptions::Terminating, "going down").once
             flexmock(@sender).should_receive(:handle_response).never
-            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
           end
 
           it "responds with error result if HTTP error" do
             @client.should_receive(:request).and_raise(RightScale::HttpExceptions.create(400, "bad data")).once
-            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "400 Bad Request: bad data"
           end
@@ -780,7 +835,7 @@ describe RightScale::Sender do
           it "responds with error result if unexpected error" do
             @log.should_receive(:error).with(/Failed to send/, StandardError, :trace).once
             @client.should_receive(:request).and_raise(StandardError, "unexpected").once
-            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @response.results.error?.should be_true
             @response.results.content.should == "Agent agent internal error"
           end
@@ -791,55 +846,55 @@ describe RightScale::Sender do
     context :amqp do
       before(:each) do
         @sender = create_sender(:amqp)
+        @token = "random_token"
         flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return(@token).by_default
-        @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, nil)
-        @received_at = Time.now
-        flexmock(Time).should_receive(:now).and_return(@received_at)
-        @response = nil
-        @callback = lambda { |response| @response = response }
+        @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options)
       end
 
       context :amqp_send do
         it "stores pending request for use in responding if callback specified" do
-          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @token, @callback)
+          @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options, &@callback)
           flexmock(@sender).should_receive(:amqp_send_once)
-          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, &@callback).should be_true
           @sender.pending_requests[@token].should_not be_nil
         end
 
         it "does not store pending request if callback not specified" do
           flexmock(@sender).should_receive(:amqp_send_once)
-          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, nil).should be_true
+          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at).should be_true
           @sender.pending_requests[@token].should be_nil
         end
 
         it "publishes without retry capability if send_push" do
           flexmock(@sender).should_receive(:amqp_send_once).with(@packet).once
-          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, nil).should be_true
+          @sender.send(:amqp_send, :send_push, @target, @packet, @received_at).should be_true
         end
 
         it "publishes with retry capability if send_request" do
-          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
+          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
           flexmock(@sender).should_receive(:amqp_send_retry).with(@packet, @token).once
-          @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+          @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
         end
 
         context "when fails" do
 
           context "with offline error" do
             it "submits request to offline handler if queuing" do
+              @options = {:time_to_live => @ttl}
+              @packet = @sender.build_packet(:send_push, @type, @payload, @target, @options)
               @sender = create_sender(:amqp, :offline_queueing => true)
               @sender.initialize_offline_queue
               @sender.enable_offline_mode
+              flexmock(@sender.offline_handler).should_receive(:queue_request).
+                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i).once
               flexmock(@sender).should_receive(:amqp_send_once).and_raise(RightScale::Sender::TemporarilyOffline).once
-              @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, nil).should be_true
-              @sender.offline_handler.queue.size.should == 1
+              @sender.send(:amqp_send, :send_push, @target, @packet, @received_at).should be_true
               @sender.pending_requests[@token].should be_nil
             end
 
             it "responds with retry result if not queueing" do
               flexmock(@sender).should_receive(:amqp_send_once).and_raise(RightScale::Sender::TemporarilyOffline).once
-              @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, &@callback).should be_true
               @sender.offline_handler.queue.size.should == 0
               @sender.pending_requests[@token].should_not be_nil # because send_push does not get deleted when deliver
               @response.results.retry?.should be_true
@@ -849,7 +904,7 @@ describe RightScale::Sender do
 
           it "responds with non-delivery result if send failure" do
             flexmock(@sender).should_receive(:amqp_send_once).and_raise(RightScale::Sender::SendFailure).once
-            @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:amqp_send, :send_push, @target, @packet, @received_at, &@callback).should be_true
             @sender.pending_requests[@token].should_not be_nil # because send_push does not get deleted when deliver
             @response.results.non_delivery?.should be_true
             @response.results.content.should == "send failed unexpectedly"
@@ -882,7 +937,7 @@ describe RightScale::Sender do
       context :amqp_send_retry do
         before(:each) do
           flexmock(RightSupport::Data::UUID).should_receive(:generate).and_return("retry token")
-          @packet = @sender.build_packet(:send_request, @type, @payload, @target, @token, @callback)
+          @packet = @sender.build_packet(:send_request, @type, @payload, @target, :token => @token, &@callback)
         end
 
         it "publishes request to request queue" do
@@ -923,8 +978,23 @@ describe RightScale::Sender do
             @sender = create_sender(:amqp, :retry_timeout => 0.3, :retry_interval => 0.1)
             @client.should_receive(:publish).once
             flexmock(EM).should_receive(:add_timer).and_yield.once
-            @sender.send(:amqp_send_retry, @packet, @token).should be_true
             @sender.pending_requests[@token].should be_nil
+            @sender.send(:amqp_send_retry, @packet, @token).should be_true
+          end
+
+          it "stops retrying if request has expired" do
+            @options = {:time_to_live => @ttl}
+            flexmock(Time).should_receive(:now).and_return(@now, @now + @ttl)
+            @packet = @sender.build_packet(:send_request, @type, @payload, @target, @options, &@callback)
+            @sender = create_sender(:amqp, :retry_timeout => 0.3, :retry_interval => 0.1)
+            @client.should_receive(:publish).and_return(@broker_ids).once
+            flexmock(@sender.connectivity_checker).should_receive(:check).once
+            flexmock(EM).should_receive(:add_timer).and_yield.once
+            @log.should_receive(:warning).with(/RE-SEND TIMEOUT/).once
+            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
+            @response.results.non_delivery?.should be_true
+            @response.results.content.should == RightScale::OperationResult::RETRY_TIMEOUT
+            @sender.pending_requests.empty?.should be_true
           end
 
           it "keeps retrying if has not exceeded retry timeout" do
@@ -932,7 +1002,7 @@ describe RightScale::Sender do
               @sender = create_sender(:amqp, :retry_timeout => 0.3, :retry_interval => 0.1)
               @client.should_receive(:publish).and_return(@broker_ids).twice
               flexmock(@sender.connectivity_checker).should_receive(:check).once
-              @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
 
               EM.add_timer(0.15) do
                 @sender.pending_requests.empty?.should be_false
@@ -952,9 +1022,9 @@ describe RightScale::Sender do
             EM.run do
               @sender = create_sender(:amqp, :retry_timeout => 0.1, :retry_interval => 0.1)
               @client.should_receive(:publish).and_return(@broker_ids).once
-              @log.should_receive(:warning).once
+              @log.should_receive(:warning).with(/RE-SEND TIMEOUT/).once
               flexmock(@sender.connectivity_checker).should_receive(:check).once
-              @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+              @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
 
               EM.add_timer(0.3) do
                 EM.stop
@@ -972,7 +1042,7 @@ describe RightScale::Sender do
             flexmock(EM).should_receive(:add_timer).and_yield.once
             @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
             @log.should_receive(:error).with(/Failed retry.*temporarily offline/).once
-            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @sender.pending_requests[@token].should_not be_nil
             @sender.pending_requests["retry token"].should_not be_nil
           end
@@ -984,7 +1054,7 @@ describe RightScale::Sender do
             flexmock(EM).should_receive(:add_timer).and_yield.once
             @log.should_receive(:error).with(/Failed to publish request/, StandardError, :trace).once
             @log.should_receive(:error).with(/Failed retry.*send failure/).once
-            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @sender.pending_requests[@token].should_not be_nil
             @sender.pending_requests["retry token"].should_not be_nil
           end
@@ -996,7 +1066,7 @@ describe RightScale::Sender do
             @log.should_receive(:error).with(/Failed retry.*without responding/, StandardError, :trace).twice
             flexmock(EM).should_receive(:add_timer).and_yield
             flexmock(@sender.connectivity_checker).should_receive(:check).and_raise(StandardError).once
-            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, @callback).should be_true
+            @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @sender.pending_requests[@token].should_not be_nil
             @sender.pending_requests["retry token"].should_not be_nil
           end
@@ -1005,13 +1075,6 @@ describe RightScale::Sender do
     end
 
     context :deliver_response do
-      before(:each) do
-        @received_at = Time.now
-        flexmock(Time).should_receive(:now).and_return(@received_at)
-        @response = nil
-        @callback = lambda { |response| @response = response }
-      end
-
       it "calls the response handler" do
         pending_request = RightScale::PendingRequest.new(:send_request, @received_at, @callback)
         @sender.pending_requests[@token] = pending_request

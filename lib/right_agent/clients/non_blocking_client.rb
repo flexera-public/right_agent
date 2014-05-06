@@ -123,17 +123,15 @@ module RightScale
       # Make request an then yield fiber until it completes
       fiber = Fiber.current
       connection = EM::HttpRequest.new(uri.to_s, connect_options)
+      # Store connection now so that close will get called if terminating or reconnecting
+      c = @connections[path] = {:host => host, :connection => connection, :expires_at => Time.now} if request_options[:keepalive]
       http = connection.send(verb, request_options)
-      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500,
-                                  (http.error && http.error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}") }
+      http.errback { @connections.delete(path); fiber.resume(*handle_error(verb, http.error)) }
       http.callback { fiber.resume(http.response_header.status, http.response, http.response_header) }
       response_code, response_body, response_headers = Fiber.yield
       response_headers = beautify_headers(response_headers) if response_headers
       result = BalancedHttpClient.response(response_code, response_body, response_headers, request_options[:head][:accept])
-      if request_options[:keepalive]
-        expires_at = Time.now + BalancedHttpClient::CONNECTION_REUSE_TIMEOUT
-        @connections[path] = {:host => host, :connection => connection, :expires_at => expires_at}
-      end
+      c[:expires_at] = Time.now + BalancedHttpClient::CONNECTION_REUSE_TIMEOUT if request_options[:keepalive]
       [result, response_code, response_body, response_headers]
     end
 
@@ -159,9 +157,21 @@ module RightScale
       [result, code, body, headers]
     end
 
+    # Close all persistent connections
+    #
+    # @param [String] reason for closing
+    #
+    # @return [TrueClass] always true
+    def close(reason)
+      @connections.each_value { |c| c[:connection].close(reason) }
+      @connections = {}
+      true
+    end
+
     protected
 
-    # Repeatedly make long-polling request until receive data or timeout
+    # Repeatedly make long-polling request until receive data, hit error, or timeout
+    # Treat "terminating" and "reconnecting" errors as an empty poll result
     #
     # @param [Symbol] verb for HTTP REST request
     # @param [EM:HttpRequest] connection to server from previous request
@@ -173,8 +183,7 @@ module RightScale
     # @raise [HttpException] HTTP failure with associated status code
     def poll_again(fiber, connection, request_options, stop_at)
       http = connection.send(:get, request_options)
-      http.errback { fiber.resume(http.error.to_s == "Errno::ETIMEDOUT" ? 504 : 500,
-                                  (http.error && http.error.to_s) || "HTTP connection failure for POLL") }
+      http.errback { fiber.resume(*handle_error("POLL", http.error)) }
       http.callback do
         code, body, headers = http.response_header.status, http.response, http.response_header
         if code == 200 && (body.nil? || body == "null") && Time.now < stop_at
@@ -184,6 +193,20 @@ module RightScale
         end
       end
       true
+    end
+
+    # Handle error from request
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [Object] error result from HTTP connection
+    #
+    # @return [Array] status code and error message string
+    def handle_error(verb, error)
+      case error.to_s
+      when "terminating", "reconnecting" then [200, nil]
+      when "Errno::ETIMEDOUT" then [408, "Request timeout"]
+      else [500, (error && error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}"]
+      end
     end
 
     # Beautify response header keys so that in same form as RestClient

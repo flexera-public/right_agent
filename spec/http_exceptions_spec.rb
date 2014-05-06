@@ -101,6 +101,13 @@ describe RightScale::HttpExceptions do
       bad_request = RestClient::Exceptions::EXCEPTIONS_MAP[400].new(nil, 400)
       RightScale::HttpExceptions.convert(bad_request).should be_a RightScale::HttpExceptions::BadRequest
     end
+
+    it "assigns status code 408 to RequestTimeout" do
+      request_timeout = RestClient::Exceptions::EXCEPTIONS_MAP[408].new
+      exception = RightScale::HttpExceptions.convert(request_timeout)
+      exception.should be_a RightScale::HttpExceptions::RequestTimeout
+      exception.http_code.should == 408
+    end
   end
 
 end # RightScale::HttpExceptions

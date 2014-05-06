@@ -34,7 +34,7 @@ describe RightScale::RouterClient do
     @log.should_receive(:warning).by_default.and_return { |m| raise RightScale::Log.format(*m) }
     @timer = flexmock("timer", :cancel => true).by_default
     flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
-    @http_client = flexmock("http client", :get => true, :check_health => true).by_default
+    @http_client = flexmock("http client", :get => true, :check_health => true, :close => true).by_default
     flexmock(RightScale::BalancedHttpClient).should_receive(:new).and_return(@http_client).by_default
     @websocket = WebSocketClientMock.new
     flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@websocket).by_default
@@ -83,43 +83,40 @@ describe RightScale::RouterClient do
       @action = "bar"
       @payload = {:some => "data"}
       @target = "rs-agent-2-2"
-      @token = "random token"
       @params = {
         :type => @type,
         :payload => @payload,
         :target => @target }
     end
 
-    context :push do
-      it "makes post request to router" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/push", @params, @action, @token).
-            and_return(nil).once
-        @client.push(@type, @payload, @target, @token).should be nil
-      end
+    [:push, :request].each do |kind|
+      context kind do
+        it "makes post request to router" do
+          flexmock(@client).should_receive(:make_request).with(:post, "/#{kind}", @params, @action, {}).and_return(nil).once
+          @client.send(kind, @type, @payload, @target).should be nil
+        end
 
-      it "does not require token" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/push", @params, @action, nil).
-            and_return(nil).once
-        @client.push(@type, @payload, @target).should be nil
-      end
-    end
-
-    context :request do
-      it "makes post request to router" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/request", @params, @action, @token).
-            and_return(nil).once
-        @client.request(@type, @payload, @target, @token)
-      end
-
-      it "does not require token" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/request", @params, @action, nil).
-            and_return(nil).once
-        @client.request(@type, @payload, @target).should be nil
+        it "applies request options" do
+          options = {:request_uuid => "uuid", :time_to_live => 60}
+          flexmock(@client).should_receive(:make_request).with(:post, "/#{kind}", @params, @action, options).and_return(nil).once
+          @client.send(kind, @type, @payload, @target, options).should be nil
+        end
       end
     end
   end
 
   context "events" do
+
+    def when_in_listen_state(state, checks = nil, failures = 0)
+      flexmock(EM).should_receive(:next_tick).by_default
+      flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
+      @client.send(:update_listen_state, state)
+      @client.instance_variable_set(:@listen_checks, checks) if checks
+      @client.instance_variable_set(:@listen_failures, failures)
+      @client.instance_variable_set(:@connect_interval, 30)
+      @client.instance_variable_set(:@reconnect_interval, 2)
+      state
+    end
 
     before(:each) do
       @handler = lambda { |_| }
@@ -143,8 +140,8 @@ describe RightScale::RouterClient do
       end
 
       it "makes post request by default" do
-        flexmock(@client).should_receive(:make_request).with(:post, "/notify", @params, "notify", "uuid",
-                                                             {:filter_params => ["event"]}).once
+        flexmock(@client).should_receive(:make_request).with(:post, "/notify", @params, "notify",
+                                                             {:request_uuid => "uuid", :filter_params => ["event"]}).once
         @client.notify(@event, @routing_keys).should be true
       end
     end
@@ -223,17 +220,6 @@ describe RightScale::RouterClient do
     end
 
     context :listen_loop do
-      def when_in_listen_state(state, checks = nil, failures = 0)
-        flexmock(EM).should_receive(:next_tick).by_default
-        flexmock(EM::Timer).should_receive(:new).and_return(@timer).by_default
-        @client.send(:update_listen_state, state)
-        @client.instance_variable_set(:@listen_checks, checks) if checks
-        @client.instance_variable_set(:@listen_failures, failures)
-        @client.instance_variable_set(:@connect_interval, 30)
-        @client.instance_variable_set(:@reconnect_interval, 2)
-        state
-      end
-
       context "in :choose state" do
         it "chooses listen method" do
           when_in_listen_state(:choose)
@@ -357,22 +343,41 @@ describe RightScale::RouterClient do
         end
       end
 
+      it "waits required amount of time before looping" do
+        when_in_listen_state(:choose)
+        flexmock(@client).should_receive(:listen_loop_wait).with(@later + 1, 0, @routing_keys, @handler).and_return(true).once
+        @client.send(:listen_loop, @routing_keys, &@handler).should be true
+      end
+    end
+
+    context :listen_loop_wait do
       it "uses next_tick for next loop if interval is 0" do
         when_in_listen_state(:choose)
         @client.instance_variable_get(:@listen_interval).should == 0
         flexmock(EM).should_receive(:next_tick).and_yield.once
-        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).once
-        @client.send(:listen_loop, @routing_keys, &@handler).should be true
-        @client.instance_variable_get(:@listen_state).should == :check
+        flexmock(EM::Timer).should_receive(:new).never
+        flexmock(@client).should_receive(:listen_loop).with(@routing_keys, @handler).once
+        @client.send(:listen_loop_wait, 0, @later, @routing_keys, &@handler).should be true
       end
 
       it "otherwise uses timer for next loop" do
         when_in_listen_state(:long_poll)
-        flexmock(@client).should_receive(:try_deferred_long_poll).once
-        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).once
+        @client.instance_variable_set(:@listen_interval, 9)
+        flexmock(EM::Timer).should_receive(:new).with(9, Proc).and_return(@timer).and_yield.once
         flexmock(EM).should_receive(:next_tick).never
-        @client.send(:listen_loop, @routing_keys, &@handler).should be true
-        @client.instance_variable_get(:@listen_state).should == :wait
+        flexmock(@client).should_receive(:listen_loop).with(@routing_keys, @handler).once
+        @client.send(:listen_loop_wait, @later - 9, 9, @routing_keys, &@handler).should be true
+      end
+
+      it "waits some more if interval has changed while waiting" do
+        when_in_listen_state(:long_poll)
+        @client.instance_variable_set(:@listen_interval, 3)
+        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).and_yield.once.ordered
+        flexmock(EM::Timer).should_receive(:new).with(2, Proc).and_return(@timer).and_yield.once.ordered
+        flexmock(EM::Timer).should_receive(:new).with(1, Proc).and_return(@timer).and_yield.once.ordered
+        flexmock(EM).should_receive(:next_tick).never
+        flexmock(@client).should_receive(:listen_loop).with(@routing_keys, @handler).once
+        @client.send(:listen_loop_wait, @later, 1, @routing_keys, &@handler).should be true
       end
     end
 
@@ -429,7 +434,7 @@ describe RightScale::RouterClient do
             end
           end
 
-          [502, 503].each do |code|
+          [408, 502, 503].each do |code|
             it "chooses to connect immediately if previous close code #{code} indicates router not responding" do
               @client.instance_variable_set(:@close_code, RightScale::RouterClient::PROTOCOL_ERROR_CLOSE)
               @client.instance_variable_set(:@close_reason, "Unexpected response code: #{code}")
@@ -676,13 +681,13 @@ describe RightScale::RouterClient do
       it "makes listen request to router" do
         flexmock(@client).should_receive(:make_request).with(:poll, "/listen",
             on { |a| a[:wait_time].should == 55 && !a.key?(:routing_keys) &&
-            a[:timestamp] == @later.to_f }, "listen", nil, Hash).and_return([@event]).once
+            a[:timestamp] == @later.to_f }, "listen", Hash).and_return([@event]).once
         @client.send(:long_poll, @routing_keys, @ack, &@handler)
       end
 
       it "uses listen timeout for request poll timeout and connect interval for request timeout" do
         @client.instance_variable_set(:@connect_interval, 300)
-        flexmock(@client).should_receive(:make_request).with(:poll, "/listen", Hash, "listen", nil,
+        flexmock(@client).should_receive(:make_request).with(:poll, "/listen", Hash, "listen",
             {:poll_timeout => 60, :request_timeout => 300}).and_return([@event]).once
         @client.send(:long_poll, @routing_keys, @ack, &@handler)
       end

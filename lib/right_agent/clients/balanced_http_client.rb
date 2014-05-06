@@ -37,9 +37,9 @@ module RightScale
     class NotResponding < Exceptions::NestedException; end
 
     # HTTP status codes for which a retry is warranted, which is limited to when server
-    # is not accessible for some reason (502, 503) or server response indicates that
+    # is not accessible for some reason (408, 502, 503) or server response indicates that
     # the request could not be routed for some retryable reason (504)
-    RETRY_STATUS_CODES = [502, 503, 504]
+    RETRY_STATUS_CODES = [408, 502, 503, 504]
 
     # Default time for HTTP connection to open
     DEFAULT_OPEN_TIMEOUT = 2
@@ -183,6 +183,16 @@ module RightScale
       raise
     end
 
+    # Close all persistent connections
+    #
+    # @param [String] reason for closing
+    #
+    # @return [TrueClass] always true
+    def close(reason)
+      @http_client.close(reason) if @http_client
+      true
+    end
+
     protected
 
     # Construct headers for request
@@ -244,9 +254,15 @@ module RightScale
         return [result, code, body, headers] if (Time.now - started_at) >= request_timeout
       end
       if result.nil? && (connection = @http_client.connections[path]) && Time.now < connection[:expires_at]
-        # Continue to poll using same connection until get result, timeout, or hit error
-        used[:host] = connection[:host]
-        result, code, body, headers = @http_client.poll(connection, request_options, started_at + request_timeout)
+        begin
+          # Continue to poll using same connection until get result, timeout, or hit error
+          used[:host] = connection[:host]
+          result, code, body, headers = @http_client.poll(connection, request_options, started_at + request_timeout)
+        rescue HttpException, RestClient::Exception => e
+          raise NotResponding.new(e.http_body, e) if RETRY_STATUS_CODES.include?(e.http_code)
+          raise NotResponding.new("Request timeout", e) if e.is_a?(RestClient::RequestTimeout)
+          raise
+        end
       end
       [result, code, body, headers]
     end
@@ -280,6 +296,10 @@ module RightScale
         else
           raise NotResponding.new("#{server_name} not responding", e)
         end
+      elsif e.is_a?(RestClient::RequestTimeout)
+        # Special case RequestTimeout because http_code is typically nil given no actual response
+        yield(e)
+        raise NotResponding.new("Request timeout", e)
       else
         yield(e)
         raise e

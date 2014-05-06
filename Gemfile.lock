@@ -17,7 +17,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (2.1.5)
+    right_agent (2.2.0)
       eventmachine (>= 0.12.10, < 2.0)
       faye-websocket (= 0.7.0)
       ffi
@@ -45,8 +45,7 @@ GEM
       http_parser.rb (>= 0.5.3)
     em-socksify (0.3.0)
       eventmachine (>= 1.0.0.beta.4)
-    eventmachine (1.0.0.6)
-    eventmachine (1.0.0.6-x86-mingw32)
+    eventmachine (1.0.0.8)
     faye-websocket (0.7.0)
       eventmachine (>= 0.12.0)
       websocket-driver (>= 0.3.0)
@@ -96,7 +95,7 @@ GEM
     ruby_core_source (0.1.5)
       archive-tar-minitar (>= 0.5.2)
     simple_uuid (0.4.0)
-    websocket-driver (0.3.2)
+    websocket-driver (0.3.3)
     win32-dir (0.4.6)
       ffi (>= 1.0.0)
     win32-process (0.7.3)
@@ -109,7 +108,7 @@ PLATFORMS
 
 DEPENDENCIES
   em-http-request (= 1.0.3)
-  eventmachine (~> 1.0.0.6)
+  eventmachine (~> 1.0.0.8)
   fiber_pool (= 1.0.0)
   flexmock (~> 0.9)
   json (~> 1.4)

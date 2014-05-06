@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2009-2013 RightScale Inc
+# Copyright (c) 2009-2014 RightScale Inc
 #
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -27,7 +27,7 @@ module RightScale
   class OfflineHandler
 
     # Maximum seconds to wait before starting flushing offline queue when disabling offline mode
-    MAX_QUEUE_FLUSH_DELAY = 2 * 60
+    MAX_QUEUE_FLUSH_DELAY = 60
 
     # Maximum number of offline queued requests before triggering restart vote
     MAX_QUEUED_REQUESTS = 100
@@ -161,12 +161,23 @@ module RightScale
     # Queue given request in memory
     #
     # === Parameters
-    # request(Hash):: Request to be stored
+    # kind(Symbol):: Kind of request: :send_push or :send_request
+    # type(String):: Dispatch route for the request; typically identifies actor and action
+    # payload(Object):: Data to be sent with marshalling en route
+    # target(Hash|NilClass):: Target for request
+    # token(String):: Token uniquely identifying request
+    # expires_at(Integer):: Time in seconds in Unix-epoch when this request expires and
+    #   is to be ignored by the receiver; value 0 means never expire
+    #
+    # === Block
+    # Optional block used to process response asynchronously with the following parameter:
+    #   result(Result):: Response with an OperationResult of SUCCESS, RETRY, NON_DELIVERY, or ERROR
     #
     # === Return
     # true:: Always return true
-    def queue_request(kind, type, payload, target, callback)
-      request = {:kind => kind, :type => type, :payload => payload, :target => target, :callback => callback}
+    def queue_request(kind, type, payload, target, token, expires_at, &callback)
+      request = {:kind => kind, :type => type, :payload => payload, :target => target,
+                 :token => token, :expires_at => expires_at, :callback => callback}
       Log.info("[offline] Queuing request: #{request.inspect}")
       vote_to_restart if (@restart_vote_count += 1) >= MAX_QUEUED_REQUESTS
       if @state == :initializing
@@ -190,7 +201,7 @@ module RightScale
 
     protected
 
-    # Send any requests that were queued while in offline mode
+    # Send any requests that were queued while in offline mode and have not yet timed out
     # Do this asynchronously to allow for agents to respond to requests
     # Once all in-memory requests have been flushed, switch off offline mode
     #
@@ -204,10 +215,12 @@ module RightScale
         Log.info("[offline] Starting to flush request queue of size #{@queue.size}") unless again || @mode == :initializing
         if @queue.any?
           r = @queue.shift
-          if r[:callback]
-            Sender.instance.send(r[:kind], r[:type], r[:payload], r[:target]) { |result| r[:callback].call(result) }
+          options = {:token => r[:token]}
+          if r[:expires_at] != 0 && (options[:time_to_live] = r[:expires_at] - Time.now.to_i) <= 0
+            Log.info("[offline] Dropping queued request <#{r[:token]}> because it expired " +
+                     "#{(-options[:time_to_live]).round} sec ago")
           else
-            Sender.instance.send(r[:kind], r[:type], r[:payload], r[:target])
+            Sender.instance.send(r[:kind], r[:type], r[:payload], r[:target], options, &r[:callback])
           end
         end
         if @queue.empty?

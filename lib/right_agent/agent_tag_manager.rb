@@ -98,6 +98,8 @@ module RightScale
     #
     # === Parameters
     # new_tags(String, Array):: Tag or tags to be added
+    # options(Hash):: Request options
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # A block is optional. If provided, should take one argument which will be set with the
@@ -105,15 +107,17 @@ module RightScale
     #
     # === Return
     # true always return true
-    def add_tags(new_tags)
+    def add_tags(new_tags, options = {})
       new_tags = ensure_flat_array_value(new_tags) unless new_tags.nil? || new_tags.empty?
-      do_update(new_tags, []) { |raw_response| yield raw_response if block_given? }
+      do_update(new_tags, [], options) { |raw_response| yield raw_response if block_given? }
     end
 
     # Remove given tags from agent
     #
     # === Parameters
     # old_tags(String, Array):: Tag or tags to be removed
+    # options(Hash):: Request options
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # A block is optional. If provided, should take one argument which will be set with the
@@ -121,20 +125,24 @@ module RightScale
     #
     # === Return
     # true always return true
-    def remove_tags(old_tags)
+    def remove_tags(old_tags, options = {})
       old_tags = ensure_flat_array_value(old_tags) unless old_tags.nil? || old_tags.empty?
-      do_update([], old_tags) { |raw_response| yield raw_response if block_given? }
+      do_update([], old_tags, options) { |raw_response| yield raw_response if block_given? }
     end
 
     # Clear all agent tags
+    #
+    # === Parameters
+    # options(Hash):: Request options
+    #   :timeout(Integer):: timeout in seconds before giving up and yielding an error message
     #
     # === Block
     # Given block should take one argument which will be set with the raw response
     #
     # === Return
     # true::Always return true
-    def clear
-      do_update([], @agent.tags) { |raw_response| yield raw_response }
+    def clear(options = {})
+      do_update([], @agent.tags, options) { |raw_response| yield raw_response }
     end
 
     private
@@ -197,7 +205,7 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def do_update(new_tags, old_tags, &block)
+    def do_update(new_tags, old_tags, options = {}, &block)
       agent_check
       raise ArgumentError.new("Cannot add and remove tags in same update") if new_tags.any? && old_tags.any?
       tags = @agent.tags
@@ -206,9 +214,9 @@ module RightScale
       tags.uniq!
 
       if new_tags.any?
-        request = RightScale::RetryableRequest.new("/router/add_tags", {:tags => new_tags})
+        request = RightScale::RetryableRequest.new("/router/add_tags", {:tags => new_tags}, options)
       elsif old_tags.any?
-        request = RightScale::RetryableRequest.new("/router/delete_tags", {:tags => old_tags})
+        request = RightScale::RetryableRequest.new("/router/delete_tags", {:tags => old_tags}, options)
       else
         return
       end

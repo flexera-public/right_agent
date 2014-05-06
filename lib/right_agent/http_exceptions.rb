@@ -69,7 +69,12 @@ module RightScale
 
     # Convert RestClient exception
     def self.convert(e)
-      e2 = create(e.http_code, e.http_body, RightScale::Response.new((e.response && e.response.headers) || {}))
+      e2 = if e.is_a?(RestClient::RequestTimeout)
+        # Special case RequestTimeout because http_code and http_body is typically nil given no actual response
+        create(408)
+      else
+        create(e.http_code, e.http_body, RightScale::Response.new((e.response && e.response.headers) || {}))
+      end
       e2.message = e.message
       e2
     end

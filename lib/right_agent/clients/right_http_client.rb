@@ -93,8 +93,11 @@ module RightScale
     #       Packet::GLOBAL, ones with no shard id
     #   [Symbol] :selector for picking from qualified targets: :any or :all;
     #     defaults to :any
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    #
+    # @option options [String] :request_uuid uniquely identifying this request; defaults to
+    #   randomly generated
+    # @option options [Numeric] :time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire
     #
     # @return [NilClass] always nil since there is no expected response to the request
     #
@@ -105,10 +108,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def push(type, payload = nil, target = nil, token = nil)
+    def push(type, payload = nil, target = nil, options = {})
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.push(type, payload, target, token)
+      client.push(type, payload, target, options)
     end
 
     # Route a request to a single target with a response expected
@@ -127,8 +130,11 @@ module RightScale
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
-    # @param [String, NilClass] token uniquely identifying this request;
-    #   defaults to randomly generated ID
+    #
+    # @option options [String] :request_uuid uniquely identifying this request; defaults to
+    #   randomly generated
+    # @option options [Numeric] :time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire
     #
     # @return [Result, NilClass] response from request
     #
@@ -139,10 +145,10 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def request(type, payload = nil, target = nil, token = nil)
+    def request(type, payload = nil, target = nil, options = {})
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
       client = (@api && @api.support?(type)) ? @api : @router
-      client.request(type, payload, target, token)
+      client.request(type, payload, target, options)
     end
 
     # Route event

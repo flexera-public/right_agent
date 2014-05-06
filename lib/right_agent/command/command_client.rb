@@ -82,6 +82,7 @@ module RightScale
         @pending += 1
         command = options.dup
         command[:verbose] = verbose
+        command[:timeout] = timeout
         command[:cookie] = @cookie
         EM.next_tick { EM.connect('127.0.0.1', @socket_port, ConnectionHandler, command, self, response_handler) }
         EM.add_timer(timeout) { EM.stop; raise 'Timed out waiting for agent reply' } if manage_em

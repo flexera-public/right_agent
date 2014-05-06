@@ -60,6 +60,14 @@ describe RightScale::AgentTagManager do
       @result.should == [@tag]
     end
 
+    it "applies timeout when retrieving agent tags" do
+      @retryable_request.should_receive(:new).with("/router/query_tags",
+          {:agent_identity => @identity, :hrefs => [@agent_href]}, {:timeout => 30}).and_return(@request).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => [@tag]}}).once
+      @manager.tags(:timeout => 30) { |r| @result = r }
+      @result.should == [@tag]
+    end
+
     it "retrieves current agent tags using agent ID if not in :http mode" do
       @agent.should_receive(:mode).and_return(:amqp)
       @retryable_request.should_receive(:new).with("/router/query_tags",
@@ -123,6 +131,13 @@ describe RightScale::AgentTagManager do
       @result.should == {@agent_href => {"tags" => @tags}}
     end
 
+    it "applies timeout when querying for agents with tags" do
+      @retryable_request.should_receive(:new).with("/router/query_tags",
+          {:agent_identity => @identity, :tags => [@tag]}, {:timeout => 30}).and_return(@request).once
+      @request.should_receive(:callback).and_yield({@identity => {"tags" => [@tag]}, @agent_href => {"tags" => [@tag]}}).once
+      @manager.query_tags(@tag, :timeout => 30) { |r| @result = r }
+    end
+
     it "forwards options" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => @tags}, {:timeout => 9}).and_return(@request).once
@@ -181,6 +196,13 @@ describe RightScale::AgentTagManager do
       @result.should == "raw response"
     end
 
+    it "applies timeout when querying" do
+      @retryable_request.should_receive(:new).with("/router/query_tags",
+          {:agent_identity => @identity, :hrefs => @hrefs, :tags => @tags}, {:timeout => 30}).and_return(@request).once
+      @request.should_receive(:callback).and_yield({@agent_href => {"tags" => @tags}}).once
+      @manager.query_tags_raw(@tags, @hrefs, :timeout => 30) { |r| @result = r }
+    end
+
     it "forwards timeout option" do
       @retryable_request.should_receive(:new).with("/router/query_tags",
           {:agent_identity => @identity, :tags => @tags}, {:timeout => 9}).and_return(@request).once
@@ -199,17 +221,22 @@ describe RightScale::AgentTagManager do
     end
 
     it "adds individual tag to agent" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @manager.add_tags(@tag).should be_true
     end
 
     it "adds multiple tags to agent" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => @tags}, {}).and_return(@request).once
       @manager.add_tags(@tags).should be_true
     end
 
+    it "applies timeout when adding tags" do
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {:timeout => 30}).and_return(@request).once
+      @manager.add_tags(@tag, :timeout => 30).should be_true
+    end
+
     it "optionally yields raw response" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => @tags}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield("result").once
       @manager.add_tags(@tags) { |r| @result = r }
       @result.should == "raw response"
@@ -218,7 +245,7 @@ describe RightScale::AgentTagManager do
     it "updates local tags" do
       @agent.should_receive(:tags).and_return([@tag1]).once
       @agent.should_receive(:tags=).should_receive([@tag]).once
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @manager.add_tags(@tag).should be_true
     end
   end
@@ -232,17 +259,22 @@ describe RightScale::AgentTagManager do
     end
 
     it "removes individual tag to agent" do
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @manager.remove_tags(@tag).should be_true
     end
 
     it "removes multiple tags to agent" do
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}, {}).and_return(@request).once
       @manager.remove_tags(@tags).should be_true
     end
 
+    it "applies timeout when removing tags" do
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag]}, {:timeout => 30}).and_return(@request).once
+      @manager.remove_tags(@tag, :timeout => 30).should be_true
+    end
+
     it "optionally yields raw response" do
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}, {}).and_return(@request).once
       @request.should_receive(:callback).and_yield("result").once
       @manager.remove_tags(@tags) { |r| @result = r }
       @result.should == "raw response"
@@ -251,7 +283,7 @@ describe RightScale::AgentTagManager do
     it "updates local tags" do
       @agent.should_receive(:tags).and_return([]).once
       @agent.should_receive(:tags=).should_receive([@tag]).once
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @manager.remove_tags(@tag).should be_true
     end
   end
@@ -276,19 +308,24 @@ describe RightScale::AgentTagManager do
     end
 
     it "adds tags for agent" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @agent.should_receive(:tags=).never
       @manager.send(:do_update, [@tag], []).should be_true
     end
 
     it "removes tags for agent" do
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag1]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => [@tag1]}, {}).and_return(@request).once
       @agent.should_receive(:tags=).never
       @manager.send(:do_update, [], [@tag1]).should be_true
     end
 
+    it "applies timeout" do
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {:timeout => 30}).and_return(@request).once
+      @manager.send(:do_update, [@tag], [], :timeout => 30).should be_true
+    end
+
     it "yields raw response if block given" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags=).once
       @manager.send(:do_update, [@tag], []) { |r| @result = r }
@@ -296,7 +333,7 @@ describe RightScale::AgentTagManager do
     end
 
     it "updates local tags if block given and successful" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags=).with([@tag]).once
       @manager.send(:do_update, [@tag], []) { |r| @result = r }
@@ -304,7 +341,7 @@ describe RightScale::AgentTagManager do
     end
 
     it "yields error result and does not update local tags" do
-      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/add_tags", {:tags => [@tag]}, {}).and_return(@request).once
       @request.should_receive(:raw_response).and_return("error").once
       @request.should_receive(:errback).and_yield("error").once
       @request.should_receive(:callback).once
@@ -320,9 +357,17 @@ describe RightScale::AgentTagManager do
       @request.should_receive(:raw_response).and_return("raw response").once
       @agent.should_receive(:tags).and_return(@tags).twice
       @agent.should_receive(:tags=).with([]).once
-      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}).and_return(@request).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}, {}).and_return(@request).once
       @manager.clear { |r| @result = r }
       @result.should == "raw response"
+    end
+
+    it "applies timeout" do
+      @request.should_receive(:raw_response).and_return("raw response").once
+      @agent.should_receive(:tags).and_return(@tags).twice
+      @agent.should_receive(:tags=).with([]).once
+      @retryable_request.should_receive(:new).with("/router/delete_tags", {:tags => @tags}, {:timeout => 30}).and_return(@request).once
+      @manager.clear(:timeout => 30) { |r| @result = r }
     end
   end
 end

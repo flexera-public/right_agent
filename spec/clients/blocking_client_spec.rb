@@ -203,6 +203,12 @@ describe RightScale::BlockingClient do
         result.should == [@result, 200, @body, @headers]
       end
 
+      it "stores the connection" do
+        @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(@response).once
+        @client.request(:get, @path, @host, @connect_options, @request_options)
+        @client.connections[@path].should == {:host => @host, :path => @path, :expires_at => @later + 5}
+      end
+
       it "returns nil if response is nil" do
         @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(nil).once
         result = @client.request(:get, @path, @host, @connect_options, @request_options)
@@ -259,6 +265,16 @@ describe RightScale::BlockingClient do
         @http_client.should_receive(:get).with(@url, @request_options).and_return(nil).once
         result = @client.send(:request_once, :get, @url, @request_options)
         result.should == [nil, nil, nil, nil]
+      end
+    end
+
+    context :close do
+      it "deletes all persistent connections" do
+        @http_client.should_receive(:get).with(@host + @path + @query, @request_options).and_return(@response).once
+        @client.request(:get, @path, @host, @connect_options, @request_options)
+        @client.connections.should_not be_empty
+        @client.close("terminating").should be true
+        @client.connections.should be_empty
       end
     end
   end
