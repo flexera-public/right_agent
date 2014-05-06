@@ -404,9 +404,15 @@ module RightScale
         pgid = Process.getpgid(pid) rescue -1
         name = human_readable_name(agent_name, pid_file.identity)
         if pgid != -1
-          psdata = `ps up #{pid}`.split("\n").last.split
-          memory = (psdata[5].to_i / 1024)
-          puts "#{name} is alive, using #{memory}MB of memory"
+          message = "#{name} is alive"
+          unless RightScale::Platform.windows?
+            # Windows Platform code currently does not support retrieving memory usage
+            # information for another process, so only include it for linux
+            psdata = `ps up #{pid}`.split("\n").last.split
+            memory = (psdata[5].to_i / 1024)
+            message << ", using #{memory}MB of memory"
+          end
+          puts message
           res = true
         else
           puts "#{name} is not running but has a stale pid file at #{pid_file}"
