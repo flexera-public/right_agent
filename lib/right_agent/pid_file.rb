@@ -62,7 +62,7 @@ module RightScale
       end
       true
     end
-    
+
     # Write pid to pid file
     #
     # === Return
@@ -78,7 +78,7 @@ module RightScale
       end
       true
     end
-    
+
     # Update associated command protocol port
     #
     # === Parameters
@@ -89,6 +89,9 @@ module RightScale
     # true:: Always return true
     def set_command_options(options)
       content = { :listen_port => options[:listen_port], :cookie => options[:cookie] }
+      # This is requried to preserve cookie value to be saved as string,
+      # and not as escaped binary data
+      content[:cookie].force_encoding('utf-8')
       open(@cookie_file,'w') { |f| f.write(YAML.dump(content)) }
       File.chmod(0600, @cookie_file)
       true
@@ -103,10 +106,10 @@ module RightScale
       File.delete(@cookie_file) if File.exists?(@cookie_file)
       true
     end
-    
+
     # Read pid file content
     # Empty hash if pid file does not exist or content cannot be loaded
-    # 
+    #
     # === Return
     # content(Hash):: Hash containing 3 keys :pid, :cookie and :port
     def read_pid
@@ -137,7 +140,7 @@ module RightScale
     def to_s
       path = @pid_file
     end
-    
+
     private
 
     # Check whether there is a process running with the given pid
