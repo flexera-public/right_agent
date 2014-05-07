@@ -64,13 +64,13 @@ describe RightScale::Serializer do
 
     it "should use preferred serializer if specified and not cascade to others" do
       serializer = RightScale::Serializer.new(:json)
-      flexmock(serializer).should_receive(:cascade_serializers).with(:dump, "hello", [JSON]).once
+      flexmock(serializer).should_receive(:cascade_serializers).with(:dump, "hello", [JSONSerializer]).once
       serializer.dump("hello")
     end
 
     it "should raise SerializationError if packet could not be serialized and not try other serializer" do
       flexmock(MessagePack).should_receive(:dump).with("hello").and_raise(StandardError).once
-      flexmock(JSON).should_receive(:dump).with("hello").and_raise(StandardError).once
+      flexmock(JSONSerializer).should_receive(:dump).with("hello").and_raise(StandardError).once
       serializer = RightScale::Serializer.new(:msgpack)
       lambda { serializer.dump("hello") }.should raise_error(RightScale::Serializer::SerializationError)
       serializer = RightScale::Serializer.new(:json)
@@ -87,7 +87,7 @@ describe RightScale::Serializer do
     it "should be able to override preferred format" do
       serializer = RightScale::Serializer.new(:json)
       flexmock(serializer).should_receive(:cascade_serializers).with(:dump, "hello", [MessagePack]).once
-      flexmock(serializer).should_receive(:cascade_serializers).with(:dump, "hello", [JSON]).never
+      flexmock(serializer).should_receive(:cascade_serializers).with(:dump, "hello", [JSONSerializer]).never
       serializer.dump("hello", :msgpack)
     end
 
@@ -133,13 +133,13 @@ describe RightScale::Serializer do
 
     it "should cascade through available serializers" do
       serializer = RightScale::Serializer.new
-      flexmock(serializer).should_receive(:cascade_serializers).with(:load, "olleh", [JSON, MessagePack], nil).once
+      flexmock(serializer).should_receive(:cascade_serializers).with(:load, "olleh", [JSONSerializer, MessagePack], nil).once
       serializer.load("olleh")
     end
 
     it "should try all supported formats (MessagePack, JSON)" do
       flexmock(MessagePack).should_receive(:load).with("olleh").and_raise(StandardError).once
-      flexmock(JSON).should_receive(:load).with("olleh").and_raise(StandardError).once
+      flexmock(JSONSerializer).should_receive(:load).with("olleh").and_raise(StandardError).once
       lambda { RightScale::Serializer.new.load("olleh") }.should raise_error(RightScale::Serializer::SerializationError)
     end
 
@@ -147,14 +147,14 @@ describe RightScale::Serializer do
       object = [1, 2, 3]
       serialized = object.to_json
       flexmock(MessagePack).should_receive(:load).with(serialized).never
-      flexmock(JSON).should_receive(:load).with(serialized).and_return(object).once
+      flexmock(JSONSerializer).should_receive(:load).with(serialized).and_return(object).once
       RightScale::Serializer.new(:msgpack).load(serialized)
     end
 
     it "should try MessagePack format first if looks like MessagePack even if JSON preferred" do
       object = [1, 2, 3]
       serialized = object.to_msgpack
-      flexmock(JSON).should_receive(:load).with(serialized).never
+      flexmock(JSONSerializer).should_receive(:load).with(serialized).never
       flexmock(MessagePack).should_receive(:load).with(serialized).and_return(object).once
       RightScale::Serializer.new(:json).load(serialized)
     end
@@ -180,7 +180,7 @@ describe RightScale::Serializer do
 
     it "should raise SerializationError if packet could not be unserialized" do
       flexmock(MessagePack).should_receive(:load).with("olleh").and_raise(StandardError).once
-      flexmock(JSON).should_receive(:load).with("olleh").and_raise(StandardError).once
+      flexmock(JSONSerializer).should_receive(:load).with("olleh").and_raise(StandardError).once
       serializer = RightScale::Serializer.new
       lambda { serializer.load("olleh") }.should raise_error(RightScale::Serializer::SerializationError)
     end
