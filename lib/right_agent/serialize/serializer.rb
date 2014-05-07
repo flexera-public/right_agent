@@ -27,6 +27,24 @@ require 'json'
 
 require File.normalize_path(File.join(File.dirname(__FILE__), 'message_pack'))
 
+module JSONSerializer
+  def self.load(source)
+
+    if source.respond_to? :to_str
+      source = source.to_str
+    elsif source.respond_to? :to_io
+      source = source.to_io.read
+    else
+      source = source.read
+    end
+    source.force_encoding("UTF-8") if source.respond_to?(:force_encoding)
+    JSON.load(source)
+  end
+
+  def self.dump(*args)
+    JSON.dump(*args)
+  end
+end
 
 # Monkey patch common classes to support MessagePack serialization
 # As with JSON, unserializing them is manual using existing methods such as parse
@@ -103,8 +121,8 @@ module RightScale
     private
 
     # Supported serialization formats
-    SERIALIZERS = {:msgpack => MessagePack, :json => JSON}.freeze
-    MSGPACK_FIRST_SERIALIZERS = [MessagePack, JSON].freeze
+    SERIALIZERS = {:msgpack => MessagePack, :json => JSONSerializer}.freeze
+    MSGPACK_FIRST_SERIALIZERS = [MessagePack, JSONSerializer].freeze
     JSON_FIRST_SERIALIZERS = MSGPACK_FIRST_SERIALIZERS.clone.reverse.freeze
     FORMATS = (SERIALIZERS.keys + [:secure]).freeze
     DEFAULT_FORMAT = :msgpack
