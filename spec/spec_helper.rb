@@ -79,8 +79,8 @@ end
 def version_cannot_put_version_in_packet; RightScale::Packet::DEFAULT_VERSION end
 def version_can_put_version_in_packet; 12 end
 
-def version_cannot_use_mapper_query_tags; 7 end
-def version_can_use_mapper_query_tags; 8 end
+def version_cannot_use_router_query_tags; 7 end
+def version_can_use_router_query_tags; 8 end
 
 def version_cannot_handle_request_retries; 8 end
 def version_can_handle_request_retries; 9 end

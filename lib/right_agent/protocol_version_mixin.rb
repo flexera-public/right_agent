@@ -34,9 +34,9 @@ module RightScale
     # Packet::DEFAULT_VERSION, which is true of all with version >= 12)
     def can_put_version_in_packet?(version); version && version != 0 end
 
-    # Test whether given version of agent uses /mapper/query_tags rather than the
-    # deprecated TagQuery packet
-    def can_use_mapper_query_tags?(version); version && version >= 8 end
+    # Test whether given version of agent uses /router/query_tags or /mapper/query_tags
+    #  rather than the deprecated TagQuery packet
+    def can_use_router_query_tags?(version); version && version >= 8 end
 
     # Test whether given version of agent can handle a request that is being retried
     # as indicated by a retries count in the Request packet
