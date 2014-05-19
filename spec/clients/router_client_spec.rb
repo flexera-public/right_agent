@@ -661,7 +661,6 @@ describe RightScale::RouterClient do
         end
 
         it "handles exception if there is a long-polling failure" do
-          @log.should_receive(:error).with("Failed long-polling", RuntimeError, :trace).once
           @defer_callback_proc.call(RuntimeError.new).should be nil
           @client.instance_variable_get(:@listen_state).should == :choose
           @client.instance_variable_get(:@listen_interval).should == 4
@@ -745,7 +744,6 @@ describe RightScale::RouterClient do
        RightScale::Exceptions::RetryableError.new("error"),
        RightScale::Exceptions::InternalServerError.new("error", "server")].each do |e|
         it "does not trace #{e} exceptions but sets state to :choose" do
-          @log.should_receive(:error).with("Failed long-polling", e, :no_trace).once
           @client.send(:process_long_poll, e).should be nil
           @client.instance_variable_get(:@listen_state).should == :choose
           @client.instance_variable_get(:@listen_interval).should == 4
@@ -754,7 +752,6 @@ describe RightScale::RouterClient do
 
       it "traces unexpected exceptions and sets state to :choose" do
         e = RuntimeError.new
-        @log.should_receive(:error).with("Failed long-polling", e, :trace).once
         @client.send(:process_long_poll, e).should be nil
         @client.instance_variable_get(:@listen_state).should == :choose
         @client.instance_variable_get(:@listen_interval).should == 4

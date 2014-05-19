@@ -596,6 +596,7 @@ module RightScale
     end
 
     # Process result from long-polling attempt
+    # Not necessary to log failure since should already have been done by underlying HTTP client
     #
     # @param [Array, NilClass] result from long-polling attempt
     #
@@ -603,11 +604,9 @@ module RightScale
     def process_long_poll(result)
       case result
       when Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError, Exceptions::InternalServerError
-        Log.error("Failed long-polling", result, :no_trace)
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
       when Exception
-        Log.error("Failed long-polling", result, :trace)
         @stats["exceptions"].track("long-polling", result)
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
