@@ -520,7 +520,7 @@ module RightScale
       @offline_stats = RightSupport::Stats::Activity.new(measure_rate = false)
       @request_kind_stats = RightSupport::Stats::Activity.new(measure_rate = false)
       @send_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @options[:exception_callback])
+      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @agent.exception_callback)
       true
     end
 

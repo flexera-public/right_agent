@@ -27,8 +27,8 @@ module RightScale
 
     include ProtocolVersionMixin
 
-    class InvalidRequestType < Exception; end
-    class DuplicateRequest < Exception; end
+    class InvalidRequestType < RuntimeError; end
+    class DuplicateRequest < RuntimeError; end
 
     # (ActorRegistry) Registry for actors
     attr_reader :registry

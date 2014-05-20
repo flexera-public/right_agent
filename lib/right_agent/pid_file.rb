@@ -31,7 +31,7 @@ module RightScale
   #     the command protocol
   class PidFile
 
-    class AlreadyRunning < Exception; end
+    class AlreadyRunning < RuntimeError; end
 
     attr_reader :identity, :pid_file, :cookie_file
 

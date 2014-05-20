@@ -28,9 +28,9 @@ module RightScale
 
     include ProtocolVersionMixin
 
-    class MissingPrivateKey < Exception; end
-    class MissingCertificate < Exception; end
-    class InvalidSignature < Exception; end
+    class MissingPrivateKey < StandardError; end
+    class MissingCertificate < StandardError; end
+    class InvalidSignature < StandardError; end
 
     # Create the one and only SecureSerializer
     def self.init(serializer, identity, store, encrypt = true)

@@ -52,7 +52,7 @@ describe RightScale::Sender do
       @client = flexmock("client", :push => true, :request => true, :all => @broker_ids, :publish => @broker_ids).by_default
       @agent_id = "rs-agent-1-1"
       @agent = flexmock("agent", :identity => @agent_id, :client => @client, :mode => mode, :request_queue => "request",
-                        :options => options).by_default
+                        :exception_callback => nil, :options => options).by_default
       RightScale::Sender.new(@agent)
       RightScale::Sender.instance
     end

@@ -20,8 +20,8 @@ module RightScale
     # Versions 5 and above use an identical format for the enrollment result
     SUPPORTED_VERSIONS = 5..AgentConfig.protocol_version
     
-    class IntegrityFailure < Exception; end
-    class VersionError < Exception; end
+    class IntegrityFailure < StandardError; end
+    class VersionError < StandardError; end
 
     attr_reader :r_s_version, :timestamp, :router_cert, :id_cert, :id_key
 
