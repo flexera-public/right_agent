@@ -412,7 +412,8 @@ describe RightScale::BalancedHttpClient do
       gateway_timeout = RightScale::HttpExceptions.create(504, "server timeout")
       bad_request = RightScale::HttpExceptions.create(400, "bad data")
       @no_result = RightSupport::Net::NoResult.new("no result", {@url => gateway_timeout, @url => bad_request})
-      lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.should raise_error(bad_request)
+      lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.
+          should raise_error(RightScale::HttpExceptions::BadRequest)
       @yielded.should == bad_request
     end
 
@@ -458,7 +459,8 @@ describe RightScale::BalancedHttpClient do
     it "raises last exception in details if not retryable" do
       bad_request = RightScale::HttpExceptions.create(400, "bad data")
       @no_result = RightSupport::Net::NoResult.new("no result", {@url => bad_request})
-      lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.should raise_error(bad_request)
+      lambda { @client.send(:handle_no_result, @no_result, @url, &@proc) }.
+          should raise_error(RightScale::HttpExceptions::BadRequest)
       @yielded.should == bad_request
     end
   end

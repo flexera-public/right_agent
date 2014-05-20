@@ -410,8 +410,6 @@ module RightScale
       @logger = logger
     end
 
-    protected
-
     # Initialize logger
     #
     # === Parameters

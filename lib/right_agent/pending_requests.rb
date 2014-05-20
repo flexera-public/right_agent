@@ -97,12 +97,15 @@ module RightScale
 
     # Get age of youngest pending request
     #
+    # === Parameters
+    # pending_requests(Hash):: Pending requests to be examined
+    #
     # === Return
     # age(Integer):: Age of youngest request
-    def youngest_age
+    def self.youngest_age(pending_requests)
       now = Time.now
       age = nil
-      self.each_value do |r|
+      pending_requests.each_value do |r|
         seconds = (now - r.receive_time).to_i
         age = seconds if age.nil? || seconds < age
       end
@@ -111,12 +114,15 @@ module RightScale
 
     # Get age of oldest pending request
     #
+    # === Parameters
+    # pending_requests(Hash):: Pending requests to be examined
+    #
     # === Return
     # age(Integer):: Age of oldest request
-    def oldest_age
+    def self.oldest_age(pending_requests)
       now = Time.now
       age = nil
-      self.each_value do |r|
+      pending_requests.each_value do |r|
         seconds = (now - r.receive_time).to_i
         age = seconds if age.nil? || seconds > age
       end

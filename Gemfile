@@ -23,7 +23,7 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '~> 1.0.0.8'
+gem 'eventmachine', '~> 1.0.0.9'
 
 group :windows do
   platform :mswin do

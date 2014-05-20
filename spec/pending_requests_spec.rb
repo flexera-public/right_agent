@@ -120,7 +120,7 @@ describe RightScale::PendingRequests do
       flexmock(Time).should_receive(:now).and_return(now, now + 10, now + 10, now + 20, now + 20, now + 30)
       pending_requests = RightScale::PendingRequests.new
       add_requests(pending_requests, [@request, @push])
-      pending_requests.youngest_age.should == 10
+      RightScale::PendingRequests.youngest_age(pending_requests).should == 10
     end
   end
 
@@ -130,7 +130,7 @@ describe RightScale::PendingRequests do
       flexmock(Time).should_receive(:now).and_return(now, now + 10, now + 10, now + 20, now + 20, now + 30)
       pending_requests = RightScale::PendingRequests.new
       add_requests(pending_requests, [@request, @push])
-      pending_requests.oldest_age.should == 20
+      RightScale::PendingRequests.oldest_age(pending_requests).should == 20
     end
   end
 end

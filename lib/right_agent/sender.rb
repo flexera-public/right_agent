@@ -418,7 +418,7 @@ module RightScale
         @offline_handler.terminate
         @connectivity_checker.terminate if @connectivity_checker
         pending = @pending_requests.kind(:send_request)
-        [pending.size, pending.youngest_age]
+        [pending.size, PendingRequests.youngest_age(pending)]
       else
         [0, nil]
       end
@@ -482,7 +482,7 @@ module RightScale
           pending["pushes"] = @pending_requests.kind(:send_push).size
           requests = @pending_requests.kind(:send_request)
           if (pending["requests"] = requests.size) > 0
-            pending["oldest age"] = requests.oldest_age
+            pending["oldest age"] = PendingRequests.oldest_age(requests)
           end
         end
         stats = {
