@@ -79,7 +79,7 @@ module RightScale
               Log.error("Invalid cookie used by command protocol client (#{cmd_cookie})")
             end
           rescue Exception => e
-            Log.warning("Command failed (#{e.message}) at\n#{e.backtrace.join("\n")}")
+            Log.error("Command failed", e, :trace)
           end
         end
 

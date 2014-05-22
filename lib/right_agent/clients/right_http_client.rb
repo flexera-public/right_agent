@@ -51,10 +51,6 @@ module RightScale
     # @option options [Boolean] :long_polling_only never attempt to create a WebSocket, always long-polling instead
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging
-    # @option options [Proc] :exception_callback for unexpected exceptions with following parameters:
-    #   [Exception] exception raised
-    #   [Packet, NilClass] packet being processed
-    #   [Agent, NilClass] agent in which exception occurred
     #
     # @return [TrueClass] always true
     #
@@ -275,7 +271,7 @@ module RightScale
         begin
           callback.call(type, state)
         rescue RuntimeError => e
-          Log.error("Failed status callback", e)
+          ErrorTracker.log(self, "Failed status callback", e, nil, :caller)
         end
       end
       @status

@@ -88,7 +88,7 @@ module RightScale
       actor, method, idempotent = route(request)
       received_at = @request_stats.update(method, (token if request.is_a?(Request)))
       if (dup = duplicate?(request, method, idempotent))
-        raise DuplicateRequest.new(dup)
+        raise DuplicateRequest, dup
       end
       unless (result = expired?(request, method))
         result = perform(request, actor, method, idempotent)
@@ -110,9 +110,6 @@ module RightScale
     #     or nil if empty
     #   "dispatch failures"(Hash|nil):: Dispatch failure activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per failure type, or nil if none
-    #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
-    #     "total"(Integer):: Total for category
-    #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
     #   "rejects"(Hash|nil):: Request reject activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per reason ("duplicate (<method>)", "retry duplicate (<method>)", or
     #     "stale (<method>)"), or nil if none
@@ -123,7 +120,6 @@ module RightScale
       stats = {
         "dispatched cache"  => (@dispatched_cache.stats if @dispatched_cache),
         "dispatch failures" => @dispatch_failure_stats.all,
-        "exceptions"        => @exception_stats.stats,
         "rejects"           => @reject_stats.all,
         "requests"          => @request_stats.all,
         "response time"     => @request_stats.avg_duration
@@ -142,7 +138,6 @@ module RightScale
       @reject_stats = RightSupport::Stats::Activity.new
       @request_stats = RightSupport::Stats::Activity.new
       @dispatch_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @agent.exception_callback)
       true
     end
 
@@ -209,7 +204,7 @@ module RightScale
       method = method.to_sym
       actor = @registry.actor_for(prefix)
       if actor.nil? || !actor.respond_to?(method)
-        raise InvalidRequestType.new("Unknown actor or method for dispatching request <#{request.token}> of type #{request.type}")
+        raise InvalidRequestType, "Unknown actor or method for dispatching request <#{request.token}> of type #{request.type}"
       end
       [actor, method, actor.class.idempotent?(method)]
     end
@@ -231,40 +226,10 @@ module RightScale
       else
         actor.send(method, request.payload, request)
       end
-    rescue Exception => e
+    rescue StandardError => e
+      ErrorTracker.log(self, "Failed dispatching #{request.trace}", e, request)
       @dispatch_failure_stats.update("#{request.type}->#{e.class.name}")
-      OperationResult.error(handle_exception(actor, method, request, e))
-    end
-
-    # Handle exception by logging it, calling the actors exception callback method,
-    # and gathering exception statistics
-    #
-    # === Parameters
-    # actor(Actor):: Actor that failed to process request
-    # method(Symbol):: Name of actor method being dispatched to
-    # request(Packet):: Packet that dispatcher is acting upon
-    # exception(Exception):: Exception that was raised
-    #
-    # === Return
-    # (String):: Error description for this exception
-    def handle_exception(actor, method, request, exception)
-      error = "Could not handle #{request.type} request"
-      Log.error(error, exception, :trace)
-      begin
-        if actor && actor.class.exception_callback
-          case actor.class.exception_callback
-          when Symbol, String
-            actor.send(actor.class.exception_callback, method, request, exception)
-          when Proc
-            actor.instance_exec(method, request, exception, &actor.class.exception_callback)
-          end
-        end
-        @exception_stats.track(request.type, exception)
-      rescue Exception => e
-        Log.error("Failed handling error for #{request.type}", e, :trace)
-        @exception_stats.track(request.type, e) rescue nil
-      end
-      Log.format(error, exception)
+      OperationResult.error("Could not handle #{request.type} request", e)
     end
 
   end # Dispatcher

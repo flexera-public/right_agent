@@ -57,9 +57,6 @@ module RightScale
     # (Array) Tag strings published by agent
     attr_accessor :tags
 
-    # (Proc) Callback procedure for exceptions
-    attr_reader :exception_callback
-
     # Default option settings for the agent
     DEFAULT_OPTIONS = {
       :user               => 'agent',
@@ -89,6 +86,15 @@ module RightScale
 
     # Block to be activated when finish terminating
     TERMINATE_BLOCK = lambda { EM.stop if EM.reactor_running? }
+
+    # Exceptions with restricted error backtrace level
+    # Value :no_trace means no backtrace and no tracking in stats or reporting to Errbit
+    TRACE_LEVEL = {
+      RightSupport::Net::NoResult => :no_trace,
+      RightScale::Exceptions::ConnectivityFailure => :no_trace,
+      RightScale::BalancedHttpClient::NotResponding => :no_trace,
+      RightAMQP::HABrokerClient::NoConnectedBrokers => :no_trace
+    }
 
     # Initializes a new agent and establishes an HTTP or AMQP RightNet connection
     # This must be used inside an EM.run block unless the EventMachine reactor
@@ -129,10 +135,8 @@ module RightScale
     #   :prefetch(Integer):: Maximum number of messages the AMQP broker is to prefetch for this agent
     #     before it receives an ack. Value 1 ensures that only last unacknowledged gets redelivered
     #     if the agent crashes. Value 0 means unlimited prefetch.
-    #   :exception_callback(Proc):: Callback with following parameters that is activated on exception events:
-    #     exception(Exception):: Exception
-    #     message(Packet):: Message being processed
-    #     agent(Agent):: Reference to agent
+    #   :airbrake_endpoint(String):: URL for Airbrake for reporting unexpected exceptions to Errbit
+    #   :airbrake_api_key(String):: Key for using the Airbrake API access to Errbit
     #   :ready_callback(Proc):: Called once agent is connected to AMQP broker and ready for service (no argument)
     #   :restart_callback(Proc):: Called on each restart vote with votes being initiated by offline queue
     #     exceeding MAX_QUEUED_REQUESTS or by repeated failures to access RightNet when online (no argument)
@@ -192,7 +196,10 @@ module RightScale
       Log.init(@identity, @options[:log_path], :print => true)
       Log.level = @options[:log_level] if @options[:log_level]
       RightSupport::Log::Mixin.default_logger = Log
+      ErrorTracker.init(self, @options[:agent_name], :shard_id => @options[:shard_id], :trace_level => TRACE_LEVEL,
+                        :airbrake_endpoint => @options[:airbrake_endpoint], :airbrake_api_key => @options[:airbrake_api_key])
       @history.update("start")
+
       now = Time.now
       Log.info("[start] Agent #{@identity} starting; time: #{now.utc}; utc_offset: #{now.utc_offset}")
       @options.each { |k, v| Log.info("-  #{k}: #{k.to_s =~ /pass/ ? '****' : (v.respond_to?(:each) ? v.inspect : v)}") }
@@ -213,7 +220,7 @@ module RightScale
         else
           # Initiate AMQP broker connection, wait for connection before proceeding
           # otherwise messages published on failed connection will be lost
-          @client = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options)
+          @client = RightAMQP::HABrokerClient.new(Serializer.new(:secure), @options.merge(:exception_stats => ErrorTracker.exception_stats))
           @queues.each { |s| @remaining_queue_setup[s] = @client.all }
           @client.connection_status(:one_off => @options[:connect_timeout]) do |status|
             if status == :connected
@@ -230,12 +237,10 @@ module RightScale
             end
           end
         end
-      rescue SystemExit
-        raise
       rescue PidFile::AlreadyRunning
         EM.stop if EM.reactor_running?
         raise
-      rescue Exception => e
+      rescue StandardError => e
         terminate("failed startup", e)
       end
       true
@@ -289,14 +294,14 @@ module RightScale
     # force(Boolean):: Reconnect even if already connected
     #
     # === Return
-    # res(String|nil):: Error message if failed, otherwise nil
+    # (String|nil):: Error message if failed, otherwise nil
     def connect(host, port, index, priority = nil, force = false)
       @connect_request_stats.update("connect b#{index}")
       even_if = " even if already connected" if force
       Log.info("Connecting to broker at host #{host.inspect} port #{port.inspect} " +
                "index #{index.inspect} priority #{priority.inspect}#{even_if}")
       Log.info("Current broker configuration: #{@client.status.inspect}")
-      res = nil
+      result = nil
       begin
         @client.connect(host, port, index, priority, force) do |id|
           @client.connection_status(:one_off => @options[:connect_timeout], :brokers => [id]) do |status|
@@ -310,20 +315,18 @@ module RightScale
                   Log.warning("Successfully connected to broker #{id} but failed to update config file")
                 end
               else
-                Log.error("Failed to connect to broker #{id}, status #{status.inspect}")
+                ErrorTracker.log(self, "Failed to connect to broker #{id}, status #{status.inspect}")
               end
             rescue Exception => e
-              Log.error("Failed to connect to broker #{id}, status #{status.inspect}", e)
-              @exception_stats.track("connect", e)
+              ErrorTracker.log(self, "Failed to connect to broker #{id}, status #{status.inspect}", e)
             end
           end
         end
-      rescue Exception => e
-        res = Log.format("Failed to connect to broker at host #{host.inspect} and port #{port.inspect}", e)
-        @exception_stats.track("connect", e)
+      rescue StandardError => e
+        ErrorTracker.log(self, msg = "Failed to connect to broker at host #{host.inspect} and port #{port.inspect}", e)
+        result = Log.format(msg, e)
       end
-      Log.error(res) if res
-      res
+      result
     end
 
     # Disconnect from an AMQP broker and optionally remove it from the configuration
@@ -336,7 +339,7 @@ module RightScale
     #   defaults to false
     #
     # === Return
-    # res(String|nil):: Error message if failed, otherwise nil
+    # (String|nil):: Error message if failed, otherwise nil
     def disconnect(host, port, remove = false)
       and_remove = " and removing" if remove
       Log.info("Disconnecting#{and_remove} broker at host #{host.inspect} port #{port.inspect}")
@@ -344,29 +347,28 @@ module RightScale
       id = RightAMQP::HABrokerClient.identity(host, port)
       @connect_request_stats.update("disconnect #{@client.alias_(id)}")
       connected = @client.connected
-      res = nil
+      result = e = nil
       if connected.include?(id) && connected.size == 1
-        res = "Not disconnecting  from #{id} because it is the last connected broker for this agent"
+        result = "Not disconnecting from #{id} because it is the last connected broker for this agent"
       elsif @client.get(id)
         begin
           if remove
             @client.remove(host, port) do |id|
               unless update_configuration(:host => @client.hosts, :port => @client.ports)
-                res = "Successfully disconnected from broker #{id} but failed to update config file"
+                result = "Successfully disconnected from broker #{id} but failed to update config file"
               end
             end
           else
             @client.close_one(id)
           end
-        rescue Exception => e
-          res = Log.format("Failed to disconnect from broker #{id}", e)
-          @exception_stats.track("disconnect", e)
+        rescue StandardError => e
+          result = Log.format("Failed to disconnect from broker #{id}", e)
         end
       else
-        res = "Cannot disconnect from broker #{id} because not configured for this agent"
+        result = "Cannot disconnect from broker #{id} because not configured for this agent"
       end
-      Log.error(res) if res
-      res
+      ErrorTracker.log(self, result, e) if result
+      result
     end
 
     # There were problems while setting up service for this agent on the given AMQP brokers,
@@ -377,11 +379,11 @@ module RightScale
     # ids(Array):: Identity of brokers
     #
     # === Return
-    # res(String|nil):: Error message if failed, otherwise nil
+    # (String|nil):: Error message if failed, otherwise nil
     def connect_failed(ids)
       aliases = @client.aliases(ids).join(", ")
       @connect_request_stats.update("enroll failed #{aliases}")
-      res = nil
+      result = nil
       begin
         Log.info("Received indication that service initialization for this agent for brokers #{ids.inspect} has failed")
         connected = @client.connected
@@ -389,12 +391,11 @@ module RightScale
         Log.info("Not marking brokers #{ignored.inspect} as unusable because currently connected") if ignored
         Log.info("Current broker configuration: #{@client.status.inspect}")
         @client.declare_unusable(ids - ignored)
-      rescue Exception => e
-        res = Log.format("Failed handling broker connection failure indication for #{ids.inspect}", e)
-        Log.error(res)
-        @exception_stats.track("connect failed", e)
+      rescue StandardError => e
+        ErrorTracker.log(self, msg = "Failed handling broker connection failure indication for #{ids.inspect}", e)
+        result = Log.format(msg, e)
       end
-      res
+      result
     end
 
     # Update agent's persisted configuration
@@ -411,11 +412,11 @@ module RightScale
         AgentConfig.store_cfg(@agent_name, cfg)
         true
       else
-        Log.error("Could not access configuration file #{AgentConfig.cfg_file(@agent_name).inspect} for update")
+        ErrorTracker.log(self, "Could not access configuration file #{AgentConfig.cfg_file(@agent_name).inspect} for update")
         false
       end
-    rescue Exception => e
-      Log.error("Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e, :trace)
+    rescue StandardError => e
+      ErrorTracker.log(self, "Failed updating configuration file #{AgentConfig.cfg_file(@agent_name).inspect}", e)
       false
     end
 
@@ -432,7 +433,7 @@ module RightScale
     def terminate(reason = nil, exception = nil)
       begin
         @history.update("stop") if @history
-        Log.error("[stop] Terminating because #{reason}", exception, :trace) if reason
+        ErrorTracker.log(self, "[stop] Terminating because #{reason}", exception) if reason
         if exception.is_a?(Exception)
           h = @history.analyze_service
           if h[:last_crashed]
@@ -455,10 +456,8 @@ module RightScale
           Log.info("[stop] Agent #{@identity} terminating")
           stop_gracefully(@options[:grace_timeout])
         end
-      rescue SystemExit
-        raise
-      rescue Exception => e
-        Log.error("Failed to terminate gracefully", e, :trace)
+      rescue StandardError => e
+        ErrorTracker.log(self, "Failed to terminate gracefully", e)
         begin @terminate_callback.call; rescue Exception; end
       end
       true
@@ -523,10 +522,9 @@ module RightScale
     #     with percentage breakdown per failure type, or nil if none
     def agent_stats(reset = false)
       stats = {
-        "exceptions"        => @exception_stats.stats,
         "request failures"  => @request_failure_stats.all,
         "response failures" => @response_failure_stats.all
-      }
+      }.merge(ErrorTracker.stats(reset))
       if @mode != :http
         stats["connect requests"] = @connect_request_stats.all
         stats["non-deliveries"] = @non_delivery_stats.all
@@ -544,7 +542,6 @@ module RightScale
       @non_delivery_stats = RightSupport::Stats::Activity.new
       @request_failure_stats = RightSupport::Stats::Activity.new
       @response_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(self, @options[:exception_callback])
       true
     end
 
@@ -588,7 +585,6 @@ module RightScale
       @mode = @options[:mode].to_sym
       @stats_routing_key = "stats.#{@agent_type}.#{parsed_identity.base_id}"
       @terminate_callback = TERMINATE_BLOCK
-      @exception_callback = @options[:exception_callback]
       @revision = revision
       @queues = [@identity]
       @remaining_queue_setup = {}
@@ -623,9 +619,7 @@ module RightScale
         # reconnect attempt, which can result in repeated attempts to setup
         # queues when finally do connect
         setup_status_checks([@options[:check_interval], @options[:connect_timeout]].max)
-      rescue SystemExit
-        raise
-      rescue Exception => e
+      rescue StandardError => e
         terminate("failed service startup", e)
       end
       true
@@ -650,20 +644,20 @@ module RightScale
               end
             rescue Dispatcher::DuplicateRequest
             rescue Exception => e
-              Log.error("Failed sending response for <#{event[:uuid]}>", e, :trace)
+              ErrorTracker.log(self, "Failed sending response for <#{event[:uuid]}>", e)
             end
           end
         elsif event[:type] == "Result"
           if (data = event[:data]) && (result = data[:result]) && result.respond_to?(:non_delivery?) && result.non_delivery?
             Log.info("Non-delivery of event <#{data[:request_uuid]}>: #{result.content}")
           else
-            Log.error("Unexpected Result event from #{event[:from]}: #{event.inspect}")
+            ErrorTracker.log(self, "Unexpected Result event from #{event[:from]}: #{event.inspect}")
           end
         else
-          Log.error("Unrecognized event type #{event[:type]} from #{event[:from]}")
+          ErrorTracker.log(self, "Unrecognized event type #{event[:type]} from #{event[:from]}")
         end
       else
-        Log.error("Unrecognized event: #{event.class}")
+        ErrorTracker.log(self, "Unrecognized event: #{event.class}")
       end
       nil
     end
@@ -742,14 +736,14 @@ module RightScale
           actors.delete(actor)
         end
       end
-      Log.error("Actors #{actors.inspect} not found in #{actors_dirs.inspect}") unless actors.empty?
+      ErrorTracker.log(self, "Actors #{actors.inspect} not found in #{actors_dirs.inspect}") unless actors.empty?
 
       # Perform agent-specific initialization including actor creation and registration
       if (init_file = AgentConfig.init_file)
         Log.info("[setup] Initializing agent from #{init_file}")
         instance_eval(File.read(init_file), init_file)
       else
-        Log.error("No agent init.rb file found in init directory of #{AgentConfig.root_dir.inspect}")
+        ErrorTracker.log(self, "No agent init.rb file found in init directory of #{AgentConfig.root_dir.inspect}")
       end
       true
     end
@@ -786,7 +780,7 @@ module RightScale
                 old.call if old.is_a? Proc
               end
             rescue Exception => e
-              Log.error("Failed in termination", e, :trace)
+              ErrorTracker.log(self, "Failed in termination", e)
             end
           end
         end
@@ -828,8 +822,7 @@ module RightScale
           result = Result.new(token, from, OperationResult.non_delivery(reason), to)
           @sender.handle_response(result)
         rescue Exception => e
-          Log.error("Failed handling non-delivery for <#{token}>", e, :trace)
-          @exception_stats.track("message return", e)
+          ErrorTracker.log(self, "Failed handling non-delivery for <#{token}>", e)
         end
       end
     end
@@ -881,8 +874,7 @@ module RightScale
         end
         @sender.message_received
       rescue Exception => e
-        Log.error("#{queue} queue processing error", e, :trace)
-        @exception_stats.track("#{queue} queue", e, packet)
+        ErrorTracker.log(self, "#{queue} queue processing error", e)
       ensure
         # Relying on fact that all dispatches/deliveries are synchronous and therefore
         # need to have completed or failed by now, thus allowing packet acknowledgement
@@ -907,17 +899,16 @@ module RightScale
             @client.publish(exchange, result, :persistent => true, :mandatory => true, :log_filter => [:request_from, :tries, :persistent, :duration])
           end
         else
-          Log.error("Failed to dispatch request #{request.trace} from queue #{queue} because no dispatcher configured")
+          ErrorTracker.log(self, "Failed to dispatch request #{request.trace} from queue #{queue} because no dispatcher configured")
           @request_failure_stats.update("NoConfiguredDispatcher")
         end
       rescue Dispatcher::DuplicateRequest
       rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-        Log.error("Failed to publish result of dispatched request #{request.trace} from queue #{queue}", e)
+        ErrorTracker.log(self, "Failed to publish result of dispatched request #{request.trace} from queue #{queue}", e)
         @request_failure_stats.update("NoConnectedBrokers")
-      rescue Exception => e
-        Log.error("Failed to dispatch request #{request.trace} from queue #{queue}", e, :trace)
+      rescue StandardError => e
+        ErrorTracker.log(self, "Failed to dispatch request #{request.trace} from queue #{queue}", e)
         @request_failure_stats.update(e.class.name)
-        @exception_stats.track("request", e)
       end
       true
     end
@@ -932,10 +923,9 @@ module RightScale
     def deliver_response(result)
       begin
         @sender.handle_response(result)
-      rescue Exception => e
-        Log.error("Failed to deliver response #{result.trace}", e, :trace)
+      rescue StandardError => e
+        ErrorTracker.log(self, "Failed to deliver response #{result.trace}", e)
         @response_failure_stats.update(e.class.name)
-        @exception_stats.track("response", e)
       end
       true
     end
@@ -968,8 +958,7 @@ module RightScale
         begin
           callback.call(type, state)
         rescue RuntimeError => e
-          Log.error("Failed status callback", e)
-          @exception_stats.track("update status", e)
+          ErrorTracker.log(self, "Failed status callback", e, nil, :caller)
         end
       end
       true
@@ -1005,38 +994,31 @@ module RightScale
           update_status(:auth, :failed)
         end
       rescue Exception => e
-        Log.error("Failed switching mode", e)
-        @exception_stats.track("check status", e)
+        ErrorTracker.log(self, "Failed switching mode", e)
       end
 
       begin
         finish_setup unless @terminating || @mode == :http
       rescue Exception => e
-        Log.error("Failed finishing setup", e)
-        @exception_stats.track("check status", e)
+        ErrorTracker.log(self, "Failed finishing setup", e)
       end
 
       begin
         @client.queue_status(@queues, timeout = @options[:check_interval] / 10) unless @terminating || @mode == :http
       rescue Exception => e
-        Log.error("Failed checking queue status", e)
-        @exception_stats.track("check status", e)
+        ErrorTracker.log(self, "Failed checking queue status", e)
       end
 
       begin
         publish_stats unless @terminating || @stats_routing_key.nil?
-      rescue Exceptions::ConnectivityFailure => e
-        Log.error("Failed publishing stats", e, :no_trace)
       rescue Exception => e
-        Log.error("Failed publishing stats", e)
-        @exception_stats.track("check status", e)
+        ErrorTracker.log(self, "Failed publishing stats", e)
       end
 
       begin
         check_other(@check_status_count) unless @terminating
       rescue Exception => e
-        Log.error("Failed to perform other check status check", e)
-        @exception_stats.track("check status", e)
+        ErrorTracker.log(self, "Failed to perform other check status check", e)
       end
 
       @check_status_count += 1
@@ -1131,7 +1113,7 @@ module RightScale
               Log.info("[stop] Continuing with termination")
               finish.call
             rescue Exception => e
-              Log.error("Failed while finishing termination", e, :trace)
+              ErrorTracker.log(self, "Failed while finishing termination", e)
               begin @terminate_callback.call; rescue Exception; end
             end
           end

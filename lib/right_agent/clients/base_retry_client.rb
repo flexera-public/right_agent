@@ -77,7 +77,6 @@ module RightScale
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging; can be augmented on individual requests
-    # @option options [Proc] :exception_callback for unexpected exceptions
     #
     # @return [Boolean] whether currently connected
     #
@@ -161,7 +160,6 @@ module RightScale
     #   [Hash, NilClass] "request sent" Activity stats or nil if none
     #   [Float, NilClass] "response time" average number of seconds to respond to a request or nil if none
     #   [Hash, NilClass] "state" Activity stats or nil if none
-    #   [Hash, NilClass] "exceptions" Exceptions stats or nil if none
     def stats(reset = false)
       stats = {}
       @stats.each { |k, v| stats[k] = v.all }
@@ -180,8 +178,7 @@ module RightScale
         "reconnects"       => RightSupport::Stats::Activity.new,
         "request failures" => RightSupport::Stats::Activity.new,
         "requests sent"    => RightSupport::Stats::Activity.new,
-        "state"            => RightSupport::Stats::Activity.new,
-        "exceptions"       => RightSupport::Stats::Exceptions.new(agent = nil, @options[:exception_callback]) }
+        "state"            => RightSupport::Stats::Activity.new }
       true
     end
 
@@ -212,8 +209,7 @@ module RightScale
               begin
                 callback.call(@type, @state)
               rescue StandardError => e
-                Log.error("Failed status callback", e)
-                @stats["exceptions"].track("status", e)
+                ErrorTracker.log(self, "Failed status callback", e, nil, :caller)
               end
             end
             reconnect if @state == :disconnected
@@ -248,9 +244,8 @@ module RightScale
     def close_http_client(reason)
       @http_client.close(reason) if @http_client
       true
-    rescue Exception => e
-      Log.error("Failed closing connection", e, :trace)
-      @stats["exceptions"].track("status", e)
+    rescue StandardError => e
+      ErrorTracker.log(self, "Failed closing connection", e)
       false
     end
 
@@ -271,11 +266,10 @@ module RightScale
         @http_client.check_health
         self.state = :connected
       rescue BalancedHttpClient::NotResponding => e
-        Log.error("Failed #{@options[:server_name]} health check", e.nested_exception)
+        ErrorTracker.log(self, "Failed #{@options[:server_name]} health check", e.nested_exception)
         self.state = :disconnected
-      rescue Exception => e
-        Log.error("Failed #{@options[:server_name]} health check", e)
-        @stats["exceptions"].track("check health", e)
+      rescue StandardError => e
+        ErrorTracker.log(self, "Failed #{@options[:server_name]} health check", e, nil, :caller)
         self.state = :disconnected
       end
     end
@@ -298,9 +292,8 @@ module RightScale
               @reconnect_timer = @reconnecting = nil
             end
           rescue Exception => e
-            Log.error("Failed #{@options[:server_name]} reconnect", e)
+            ErrorTracker.log(self, "Failed #{@options[:server_name]} reconnect", e, nil, :caller)
             @stats["reconnects"].update("failure")
-            @stats["exceptions"].track("reconnect", e)
             self.state = :disconnected
           end
           @reconnect_timer.interval = @options[:reconnect_interval] if @reconnect_timer
@@ -472,8 +465,8 @@ module RightScale
         @stats["request failures"].update("#{type} - retry")
         raise Exceptions::RetryableError.new(retry_result.http_body, retry_result)
       else
-        Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
-                  "in response to retryable error (#{retry_result.http_body})")
+        ErrorTracker.log(self, "Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
+                               "in response to retryable error (#{retry_result.http_body})")
         wait(interval)
       end
       # Change request_uuid so that retried request not rejected as duplicate
@@ -505,8 +498,8 @@ module RightScale
         self.state = :disconnected
         raise Exceptions::ConnectivityFailure.new(not_responding.message + " after #{attempts} attempts")
       else
-        Log.error("Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
-                  "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
+        ErrorTracker.log(self, "Retrying #{type} request <#{request_uuid}> in #{interval} seconds " +
+                               "in response to routing failure (#{BalancedHttpClient.exception_text(not_responding)})")
         wait(interval)
       end
       true

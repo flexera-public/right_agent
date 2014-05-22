@@ -185,7 +185,7 @@ module RightScale
       request = RightScale::RetryableRequest.new("/router/query_tags", payload, request_options)
       request.callback { |result| yield raw ? request.raw_response : result }
       request.errback do |message|
-        Log.error("Failed to query tags (#{message})")
+        ErrorTracker.log(self, "Failed to query tags (#{message})")
         yield((raw ? request.raw_response : nil) || message)
       end
       request.run

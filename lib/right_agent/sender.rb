@@ -68,10 +68,6 @@ module RightScale
     #
     # === Parameters
     # agent(Agent):: Agent using this sender; uses its identity, client, and following options:
-    #   :exception_callback(Proc):: Callback with following parameters that is activated on exception events:
-    #     exception(Exception):: Exception
-    #     message(Packet):: Message being processed
-    #     agent(Agent):: Reference to agent
     #   :offline_queueing(Boolean):: Whether to queue request if client currently disconnected,
     #     also requires agent invocation of initialize_offline_queue and start_offline_queue methods below,
     #     as well as enable_offline_mode and disable_offline_mode as client connection status changes
@@ -102,7 +98,7 @@ module RightScale
       @connectivity_checker = if @mode == :amqp
         # Only need connectivity checker for AMQP broker since RightHttpClient does its own checking
         # via periodic session renewal
-        ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats, @exception_stats)
+        ConnectivityChecker.new(self, @options[:ping_interval] || 0, @ping_stats)
       end
       @@instance = self
     end
@@ -448,9 +444,6 @@ module RightScale
     #
     # === Return
     # stats(Hash):: Current statistics:
-    #   "exceptions"(Hash|nil):: Exceptions raised per category, or nil if none
-    #     "total"(Integer):: Total exceptions for this category
-    #     "recent"(Array):: Most recent as a hash of "count", "type", "message", "when", and "where"
     #   "non-deliveries"(Hash|nil):: Non-delivery activity stats with keys "total", "percent", "last",
     #     and 'rate' with percentage breakdown per reason, or nil if none
     #   "offlines"(Hash|nil):: Offline activity stats with keys "total", "last", and "duration",
@@ -486,7 +479,6 @@ module RightScale
           end
         end
         stats = {
-          "exceptions"       => @exception_stats.stats,
           "non-deliveries"   => @non_delivery_stats.all,
           "offlines"         => offlines,
           "pings"            => @ping_stats.all,
@@ -520,7 +512,6 @@ module RightScale
       @offline_stats = RightSupport::Stats::Activity.new(measure_rate = false)
       @request_kind_stats = RightSupport::Stats::Activity.new(measure_rate = false)
       @send_failure_stats = RightSupport::Stats::Activity.new
-      @exception_stats = RightSupport::Stats::Exceptions.new(@agent, @agent.exception_callback)
       true
     end
 
@@ -614,9 +605,8 @@ module RightScale
         EM_S.next_tick do
           begin
             http_send_once(kind, target, packet, received_at, &callback)
-          rescue Exception => e
-            Log.error("Failed sending or handling response for #{packet.trace} #{packet.type}", e, :trace)
-            @exception_stats.track("request", e)
+          rescue StandardError => e
+            ErrorTracker.log(self, "Failed sending or handling response for #{packet.trace} #{packet.type}", e)
           end
         end
       else
@@ -668,8 +658,7 @@ module RightScale
           result = error_result(e.inspect)
         else
           agent_type = AgentIdentity.parse(@identity).agent_type
-          Log.error("Failed to send #{packet.trace} #{packet.type}", e, :trace)
-          @exception_stats.track("request", e)
+          ErrorTracker.log(self, "Failed to send #{packet.trace} #{packet.type}", e)
           result = error_result("#{agent_type.capitalize} agent internal error")
         end
       end
@@ -739,21 +728,17 @@ module RightScale
     # TemporarilyOffline:: If cannot send request because RightNet client currently disconnected
     #   and offline queueing is disabled
     def amqp_send_once(packet, ids = nil)
-      name =
       exchange = {:type => :fanout, :name => @request_queue, :options => {:durable => true, :no_declare => @secure}}
       @agent.client.publish(exchange, packet, :persistent => packet.persistent, :mandatory => true,
                             :log_filter => [:tags, :target, :tries, :persistent], :brokers => ids)
     rescue RightAMQP::HABrokerClient::NoConnectedBrokers => e
-      msg = "Failed to publish request #{packet.trace} #{packet.type}"
-      Log.error(msg, e)
+      ErrorTracker.log(self, error = "Failed to publish request #{packet.trace} #{packet.type}", e, packet)
       @send_failure_stats.update("NoConnectedBrokers")
-      raise TemporarilyOffline.new(msg + " (#{e.class}: #{e.message})")
-    rescue Exception => e
-      msg = "Failed to publish request #{packet.trace} #{packet.type}"
-      Log.error(msg, e, :trace)
+      raise TemporarilyOffline.new(error + " (#{e.class}: #{e.message})")
+    rescue StandardError => e
+      ErrorTracker.log(self, error = "Failed to publish request #{packet.trace} #{packet.type}", e, packet)
       @send_failure_stats.update(e.class.name)
-      @exception_stats.track("publish", e, packet)
-      raise SendFailure.new(msg + " (#{e.class}: #{e.message})")
+      raise SendFailure.new(error + " (#{e.class}: #{e.message})")
     end
 
     # Send request via AMQP with one or more retries if do not receive a response in time
@@ -802,14 +787,13 @@ module RightScale
               @connectivity_checker.check(check_broker_ids.first) if check_broker_ids.any? && count == 1
             end
           rescue TemporarilyOffline => e
-            Log.error("Failed retry for #{packet.trace} #{packet.type} because temporarily offline")
+            ErrorTracker.log(self, "Failed retry for #{packet.trace} #{packet.type} because temporarily offline")
           rescue SendFailure => e
-            Log.error("Failed retry for #{packet.trace} #{packet.type} because of send failure")
+            ErrorTracker.log(self, "Failed retry for #{packet.trace} #{packet.type} because of send failure")
           rescue Exception => e
             # Not sending a response here because something more basic is broken in the retry
             # mechanism and don't want an error response to preempt a delayed actual response
-            Log.error("Failed retry for #{packet.trace} #{packet.type} without responding", e, :trace)
-            @exception_stats.track("retry", e, packet)
+            ErrorTracker.log(self, "Failed retry for #{packet.trace} #{packet.type} without responding", e, packet)
           end
         end
       end

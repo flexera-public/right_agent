@@ -72,8 +72,8 @@ module RightScale
         FileUtils.mkdir_p(@pid_dir)
         open(@pid_file,'w') { |f| f.write(Process.pid) }
         File.chmod(0644, @pid_file)
-      rescue Exception => e
-        Log.error "Failed to create PID file: #{e.message}"
+      rescue StandardError => e
+        ErrorTracker.log(self, "Failed to create PID file", e, nil, :caller)
         raise
       end
       true

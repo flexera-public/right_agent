@@ -178,7 +178,7 @@ module RightScale
       e2 = HttpExceptions.convert(e)
       log_failure(used[:host], path, params, filter, request_uuid, started_at, e2)
       raise e2
-    rescue Exception => e
+    rescue StandardError => e
       log_failure(used[:host], path, params, filter, request_uuid, started_at, e)
       raise
     end
@@ -345,7 +345,7 @@ module RightScale
     def log_failure(host, path, params, filter, request_uuid, started_at, exception)
       code = exception.respond_to?(:http_code) ? exception.http_code : "nil"
       duration = "%.0fms" % ((Time.now - started_at) * 1000)
-      Log.error("Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, host, exception))
+      ErrorTracker.log(self, "Failed <#{request_uuid}> in #{duration} | #{code} " + log_text(path, params, filter, host, exception))
       true
     end
 

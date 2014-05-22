@@ -45,6 +45,8 @@
 #      --grace-timeout SEC      Set number of seconds before graceful termination times out
 #      --[no-]dup-check         Set whether to check for and reject duplicate requests, .e.g., due to retries
 #      --fiber-pool-size, -f N  Set size of fiber pool
+#      --airbrake-endpoint URL  Set URL for Airbrake endpoint for reporting exceptions to Errbit
+#      --airbrake-api-key KEY   Set Airbrake API key for use in reporting exceptions to Errbit
 #      --options, -o KEY=VAL    Set options that act as final override for any persisted configuration settings
 #      --monit                  Generate monit configuration file
 #      --test                   Build test deployment using default test settings
@@ -205,6 +207,14 @@ module RightScale
           options[:heartbeat] = sec.to_i
         end
 
+        opts.on('--airbrake-endpoint URL') do |url|
+          options[:airbrake_endpoint] = url
+        end
+
+        opts.on('--airbrake-api-key KEY') do |key|
+          options[:airbrake_api_key] = key
+        end
+
         opts.on('-o', '--options OPT') do |e|
           fail("Invalid option definition #{e}' (use '=' to separate name and value)") unless e.include?('=')
           key, val = e.split(/=/)
@@ -277,7 +287,7 @@ module RightScale
       actors_dirs = AgentConfig.actors_dirs
       actors.each do |a|
         found = false
-        actors_dirs.each { |d| break if found = File.exist?(File.normalize_path(File.join(d, "#{a}.rb"))) }
+        actors_dirs.each { |d| break if (found = File.exist?(File.normalize_path(File.join(d, "#{a}.rb")))) }
         fail("Cannot find source for actor #{a.inspect} in #{actors_dirs.inspect}") unless found
       end
       true
@@ -318,6 +328,8 @@ module RightScale
       cfg[:http_proxy]         = options[:http_proxy] if options[:http_proxy]
       cfg[:http_no_proxy]      = options[:http_no_proxy] if options[:http_no_proxy]
       cfg[:fiber_pool_size]    = options[:fiber_pool_size] if options[:fiber_pool_size]
+      cfg[:airbrake_endpoint]  = options[:airbrake_endpoint] if options[:airbrake_endpoint]
+      cfg[:airbrake_api_key]   = options[:airbrake_api_key] if options[:airbrake_api_key]
       cfg
     end
 

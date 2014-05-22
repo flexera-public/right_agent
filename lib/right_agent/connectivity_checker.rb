@@ -38,13 +38,12 @@ module RightScale
     # Timer while waiting for RightNet router ping response
     attr_accessor :ping_timer
 
-    def initialize(sender, check_interval, ping_stats, exception_stats)
+    def initialize(sender, check_interval, ping_stats)
       @sender = sender
       @check_interval = check_interval
       @ping_timeouts = {}
       @ping_timer = nil
       @ping_stats = ping_stats
-      @exception_stats = exception_stats
       @last_received = Time.now
       @message_received_callbacks = []
       restart_inactivity_timer if @check_interval > 0
@@ -98,17 +97,16 @@ module RightScale
               @ping_timer = nil
               @ping_timeouts[@ping_id] = (@ping_timeouts[@ping_id] || 0) + 1
               if @ping_timeouts[@ping_id] >= max_ping_timeouts
-                Log.error("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds and now " +
-                          "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
-                          "attempting to reconnect")
+                ErrorTracker.log(self, "Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds and now " +
+                                       "reached maximum of #{max_ping_timeouts} timeout#{max_ping_timeouts > 1 ? 's' : ''}, " +
+                                       "attempting to reconnect")
                 host, port, index, priority = @sender.client.identity_parts(@ping_id)
                 @sender.agent.connect(host, port, index, priority, force = true)
               else
                 Log.warning("Mapper ping via broker #{@ping_id} timed out after #{PING_TIMEOUT} seconds")
               end
             rescue Exception => e
-              Log.error("Failed to reconnect to broker #{@ping_id}", e, :trace)
-              @exception_stats.track("ping timeout", e)
+              ErrorTracker.log(self, "Failed to reconnect to broker #{@ping_id}", e)
             end
           else
             @ping_timer = nil
@@ -125,8 +123,7 @@ module RightScale
               @ping_id = nil
             end
           rescue Exception => e
-            Log.error("Failed to cancel router ping", e, :trace)
-            @exception_stats.track("cancel ping", e)
+            ErrorTracker.log(self, "Failed to cancel router ping", e)
           end
         end
         request = Request.new("/router/ping", nil, {:from => @sender.identity, :token => AgentIdentity.generate})
@@ -167,8 +164,7 @@ module RightScale
         begin
           check(id = nil, max_ping_timeouts = 1)
         rescue Exception => e
-          Log.error("Failed connectivity check", e, :trace)
-          @exception_stats.track("check connectivity", e)
+          ErrorTracker.log(self, "Failed connectivity check", e)
         end
       end
       true

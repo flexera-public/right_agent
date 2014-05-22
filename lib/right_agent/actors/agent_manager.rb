@@ -28,8 +28,6 @@ class AgentManager
   include RightScale::Actor
   include RightScale::OperationResultHelper
 
-  on_exception { |meth, deliverable, e| RightScale::ExceptionMailer.deliver_notification(meth, deliverable, e) }
-
   expose_idempotent     :ping, :stats, :profile, :set_log_level, :connect, :disconnect, :connect_failed
   expose_non_idempotent :execute, :terminate
 
@@ -42,6 +40,7 @@ class AgentManager
   # agent(RightScale::Agent):: This agent
   def initialize(agent)
     @agent = agent
+    @error_tracker = RightScale::ErrorTracker.instance
   end
 
   # Always return success along with identity, protocol version, and broker information
@@ -140,7 +139,7 @@ class AgentManager
     begin
       success_result(self.instance_eval(code))
     rescue Exception => e
-      error_result(e.message + " at\n  " + e.backtrace.join("\n  "))
+      error_result("Failed executing: #{code.inspect}", e, :trace)
     end
   end
 
@@ -157,18 +156,19 @@ class AgentManager
   #   :force(Boolean):: Reconnect even if already connected
   #
   # === Return
-  # res(RightScale::OperationResult):: Success unless exception is raised
+  # (RightScale::OperationResult):: Success unless exception is raised
   def connect(options)
     options = RightScale::SerializationHelper.symbolize_keys(options)
-    res = success_result
+    result = success_result
     begin
       if (error = @agent.connect(options[:host], options[:port], options[:id], options[:priority], options[:force]))
-        res = error_result(error)
+        result = error_result(error)
       end
     rescue Exception => e
-      res = error_result("Failed to connect to broker", e)
+      @error_tracker.log(self, error = "Failed to connect to broker", e)
+      result = error_result(error, e)
     end
-    res
+    result
   end
 
   # Disconnect agent from a broker
@@ -180,18 +180,19 @@ class AgentManager
   #   :remove(Boolean):: Remove broker from configuration in addition to disconnecting it
   #
   # === Return
-  # res(RightScale::OperationResult):: Success unless exception is raised
+  # (RightScale::OperationResult):: Success unless exception is raised
   def disconnect(options)
     options = RightScale::SerializationHelper.symbolize_keys(options)
-    res = success_result
+    result = success_result
     begin
       if (error = @agent.disconnect(options[:host], options[:port], options[:remove]))
-        res = error_result(error)
+        result = error_result(error)
       end
     rescue Exception => e
-      res = error_result("Failed to disconnect from broker", e)
+      @error_tracker.log(self, error = "Failed to disconnect from broker", e)
+      result = error_result(error, e)
     end
-    res
+    result
   end
 
   # Declare one or more broker connections unusable because connection setup has failed
@@ -201,18 +202,19 @@ class AgentManager
   #   :brokers(Array):: Identity of brokers
   #
   # === Return
-  # res(RightScale::OperationResult):: Success unless exception is raised
+  # (RightScale::OperationResult):: Success unless exception is raised
   def connect_failed(options)
     options = RightScale::SerializationHelper.symbolize_keys(options)
-    res = success_result
+    result = success_result
     begin
       if (error = @agent.connect_failed(options[:brokers]))
-        res = error_result(error)
+        result = error_result(error)
       end
     rescue Exception => e
-      res = error_result("Failed to notify agent that brokers #{options[:brokers]} are unusable", e)
+      @error_tracker.log(self, error = "Failed to notify agent that brokers #{options[:brokers]} are unusable", e)
+      result = error_result(error, e)
     end
-    res
+    result
   end
 
   # Terminate self

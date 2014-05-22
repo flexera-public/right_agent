@@ -105,7 +105,7 @@ module RightScale
           msg = EncryptedDocument.new(msg, certs).encrypted_data(encode_format)
         else
           target = obj.target_for_encryption if obj.respond_to?(:target_for_encryption)
-          Log.error("No certs available for object #{obj.class} being sent to #{target.inspect}\n") if target
+          ErrorTracker.log(self, "No certs available for object #{obj.class} being sent to #{target.inspect}") if target
         end
       end
       sig = Signature.new(msg, @cert, @key).data(encode_format)

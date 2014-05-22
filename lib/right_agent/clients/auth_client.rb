@@ -175,7 +175,6 @@ module RightScale
     #
     # @return [Hash] current statistics
     #   [Hash, NilClass] "state" Activity stats or nil if none
-    #   [Hash, NilClass] "exceptions" Exceptions stats or nil if none
     def stats(reset = false)
       stats = {}
       @stats.each { |k, v| stats[k] = v.all }
@@ -189,9 +188,7 @@ module RightScale
     #
     # @return [TrueClass] always true
     def reset_stats
-      @stats = {
-        "state" => RightSupport::Stats::Activity.new,
-        "exceptions" => RightSupport::Stats::Exceptions.new(agent = nil, @exception_callback)}
+      @stats = {"state" => RightSupport::Stats::Activity.new}
       true
     end
 
@@ -246,8 +243,7 @@ module RightScale
             begin
               callback.call(:auth, @state)
             rescue StandardError => e
-              Log.error("Failed status callback", e)
-             @stats["exceptions"].track("status", e)
+              ErrorTracker.log(self, "Failed status callback", e, nil, :caller)
             end
           end
         end

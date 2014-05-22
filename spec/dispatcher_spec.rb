@@ -26,7 +26,6 @@ class Foo
   include RightScale::Actor
   expose_idempotent :bar, :index, :i_kill_you
   expose_non_idempotent :bar_non
-  on_exception :handle_exception
 
   def index(payload)
     bar(payload)
@@ -47,32 +46,15 @@ class Foo
   def i_kill_you(payload)
     raise RuntimeError.new('I kill you!')
   end
-
-  def handle_exception(method, deliverable, error)
-  end
 end
 
 class Bar
   include RightScale::Actor
   expose :i_kill_you
-  on_exception do |method, deliverable, error|
-    @scope = self
-    @called_with = [method, deliverable, error]
-  end
 
   def i_kill_you(payload)
     raise RuntimeError.new('I kill you!')
   end
-end
-
-# No specs, simply ensures multiple methods for assigning on_exception callback,
-# on_exception raises exception when called with an invalid argument.
-class Doomed
-  include RightScale::Actor
-  on_exception do
-  end
-  on_exception lambda {}
-  on_exception :doh
 end
 
 describe "RightScale::Dispatcher" do
@@ -89,7 +71,7 @@ describe "RightScale::Dispatcher" do
     @registry = RightScale::ActorRegistry.new
     @registry.register(@actor, nil)
     @agent_id = "rs-agent-1-1"
-    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry, :exception_callback => nil).by_default
+    @agent = flexmock("Agent", :identity => @agent_id, :registry => @registry).by_default
     @cache = RightScale::DispatchedCache.new(@agent_id)
     @dispatcher = RightScale::Dispatcher.new(@agent, @cache)
   end
@@ -157,41 +139,17 @@ describe "RightScale::Dispatcher" do
       lambda { @dispatcher.dispatch(req) }.should raise_error(RightScale::Dispatcher::InvalidRequestType)
     end
 
-    it "should call the on_exception callback if something goes wrong" do
+    it "should log exception if dispatch fails" do
+      @log.should_receive(:error).with(/Failed dispatching/, RuntimeError, :trace).once
+      req = RightScale::Request.new('/foo/i_kill_you', nil)
+      @dispatcher.dispatch(req)
+    end
+
+    it "should return error result if dispatch fails" do
       @log.should_receive(:error).once
       req = RightScale::Request.new('/foo/i_kill_you', nil)
-      flexmock(@actor).should_receive(:handle_exception).with(:i_kill_you, req, Exception).once
       res = @dispatcher.dispatch(req)
       res.results.error?.should be_true
-      (res.results.content =~ /Could not handle \/foo\/i_kill_you request/).should be_true
-    end
-
-    it "should call on_exception Procs defined in a subclass with the correct arguments" do
-      @log.should_receive(:error).once
-      actor = Bar.new
-      @registry.register(actor, nil)
-      req = RightScale::Request.new('/bar/i_kill_you', nil)
-      @dispatcher.dispatch(req)
-      called_with = actor.instance_variable_get("@called_with")
-      called_with[0].should == :i_kill_you
-      called_with[1].should == req
-      called_with[2].should be_kind_of(RuntimeError)
-      called_with[2].message.should == 'I kill you!'
-    end
-
-    it "should call on_exception Procs defined in a subclass in the scope of the actor" do
-      @log.should_receive(:error).once
-      actor = Bar.new
-      @registry.register(actor, nil)
-      req = RightScale::Request.new('/bar/i_kill_you', nil)
-      @dispatcher.dispatch(req)
-      actor.instance_variable_get("@scope").should == actor
-    end
-
-    it "should log error if dispatch fails" do
-      RightScale::Log.should_receive(:error).once
-      req = RightScale::Request.new('/foo/i_kill_you', nil)
-      @dispatcher.dispatch(req)
     end
 
     it "should reject requests whose time-to-live has expired" do
@@ -310,13 +268,6 @@ describe "RightScale::Dispatcher" do
         @dispatcher.dispatch(req).should_not be_nil
         EM.stop
       end
-    end
-
-    it "should return error result if dispatch fails" do
-      @log.should_receive(:error).with(/Could not handle/, Exception, :trace).once
-      req = RightScale::Request.new('/foo/i_kill_you', nil)
-      res = @dispatcher.dispatch(req)
-      res.results.error?.should be_true
     end
 
   end

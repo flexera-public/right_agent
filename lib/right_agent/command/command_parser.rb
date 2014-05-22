@@ -51,12 +51,12 @@ module RightScale
     def parse_chunk(chunk)
       @buildup << chunk
       chunks = @buildup.split(CommandSerializer::SEPARATOR, -1)
-      if do_call = chunks.size > 1
+      if (do_call = chunks.size > 1)
         commands = []
         (0..chunks.size - 2).each do |i|
           begin
             commands << CommandSerializer.load(chunks[i])
-          rescue Exception => e
+          rescue StandardError => e
             # log any exceptions caused by serializing individual chunks instead
             # of halting EM. each command is discrete so we need to keep trying
             # so long as there are more commands to process (although subsequent
@@ -77,7 +77,7 @@ module RightScale
         @buildup = chunks.last
       end
       do_call
-    rescue Exception => e
+    rescue StandardError => e
       # log any other exceptions instead of halting EM.
       Log.error("Failed parsing command chunk", e, :trace)
     end

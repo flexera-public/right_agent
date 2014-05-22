@@ -5,7 +5,7 @@ gemspec
 
 gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
-    :branch => 'master'
+    :branch => 'cornsilk_14_11_acu169058_right_net_refactor'
 
 gem 'right_support',
     :git => 'git@github.com:rightscale/right_support.git',
@@ -23,7 +23,9 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '~> 1.0.0.9'
+gem 'eventmachine',      '~> 1.0.0.9'
+
+gem 'hydraulic_brake',   '~> 0.1.0'
 
 group :windows do
   platform :mswin do

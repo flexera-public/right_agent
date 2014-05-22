@@ -269,7 +269,7 @@ describe RightScale::AuthClient do
           end
 
           it "log error if callback fails" do
-            @log.should_receive(:error).with("Failed status callback", StandardError).once
+            @log.should_receive(:error).with("Failed status callback", StandardError, :caller).once
             @client.status { |t, s| raise StandardError, "test" }
             @client.send(:state=, state).should == state
           end

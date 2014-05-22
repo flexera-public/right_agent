@@ -89,7 +89,6 @@ describe RightScale::BaseRetryClient do
       options = @client.instance_variable_get(:@options)
       options[:retry_enabled].should be_nil
       options[:filter_params].should be_nil
-      options[:exception_callback].should be_nil
     end
 
     it "initiates connection and enables use if connected" do
@@ -214,7 +213,7 @@ describe RightScale::BaseRetryClient do
           end
 
           it "log error if callback fails" do
-            @log.should_receive(:error).with("Failed status callback", StandardError).once
+            @log.should_receive(:error).with("Failed status callback", StandardError, :caller).once
             @client.status { |t, s| raise StandardError, "test" }
             @client.send(:state=, state).should == state
           end
@@ -321,13 +320,13 @@ describe RightScale::BaseRetryClient do
     it "sets state to :disconnected and logs if server not responding" do
       e = RightScale::BalancedHttpClient::NotResponding.new("not responding", RightScale::HttpExceptions.create(503))
       @http_client.should_receive(:check_health).and_raise(e).once
-      @log.should_receive(:error).with("Failed test health check", RightScale::HttpException).once
+      @log.should_receive(:error).with("Failed test health check", RightScale::HttpException, :trace).once
       @client.send(:check_health).should == :disconnected
       @client.state.should == :disconnected
     end
 
     it "sets state to :disconnected and logs if exception unexpected" do
-      @log.should_receive(:error).with("Failed test health check", StandardError).once
+      @log.should_receive(:error).with("Failed test health check", StandardError, :caller).once
       @http_client.should_receive(:check_health).and_raise(StandardError).once
       @client.send(:check_health).should == :disconnected
       @client.state.should == :disconnected
@@ -387,14 +386,14 @@ describe RightScale::BaseRetryClient do
       it "logs error if exception is raised" do
         flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield
         flexmock(@client).should_receive(:enable_use).and_raise(StandardError).once
-        @log.should_receive(:error).with("Failed test reconnect", StandardError).once
+        @log.should_receive(:error).with("Failed test reconnect", StandardError, :caller).once
         @client.send(:reconnect).should be_true
         @client.state.should == :disconnected
       end
 
       it "resets the timer interval to the configured value" do
         @client.send(:reconnect); @client.instance_variable_set(:@reconnecting, nil) # to get @reconnect_timer initialized
-        @log.should_receive(:error).with("Failed test health check", StandardError).once
+        @log.should_receive(:error).with("Failed test health check", StandardError, :caller).once
         @http_client.should_receive(:check_health).and_raise(StandardError).once
         @timer.should_receive(:interval=).with(15).once
         flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield

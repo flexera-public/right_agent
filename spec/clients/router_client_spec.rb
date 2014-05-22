@@ -470,7 +470,7 @@ describe RightScale::RouterClient do
       end
 
       it "adjusts connect interval if websocket creation fails and sets state to :long_poll" do
-        @log.should_receive(:error).with("Failed creating WebSocket", RuntimeError).once
+        @log.should_receive(:error).with("Failed creating WebSocket", RuntimeError, :caller).once
         flexmock(Faye::WebSocket::Client).should_receive(:new).and_raise(RuntimeError).once
         @client.send(:try_connect, @routing_keys, &@handler)
         @client.instance_variable_get(:@connect_interval).should == 60

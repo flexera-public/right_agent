@@ -128,34 +128,6 @@ module RightScale
         @exposed[method] if @exposed
       end
 
-      # Set method called when dispatching to this actor fails
-      #
-      # The callback method is required to accept the following parameters:
-      #   method(Symbol):: Actor method being dispatched to
-      #   deliverable(Packet):: Packet delivered to dispatcher
-      #   exception(Exception):: Exception raised
-      #
-      # === Parameters
-      # proc(Proc|Symbol|String):: Procedure to be called on exception
-      #
-      # === Block
-      # Block to be executed if no Proc provided
-      #
-      # === Return
-      # @exception_callback(Proc):: Callback procedure
-      def on_exception(proc = nil, &blk)
-        raise 'No callback provided for on_exception' unless proc || blk
-        @exception_callback = proc || blk
-      end
-
-      # Get exception callback procedure
-      #
-      # === Return
-      # @exception_callback(Proc):: Callback procedure
-      def exception_callback
-        @exception_callback
-      end
-      
     end # ClassMethods     
     
     module InstanceMethods

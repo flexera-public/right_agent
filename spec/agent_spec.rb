@@ -493,10 +493,10 @@ describe RightScale::Agent do
       it "should ack if request dispatch fails" do
         run_in_em do
           request = RightScale::Request.new("/foo/bar", "payload")
-          @log.should_receive(:error).with(/Failed to dispatch request/, Exception, :trace).once
+          @log.should_receive(:error).with(/Failed to dispatch request/, StandardError, :trace).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, request, @header).once
-          @dispatcher.should_receive(:dispatch).and_raise(Exception)
+          @dispatcher.should_receive(:dispatch).and_raise(StandardError)
           @header.should_receive(:ack).once
           @agent.run
         end
@@ -505,10 +505,10 @@ describe RightScale::Agent do
       it "should ack if response delivery fails" do
         run_in_em do
           result = RightScale::Result.new("token", "to", "results", "from")
-          @log.should_receive(:error).with(/Failed to deliver response/, Exception, :trace).once
+          @log.should_receive(:error).with(/Failed to deliver response/, StandardError, :trace).once
           @broker.should_receive(:subscribe).with(hsh(:name => @identity), nil, Hash, Proc).
                                              and_return(@broker_ids).and_yield(@broker_id, result, @header).once
-          @sender.should_receive(:handle_response).and_raise(Exception)
+          @sender.should_receive(:handle_response).and_raise(StandardError)
           @header.should_receive(:ack).once
           @agent.run
         end
@@ -528,7 +528,7 @@ describe RightScale::Agent do
         run_in_em do
           @agent = RightScale::Agent.new(:user => "me", :identity => @identity)
           @broker.should_receive(:nil?).and_return(true)
-          @log.should_receive(:error).with("[stop] Terminating because just because", nil, :trace).once
+          @log.should_receive(:error).with("[stop] Terminating because just because").once
           @agent.terminate("just because")
         end
       end

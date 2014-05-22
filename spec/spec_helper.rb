@@ -40,6 +40,8 @@ $TESTING = true
 $VERBOSE = nil # Disable constant redefined warning
 TEST_SOCKET_PORT = 80000
 
+RightScale::ErrorTracker.init(RightScale::Agent, "test_agent", :trace_level => RightScale::Agent::TRACE_LEVEL)
+
 module RightScale
 
   module SpecHelper

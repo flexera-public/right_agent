@@ -52,7 +52,7 @@ describe RightScale::Sender do
       @client = flexmock("client", :push => true, :request => true, :all => @broker_ids, :publish => @broker_ids).by_default
       @agent_id = "rs-agent-1-1"
       @agent = flexmock("agent", :identity => @agent_id, :client => @client, :mode => mode, :request_queue => "request",
-                        :exception_callback => nil, :options => options).by_default
+                        :options => options).by_default
       RightScale::Sender.new(@agent)
       RightScale::Sender.instance
     end
@@ -921,7 +921,7 @@ describe RightScale::Sender do
 
         context "when fails" do
           it "raises TemporarilyOffline if no connected brokers" do
-            @log.should_receive(:error).with(/Failed to publish/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+            @log.should_receive(:error).with(/Failed to publish/, RightAMQP::HABrokerClient::NoConnectedBrokers, :no_trace).once
             @client.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers).once
             lambda { @sender.send(:amqp_send_once, @packet) }.should raise_error(RightScale::Sender::TemporarilyOffline)
           end
@@ -947,7 +947,7 @@ describe RightScale::Sender do
         end
 
         it "does not rescue if publish fails" do
-          @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+          @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers, :no_trace).once
           @client.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers).once
           lambda { @sender.send(:amqp_send_retry, @packet, @token) }.should raise_error(RightScale::Sender::TemporarilyOffline)
         end
@@ -1040,7 +1040,7 @@ describe RightScale::Sender do
             @client.should_receive(:publish).and_return(@broker_ids).once.ordered
             @client.should_receive(:publish).and_raise(RightAMQP::HABrokerClient::NoConnectedBrokers).once.ordered
             flexmock(EM).should_receive(:add_timer).and_yield.once
-            @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers).once
+            @log.should_receive(:error).with(/Failed to publish request/, RightAMQP::HABrokerClient::NoConnectedBrokers, :no_trace).once
             @log.should_receive(:error).with(/Failed retry.*temporarily offline/).once
             @sender.send(:amqp_send, :send_request, @target, @packet, @received_at, &@callback).should be_true
             @sender.pending_requests[@token].should_not be_nil

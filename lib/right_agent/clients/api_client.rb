@@ -83,7 +83,6 @@ module RightScale
     # @option options [Array] :retry_intervals between successive retries; defaults to DEFAULT_RETRY_INTERVALS
     # @option options [Boolean] :retry_enabled for requests that fail to connect or that return a retry result
     # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
-    # @option options [Proc] :exception_callback for unexpected exceptions
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)

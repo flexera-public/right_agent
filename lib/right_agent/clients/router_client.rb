@@ -88,7 +88,6 @@ module RightScale
     # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
     # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
-    # @option options [Proc] :exception_callback for unexpected exceptions
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)
@@ -262,7 +261,6 @@ module RightScale
     #   [Hash, NilClass] "request failures" Activity stats or nil if none
     #   [Hash, NilClass] "request sent" Activity stats or nil if none
     #   [Float, NilClass] "response time" average number of seconds to respond to a request or nil if none
-    #   [Hash, NilClass] "exceptions" Exceptions stats or nil if none
     def stats(reset = false)
       events = @stats["events"].all
       stats = super(reset)
@@ -337,11 +335,10 @@ module RightScale
         end
         @listen_failures = 0
       rescue Exception => e
-        Log.error("Failed to listen", e, :trace)
-        @stats["exceptions"].track("listen", e)
+        ErrorTracker.log(self, "Failed to listen", e)
         @listen_failures += 1
         if @listen_failures > MAX_LISTEN_FAILURES
-          Log.error("Exceeded maximum repeated listen failures (#{MAX_LISTEN_FAILURES}), stopping listening")
+          ErrorTracker.log(self, "Exceeded maximum repeated listen failures (#{MAX_LISTEN_FAILURES}), stopping listening")
           @listen_state = :cancel
           self.state = :failed
           return false
@@ -440,8 +437,7 @@ module RightScale
       connect(routing_keys, &handler)
       update_listen_state(:check, 1)
     rescue Exception => e
-      Log.error("Failed creating WebSocket", e)
-      @stats["exceptions"].track("websocket", e)
+      ErrorTracker.log(self, "Failed creating WebSocket", e, nil, :caller)
       backoff_connect_interval
       update_listen_state(:long_poll)
     end
@@ -477,7 +473,7 @@ module RightScale
       @websocket = Faye::WebSocket::Client.new(url.to_s, protocols = nil, options)
 
       @websocket.onerror = lambda do |event|
-        Log.error("WebSocket error (#{event.data})") if event.data
+        ErrorTracker.log(self, "WebSocket error (#{event.data})") if event.data
       end
 
       @websocket.onclose = lambda do |event|
@@ -488,8 +484,7 @@ module RightScale
           msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
           Log.info(msg)
         rescue Exception => e
-          Log.error("Failed closing WebSocket", e, :trace)
-          @stats["exceptions"].track("event", e)
+          ErrorTracker.log(self, "Failed closing WebSocket", e)
         end
         @websocket = nil
       end
@@ -508,8 +503,7 @@ module RightScale
           handler.call(event)
           @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
         rescue Exception => e
-          Log.error("Failed handling WebSocket event", e, :trace)
-          @stats["exceptions"].track("event", e)
+          ErrorTracker.log(self, "Failed handling WebSocket event", e)
         end
       end
 
@@ -607,7 +601,7 @@ module RightScale
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
       when Exception
-        @stats["exceptions"].track("long-polling", result)
+        ErrorTracker.track(self, result)
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
       else
