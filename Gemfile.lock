@@ -1,7 +1,7 @@
 GIT
   remote: git@github.com:rightscale/right_amqp.git
-  revision: 736a9de026e1da31e04eea441f947bc0976962dd
-  branch: cornsilk_14_11_acu169058_right_net_refactor
+  revision: c06c199f6104aae7ecb40615498cd7c6ece12d4c
+  branch: master
   specs:
     right_amqp (0.8.3)
       eventmachine (>= 0.12.10, < 2.0)
@@ -17,7 +17,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (2.2.1)
+    right_agent (2.3.0)
       eventmachine (>= 0.12.10, < 2.0)
       faye-websocket (= 0.7.0)
       ffi
@@ -66,7 +66,7 @@ GEM
     msgpack (0.5.8)
     msgpack (0.5.8-x86-mingw32)
     net-http-persistent (2.9.4)
-    net-ssh (2.8.0)
+    net-ssh (2.9.1)
     netrc (0.7.7)
     rake (0.9.2.2)
     rbx-require-relative (0.0.9)

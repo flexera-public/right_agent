@@ -5,7 +5,7 @@ gemspec
 
 gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
-    :branch => 'cornsilk_14_11_acu169058_right_net_refactor'
+    :branch => 'master'
 
 gem 'right_support',
     :git => 'git@github.com:rightscale/right_support.git',
