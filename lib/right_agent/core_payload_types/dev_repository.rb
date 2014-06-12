@@ -72,5 +72,37 @@ module RightScale
     def serialized_members
       [ @repo_type, @url, @tag, @cookbooks_path, @ssh_key, @username, @password, @repo_sha, @positions ]
     end
+
+    # Maps the given DevRepository to a has that can be consumed by the RightScraper gem
+    #
+    # === Returns
+    # (Hash)::
+    #   :repo_type (Symbol):: Type of repository: one of :git, :svn, :download or :local
+    #     * :git denotes a 'git' repository that should be retrieved via 'git clone'
+    #     * :svn denotes a 'svn' repository that should be retrieved via 'svn checkout'
+    #     * :download denotes a tar ball that should be retrieved via HTTP GET (HTTPS if uri starts with https://)
+    #     * :local denotes cookbook that is already local and doesn't need to be retrieved
+    #   :url (String):: URL to repository (e.g. git://github.com/opscode/chef-repo.git)
+    #   :tag (String):: git commit or svn branch that should be used to retrieve repository
+    #                       Optional, use 'master' for git and 'trunk' for svn if tag is nil.
+    #                       Not used for raw repositories.
+    #   :cookbooks_path (Array):: Path to cookbooks inside repostory
+    #                                             Optional (use location of repository as cookbook path if nil)
+    #   :first_credential (String):: Either the Private SSH key used to retrieve git repositories, or the Username used to retrieve svn and raw repositories
+    #   :second_credential (String):: Password used to retrieve svn and raw repositories
+    def to_scraper_hash
+      repo = {}
+      repo[:repo_type]            = repo_type.to_sym unless repo_type.nil?
+      repo[:url]                  = url
+      repo[:tag]                  = tag
+      repo[:resources_path]       = cookbooks_path
+      if !ssh_key.nil?
+        repo[:first_credential]   = ssh_key
+      elsif !(username.nil? && password.nil?)
+        repo[:first_credential]   = dev_repo.username
+        repo[:second_credential]  = dev_repo.password
+      end
+      repo
+    end
   end
 end
