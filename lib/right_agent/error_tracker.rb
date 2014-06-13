@@ -47,6 +47,7 @@ module RightScale
 
     # Log error and optionally track in stats
     # Errbit notification is left to the callback configured in the stats tracker
+    # Logging works even if init was never called
     #
     # @param [String, Object] component reporting error; non-string is snake-cased
     # @param [String] description of failure for use in logging
@@ -81,8 +82,11 @@ module RightScale
     #
     # @return [TrueClass] always true
     def track(component, exception, packet = nil)
-      component = component.class.name.split("::").last.snake_case unless component.is_a?(String)
-      @exception_stats.track(component, exception, packet)
+      if @exception_stats
+        component = component.class.name.split("::").last.snake_case unless component.is_a?(String)
+        @exception_stats.track(component, exception, packet)
+      end
+      true
     end
 
     # Notify Errbit of error if notification enabled
@@ -140,7 +144,7 @@ module RightScale
     #
     # @return [Hash] current statistics
     def stats(reset = false)
-      stats = {"exceptions" => @exception_stats.all}
+      stats = {"exceptions" => @exception_stats && @exception_stats.all}
       reset_stats if reset
       stats
     end

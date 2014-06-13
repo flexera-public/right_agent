@@ -142,6 +142,13 @@ describe RightScale::ErrorTracker do
       @tracker.exception_stats.all.should == {"test" => {"total" => 1, "recent" => [{"count" => 1, "when" => 1000000,
                                               "type" => "RuntimeError", "message" => "error", "where" => nil}]}}
     end
+
+    it "only tracks if stats container exists" do
+      @tracker.instance_variable_set(:@exception_stats, nil)
+      request = RightScale::Request.new("/foo/bar", "payload")
+      @tracker.track("test", @exception, request).should be true
+      @tracker.exception_stats.should be nil
+    end
   end
 
   context :notify do
@@ -235,6 +242,12 @@ describe RightScale::ErrorTracker do
       @tracker.track(@agent, @exception).should be true
       @tracker.stats.should == {"exceptions" => {"agent_mock" => {"total" => 1, "recent" => [{"count" => 1,
                                 "when" => 1000000, "type" => "RuntimeError", "message" => "error", "where" => nil}]}}}
+    end
+
+    it "returns no exception stats if stats container not initialized" do
+      @tracker.instance_variable_set(:@exception_stats, nil)
+      @tracker.track(@agent, @exception).should be true
+      @tracker.stats.should == {"exceptions" => nil}
     end
 
     it "resets stats after collecting current stats" do
