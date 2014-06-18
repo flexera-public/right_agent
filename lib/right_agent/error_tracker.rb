@@ -113,14 +113,17 @@ module RightScale
         data[:component] = component if component
         if packet && packet.is_a?(Packet)
           data[:action] = packet.type.split("/").last if packet.respond_to?(:type)
-          data[:parameters] = packet.payload if packet.respond_to?(:payload)
-          uuid = packet.token if packet.respond_to?(:token)
+          params = packet.respond_to?(:payload) && packet.payload
+          uuid = packet.respond_to?(:token) && packet.token
         elsif packet.is_a?(Hash)
           action = packet[:path] || packet["path"]
           data[:action] = action.split("/").last if action
-          data[:parameters] = packet[:data] || packet["data"]
+          params = packet[:data] || packet["data"]
           uuid = packet[:uuid] || packet["uuid"]
+        else
+          params = uuid = nil
         end
+        data[:parameters] = params.is_a?(Hash) ? params : {:param => params} if params
         data[:session_data] = {:uuid => uuid} if uuid
         HydraulicBrake.notify(data)
       end

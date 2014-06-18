@@ -204,6 +204,28 @@ describe RightScale::ErrorTracker do
       @tracker.notify(@exception, packet = nil, agent = nil, "component").should be true
     end
 
+    it "converts non-nil, non-hash payload in packet to a hash" do
+      request = RightScale::Request.new("/foo/bar", "payload", :token => "token")
+      @brake.should_receive(:notify).with(on { |a| a[:parameters] == {:param => "payload"} }).once
+      @tracker.notify(@exception, request).should be true
+    end
+
+    it "converts non-nil, non-hash data in event to a hash" do
+      @brake.should_receive(:notify).with(on { |a| a[:parameters] == {:param => "payload"} }).once
+      @tracker.notify(@exception, {"uuid" => "token", "path" => "/foo/bar", "data" => "payload"}).should be true
+    end
+
+    it "omits :parameters from notification if payload in packet is nil" do
+      request = RightScale::Request.new("/foo/bar", nil, :token => "token")
+      @brake.should_receive(:notify).with(on { |a| !a.has_key?(:parameters) }).once
+      @tracker.notify(@exception, request).should be true
+    end
+
+    it "omits :parameters from notification if data in packet is nil" do
+      @brake.should_receive(:notify).with(on { |a| !a.has_key?(:parameters) }).once
+      @tracker.notify(@exception, {"uuid" => "token", "path" => "/foo/bar", "data" => nil}).should be true
+    end
+
     it "functions even if cgi_data has not been initialized by notify_init" do
       @tracker.instance_variable_set(:@cgi_data, nil)
       @brake.should_receive(:notify).with(on { |a| a[:error_message] == "error" &&
