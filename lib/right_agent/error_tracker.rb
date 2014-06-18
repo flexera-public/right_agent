@@ -19,6 +19,9 @@ module RightScale
 
     include RightSupport::Ruby::EasySingleton
 
+    # Text used for filtered parameter value
+    FILTERED_PARAM_VALUE = "<hidden>"
+
     # Container for exception statistics
     attr_reader :exception_stats
 
@@ -32,6 +35,8 @@ module RightScale
     #   with exception class as key and :no_trace, :caller, or :trace as value; exceptions
     #   with :no_trace are not backtraced when logging nor are they recorded in stats
     #   or reported to Errbit
+    # @option options [Array<Symbol, String>] :filter_params names whose values are to be
+    #   filtered when notifying
     # @option options [String] :airbrake_endpoint URL for Airbrake for reporting exceptions
     #   to Errbit
     # @option options [String] :airbrake_api_key for using the Airbrake API to access Errbit
@@ -40,7 +45,7 @@ module RightScale
     def init(agent, agent_name, options = {})
       @agent = agent
       @trace_level = options[:trace_level] || {}
-      notify_init(agent_name, options[:shard_id], options[:airbrake_endpoint], options[:airbrake_api_key])
+      notify_init(agent_name, options)
       reset_stats
       true
     end
@@ -123,7 +128,7 @@ module RightScale
         else
           params = uuid = nil
         end
-        data[:parameters] = params.is_a?(Hash) ? params : {:param => params} if params
+        data[:parameters] = params.is_a?(Hash) ? filter(params) : {:param => params} if params
         data[:session_data] = {:uuid => uuid} if uuid
         HydraulicBrake.notify(data)
       end
@@ -166,42 +171,58 @@ module RightScale
     # Configure HydraulicBreak for exception notification
     #
     # @param [String] agent_name uniquely identifying agent process on given server
-    # @param [Integer, NilClass] shard_id identifying shard of database in use
-    # @param [String] endpoint URL for Airbrake for reporting exceptions to Errbit
-    # @param [String] api_key for using the Airbrake API to access Errbit
+    #
+    # @option options [Integer, NilClass] :shard_id identifying shard of database in use
+    # @option options [Array<Symbol, String>] :filter_params names whose values are to be
+    #   filtered when notifying
+    # @option options [String] :airbrake_endpoint URL for Airbrake for reporting exceptions
+    #   to Errbit
+    # @option options [String] :airbrake_api_key for using the Airbrake API to access Errbit
     #
     # @return [TrueClass] always true
     #
     # @raise [RuntimeError] hydraulic_brake gem missing
-    def notify_init(agent_name, shard_id, endpoint, api_key)
-      if endpoint && api_key
+    def notify_init(agent_name, options)
+      if options[:airbrake_endpoint] && options[:airbrake_api_key]
         unless require_succeeds?("hydraulic_brake")
           raise RuntimeError, "hydraulic_brake gem missing - required if airbrake options used in ErrorTracker"
         end
 
         @cgi_data = {
-          :shard_id   => shard_id,
           :process    => $0,
           :pid        => Process.pid,
           :agent_name => agent_name
         }
-        @cgi_data[:shard_id] = shard_id if shard_id
+        @cgi_data[:shard_id] = options[:shard_id] if options[:shard_id]
         @cgi_data[:sha] = CURRENT_SOURCE_SHA if defined?(CURRENT_SOURCE_SHA)
 
-        uri = URI.parse(endpoint)
+        uri = URI.parse(options[:airbrake_endpoint])
         HydraulicBrake.configure do |config|
           config.secure = (uri.scheme == "https")
           config.host = uri.host
           config.port = uri.port
-          config.api_key = api_key
+          config.api_key = options[:airbrake_api_key]
           config.project_root = AgentConfig.root_dir
         end
+        @filter_params = (options[:filter_params] || []).map { |p| p.to_s }
         @notify_enabled = true
       else
-        @cgi_data = {}
         @notify_enabled = false
       end
       true
+    end
+
+    # Apply parameter filter
+    #
+    # @param [Hash] params to be filtered
+    #
+    # @return [Hash] filtered parameters
+    def filter(params)
+      if @filter_params
+        filtered_params = {}
+        params.each { |k, p| filtered_params[k] = @filter_params.include?(k.to_s) ? FILTERED_PARAM_VALUE : p }
+        filtered_params
+      end
     end
 
   end # ErrorTracker

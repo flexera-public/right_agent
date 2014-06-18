@@ -40,13 +40,18 @@ describe RightScale::ErrorTracker do
     @tracker = RightScale::ErrorTracker.instance
     @log = flexmock(RightScale::Log)
     @brake = flexmock(HydraulicBrake)
+    @options = {
+      :shard_id => @shard_id,
+      :trace_level => @trace_level,
+      :airbrake_endpoint => @endpoint,
+      :airbrake_api_key => @api_key,
+      :filter_params => [:password] }
   end
 
   context :init do
     it "initializes the tracker" do
-      flexmock(@tracker).should_receive(:notify_init).with(@agent_name, @shard_id, @endpoint, @api_key).once
-      @tracker.init(@agent, @agent_name, :trace_level => @trace_level, :shard_id => @shard_id,
-                    :airbrake_endpoint => @endpoint, :airbrake_api_key => @api_key).should be true
+      flexmock(@tracker).should_receive(:notify_init).with(@agent_name, @options).once
+      @tracker.init(@agent, @agent_name, @options).should be true
       @tracker.instance_variable_get(:@agent).should == @agent
       @tracker.instance_variable_get(:@trace_level).should == @trace_level
       @tracker.exception_stats.should be_a RightSupport::Stats::Exceptions
@@ -154,8 +159,7 @@ describe RightScale::ErrorTracker do
   context :notify do
     before(:each) do
       @exception = RuntimeError.new("error")
-      @tracker.init(@agent, @agent_name, :trace_level => @trace_level, :shard_id => @shard_id,
-                    :airbrake_endpoint => @endpoint, :airbrake_api_key => @api_key)
+      @tracker.init(@agent, @agent_name, @options)
       @cgi_data = @tracker.instance_variable_get(:@cgi_data)
     end
 
@@ -245,8 +249,7 @@ describe RightScale::ErrorTracker do
 
   context :notify_callback do
     it "returns proc that calls notify" do
-      @tracker.init(@agent, @agent_name, :trace_level => @trace_level, :shard_id => @shard_id,
-                    :airbrake_endpoint => @endpoint, :airbrake_api_key => @api_key)
+      @tracker.init(@agent, @agent_name, @options)
       flexmock(@tracker).should_receive(:notify).with("exception", "packet", "agent", "component").once
       @tracker.notify_callback.call("exception", "packet", "agent", "component")
     end
@@ -287,17 +290,16 @@ describe RightScale::ErrorTracker do
 
     it "does not initialize if Airbrake endpoint or API key is undefined" do
       @brake.should_receive(:configure).never
-      @tracker.send(:notify_init, @agent_name, @shard_id, @endpoint, nil)
+      @tracker.send(:notify_init, @agent_name, @options.merge(:airbrake_endpoint => nil))
       @tracker.instance_variable_get(:@notify_enabled).should be false
-      @tracker.send(:notify_init, @agent_name, @shard_id, nil, @api_key)
+      @tracker.send(:notify_init, @agent_name, @options.merge(:airbrake_api_key => nil))
       @tracker.instance_variable_get(:@notify_enabled).should be false
-      @tracker.instance_variable_get(:@cgi_data).should be_empty
     end
 
     it "initializes cgi data and configures HydraulicBrake" do
       config = ConfigMock.new
       @brake.should_receive(:configure).and_yield(config).once
-      @tracker.send(:notify_init, @agent_name, @shard_id, @endpoint, @api_key).should be true
+      @tracker.send(:notify_init, @agent_name, @options).should be true
       cgi_data = @tracker.instance_variable_get(:@cgi_data)
       cgi_data[:agent_name].should == @agent_name
       cgi_data[:pid].should be_a Integer
@@ -309,20 +311,36 @@ describe RightScale::ErrorTracker do
       config.api_key.should == @api_key
       config.project_root.should be_a String
       @tracker.instance_variable_get(:@notify_enabled).should be true
+      @tracker.instance_variable_get(:@filter_params).should == ["password"]
     end
 
     it "raises exception if hydraulic_gem is not available" do
       flexmock(@tracker).should_receive(:require_succeeds?).with("hydraulic_brake").and_return(false)
       lambda do
-        @tracker.send(:notify_init, @agent_name, @shard_id, @endpoint, @api_key)
+        @tracker.send(:notify_init, @agent_name, @options)
       end.should raise_error(RuntimeError, /hydraulic_brake gem missing/)
     end
   end
 
-  context "notify_init" do
+  context :filter do
+
     before(:each) do
-      @tracker.init(@agent, @agent_name, :trace_level => @trace_level, :shard_id => @shard_id,
-                    :airbrake_endpoint => @endpoint, :airbrake_api_key => @api_key)
+      @params = {:user => "me", :password => "secret"}
+    end
+
+    it "applies filters" do
+      @tracker.init(@agent, @agent_name, @options)
+      @tracker.send(:filter, @params).should == {:user => "me", :password => "<hidden>"}
+    end
+
+    it "converts parameter names to string form before comparison" do
+      @tracker.init(@agent, @agent_name, @options)
+      @tracker.send(:filter, :user => "me", "password" => "secret").should == {:user => "me", "password" => "<hidden>"}
+    end
+
+    it "does not filter if no filters are specified" do
+      @tracker.init(@agent, @agent_name, @options.merge(:filter_params => nil))
+      @tracker.send(:filter, @params).should == @params
     end
   end
 end
