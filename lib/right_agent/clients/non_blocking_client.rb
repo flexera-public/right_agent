@@ -205,7 +205,7 @@ module RightScale
       case error.to_s
       when "terminating", "reconnecting" then [200, nil]
       when "Errno::ETIMEDOUT" then [408, "Request timeout"]
-      else [500, (error && error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}"]
+      else [error.nil? ? nil : 500, (error && error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}"]
       end
     end
 

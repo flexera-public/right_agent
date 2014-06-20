@@ -300,6 +300,8 @@ module RightScale
         # Special case RequestTimeout because http_code is typically nil given no actual response
         yield(e)
         raise NotResponding.new("Request timeout", e)
+      elsif e.is_a?(Exceptions::ConnectivityFailure)
+        raise e
       else
         yield(e)
         raise e
@@ -440,7 +442,7 @@ module RightScale
           result = body
         end
       else
-        raise HttpExceptions.create(code, body, headers)
+        raise code.nil? ? Exceptions::ConnectivityFailure.new(body) : HttpExceptions.create(code, body, headers)
       end
       result
     end
