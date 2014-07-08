@@ -91,6 +91,7 @@ module RightScale
     # Value :no_trace means no backtrace and no tracking in stats or reporting to Errbit
     TRACE_LEVEL = {
       RightSupport::Net::NoResult => :no_trace,
+      RightScale::HttpExceptions::RequestTimeout => :no_trace,
       RightScale::Exceptions::ConnectivityFailure => :no_trace,
       RightScale::BalancedHttpClient::NotResponding => :no_trace,
       RightAMQP::HABrokerClient::NoConnectedBrokers => :no_trace
