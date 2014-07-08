@@ -248,6 +248,20 @@ unless defined?(RightScale::Platform)
         output_text
       end
 
+      # Determines which cloud we're on by the cheap but simple expedient of
+      # reading the RightScale cloud file.
+      #
+      # @deprecated leverage the right_link cloud libraries for any cloud-
+      #   specific behavior because the behavior of all possible clouds is
+      #   beyond the scope of hard-coded case statements.
+      #
+      # @return [String] cloud type or nil
+      def resolve_cloud_type
+        cloud_file_path = ::File.join(self.filesystem.right_scale_static_state_dir, 'cloud')
+        @cloud_type = ::File.read(cloud_file_path) rescue nil
+        @cloud_type
+      end
+
       # Base class for platform helpers.
       class PlatformHelperBase
 
@@ -743,20 +757,6 @@ unless defined?(RightScale::Platform)
           end
         end
         return res
-      end
-
-      # Determines which cloud we're on by the cheap but simple expedient of
-      # reading the RightScale cloud file.
-      #
-      # @deprecated leverage the right_link cloud libraries for any cloud-
-      #   specific behavior because the behavior of all possible clouds is
-      #   beyond the scope of hard-coded case statements.
-      #
-      # @return [String] cloud type or nil
-      def resolve_cloud_type
-        cloud_file_path = ::File.join(self.filesystem.right_scale_static_state_dir, 'cloud')
-        @cloud_type = ::File.read(cloud_file_path) rescue nil
-        @cloud_type
       end
 
     end # Platform
