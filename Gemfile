@@ -1,4 +1,4 @@
-source 'http://s3.amazonaws.com/rightscale_rightlink_gems_dev'
+source 'http://gems.test.rightscale.com'
 source 'https://rubygems.org'
 
 gemspec
@@ -11,8 +11,6 @@ gem 'right_support',
     :git => 'git@github.com:rightscale/right_support.git',
     :branch => 'master'
 
-gem 'rest-client', '~> 1.7.0.1'
-
 gem "simple_uuid", "~> 0.2"
 
 gem "mime-types", "< 2.0"
@@ -23,7 +21,7 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine',      '~> 1.0.0.9'
+gem 'eventmachine',      '~> 1.0.0.10'
 
 gem 'hydraulic_brake',   '~> 0.1.0'
 
