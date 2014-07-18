@@ -104,3 +104,6 @@ def version_can_handle_non_delivery_result; 13 end
 
 def version_cannot_handle_http_result; 22 end
 def version_can_handle_http_result; 23 end
+
+def version_cannot_handle_generic_events; 23 end
+def version_can_handle_generic_events; 24 end

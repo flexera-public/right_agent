@@ -67,6 +67,9 @@ module RightScale
     # Test whether given version of agent can always handle a hash payload
     def can_always_handle_hash_payload?(version); version && version >= 24 end
 
+    # Test whether given version of agent can handle generic events
+    def can_handle_generic_events?(version); version && version >= 25 end
+
   end # ProtocolVersionMixin
 
 end # RightScale

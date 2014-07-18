@@ -465,24 +465,28 @@ module RightScale
       options = {
         # Limit to .auth_header here (rather than .headers) to keep WebSockets happy
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
-        :ping => @options[:listen_timeout] }
+        :ping => @options[:listen_timeout],
+        :peer => "router"}
       url = URI.parse(@auth_client.router_url)
       url.scheme = url.scheme == "https" ? "wss" : "ws"
       url.path = url.path + "/connect"
       url.query = routing_keys.map { |k| "routing_keys[]=#{CGI.escape(k)}" }.join("&") if routing_keys && routing_keys.any?
-      Log.info("Creating WebSocket connection to #{url.to_s}")
-      @websocket = Faye::WebSocket::Client.new(url.to_s, protocols = nil, options)
 
-      @websocket.onerror = lambda do |event|
-        ErrorTracker.log(self, "WebSocket error (#{event.data})") if event.data
+      Log.info("Creating WebSocket connection to #{url.to_s}")
+      @websocket = EventWebSocket.new(url.to_s, protocols = nil, options)
+
+      # Define proc for receiving WebSocket error messages
+      @websocket.onerror = lambda do |message|
+        ErrorTracker.log(self, "WebSocket error (#{message.data})") if message.data
       end
 
-      @websocket.onclose = lambda do |event|
+      # Define proc for receiving WebSocket close messages
+      @websocket.onclose = lambda do |message|
         begin
-          @close_code = event.code.to_i
-          @close_reason = event.reason
-          msg = "WebSocket closed (#{event.code}"
-          msg << ((event.reason.nil? || event.reason.empty?) ? ")" : ": #{event.reason})")
+          @close_code = message.code.to_i
+          @close_reason = message.reason
+          msg = "WebSocket closed (#{message.code}"
+          msg << ((message.reason.nil? || message.reason.empty?) ? ")" : ": #{message.reason})")
           Log.info(msg)
         rescue Exception => e
           ErrorTracker.log(self, "Failed closing WebSocket", e)
@@ -490,22 +494,32 @@ module RightScale
         @websocket = nil
       end
 
-      @websocket.onmessage = lambda do |event|
+      # Define proc for receiving WebSocket messages
+      @websocket.onmessage = lambda do |message|
         begin
-          # Receive event
-          event = SerializationHelper.symbolize_keys(JSON.load(event.data))
-          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
-          @stats["events"].update("#{event[:type]} #{event[:path]}")
-
-          # Acknowledge event
-          @websocket.send(JSON.dump({:ack => event[:uuid]}))
-
-          # Handle event
-          handler.call(event)
-          @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+          @websocket.receive(message.data)
         rescue Exception => e
-          ErrorTracker.log(self, "Failed handling WebSocket event", e)
+          ErrorTracker.log(self, "Failed handling WebSocket message", e)
         end
+      end
+
+      # Define proc for receiving WebSocket event message
+      @websocket.onevent = lambda do |data|
+        event = data[:event]
+        Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+        @stats["events"].update("#{event[:type]} #{event[:path]}")
+
+        # Acknowledge event
+        @websocket.send({:ack => event[:uuid]})
+
+        # Handle event
+        handler.call(event)
+        @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+      end
+
+      # Define proc for receiving WebSocket event acknowledgement message
+      websocket.onack = lambda do |data|
+        Log.debug("Received ACK <#{data[:uuid]}>")
       end
 
       @websocket

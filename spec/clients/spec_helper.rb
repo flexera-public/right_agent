@@ -58,7 +58,7 @@ class AuthClientMock < RightScale::AuthClient
 end
 
 # Mock WebSocket event
-class WebSocketEventMock
+class WebSocketMessageMock
   attr_reader :code, :data, :reason
 
   def initialize(data, code = nil, reason = nil)
@@ -87,7 +87,7 @@ class WebSocketClientMock
   end
 
   def onclose(code, reason = nil)
-    @event = WebSocketEventMock.new(nil, code, reason)
+    @event = WebSocketMessageMock.new(nil, code, reason)
     @close_block.call(@event)
   end
 
@@ -96,7 +96,7 @@ class WebSocketClientMock
   end
 
   def onerror(data)
-    @event = WebSocketEventMock.new(data)
+    @event = WebSocketMessageMock.new(data)
     @error_block.call(@event)
   end
 
@@ -105,7 +105,7 @@ class WebSocketClientMock
   end
 
   def onmessage(data)
-    @event = WebSocketEventMock.new(data)
+    @event = WebSocketMessageMock.new(data)
     @message_block.call(@event)
   end
 end
