@@ -21,25 +21,13 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #++
 
-require 'faye/websocket'
-
-# Monkey patch WebSocket close method so that can specify status code and reason
-# Valid status codes are defined in RFC6455 section 7.4.1
-module Faye
-  class WebSocket
-    module API
-      def close(code = nil, reason = nil)
-        @ready_state = CLOSING if @ready_state == OPEN
-        @driver.close(reason, code)
-      end
-    end
-  end
-end
-
 module RightScale
 
   # HTTP interface to RightNet router
   class RouterClient < BaseRetryClient
+
+    # When encounter irreparable event sequence failure
+    class EventSequenceBroken < RuntimeError; end
 
     # RightNet router API version for use in X-API-Version header
     API_VERSION = "2.0"
@@ -55,6 +43,9 @@ module RightScale
 
     # Maximum interval between attempts to reconnect or long-poll when router is not responding
     MAX_RECONNECT_INTERVAL = 30
+
+    # Maximum attempts to replay event source from same event
+    MAX_REPLAY_ATTEMPTS = 2
 
     # Interval between checks for lost WebSocket connection
     CHECK_INTERVAL = 5
@@ -95,6 +86,8 @@ module RightScale
     def initialize(auth_client, options)
       init(:router, auth_client, options.merge(:server_name => "RightNet", :api_version => API_VERSION))
       @options[:listen_timeout] ||= DEFAULT_LISTEN_TIMEOUT
+      @last_event = {}
+      @replays = {}
     end
 
     # Route a request to a single target or multiple targets with no response expected
@@ -203,7 +196,7 @@ module RightScale
         path = event[:path] ? " #{event[:path]}" : ""
         to = routing_keys ? " to #{routing_keys.inspect}" : ""
         Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
-        @websocket.send(JSON.dump(params))
+        @websocket.send(params)
       else
         make_request(:post, "/notify", params, "notify", :request_uuid => event[:uuid], :filter_params => ["event"])
       end
@@ -213,9 +206,10 @@ module RightScale
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true, although only returns when closing
     #
@@ -226,17 +220,18 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(routing_keys, &handler)
+    def listen(routing_keys, replay_uuids = nil, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
-      @event_uuids = nil
+      @ack_uuids = nil
+      @replay_uuids = nil
       @listen_interval = 0
       @listen_state = :choose
       @listen_failures = 0
       @connect_interval = CONNECT_INTERVAL
       @reconnect_interval = RECONNECT_INTERVAL
 
-      listen_loop(routing_keys, &handler)
+      listen_loop(routing_keys, replay_uuids, &handler)
       true
     end
 
@@ -284,12 +279,13 @@ module RightScale
     # A periodic timer is not effective here because it does not wa
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
     # @return [Boolean] false if failed or terminating, otherwise true
-    def listen_loop(routing_keys, &handler)
+    def listen_loop(routing_keys, replay_uuids, &handler)
       @listen_timer = nil
 
       begin
@@ -318,16 +314,17 @@ module RightScale
         when :connect
           # Use of WebSockets is enabled and it is again time to try to connect
           @stats["reconnects"].update("websocket") if @attempted_connect_at
-          try_connect(routing_keys, &handler)
+          try_connect(routing_keys, replay_uuids, &handler)
         when :long_poll
           # Resorting to long-polling
           # Need to long-poll on separate thread if cannot use non-blocking HTTP i/o
           # Will still periodically retry WebSockets if not restricted to just long-polling
+          @replay_uuids = replay_uuids if replay_uuids && replay_uuids.any?
           if @options[:non_blocking]
-            @event_uuids = process_long_poll(try_long_poll(routing_keys, @event_uuids, &handler))
+            @ack_uuids, @replay_uuids = process_long_poll(try_long_poll(routing_keys, @ack_uuids, @replay_uuids, &handler))
           else
             update_listen_state(:wait, 1)
-            try_deferred_long_poll(routing_keys, @event_uuids, &handler)
+            try_deferred_long_poll(routing_keys, @ack_uuids, @replay_uuids, &handler)
           end
         when :wait
           # Deferred long-polling is expected to break out of this state eventually
@@ -348,7 +345,7 @@ module RightScale
         @listen_interval = CHECK_INTERVAL
       end
 
-      listen_loop_wait(Time.now, @listen_interval, routing_keys, &handler)
+      listen_loop_wait(Time.now, @listen_interval, routing_keys, replay_uuids, &handler)
     end
 
     # Wait specified interval before next listen loop
@@ -357,21 +354,22 @@ module RightScale
     # @param [Time] started_at time when first started waiting
     # @param [Numeric] interval to wait
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true
-    def listen_loop_wait(started_at, interval, routing_keys, &handler)
+    def listen_loop_wait(started_at, interval, routing_keys, replay_uuids, &handler)
       if @listen_interval == 0
-        EM_S.next_tick { listen_loop(routing_keys, &handler) }
+        EM_S.next_tick { listen_loop(routing_keys, replay_uuids, &handler) }
       else
         @listen_timer = EM_S::Timer.new(interval) do
           remaining = @listen_interval - (Time.now - started_at)
           if remaining > 0
-            listen_loop_wait(started_at, remaining, routing_keys, &handler)
+            listen_loop_wait(started_at, remaining, routing_keys, replay_uuids, &handler)
           else
-            listen_loop(routing_keys, &handler)
+            listen_loop(routing_keys, replay_uuids, &handler)
           end
         end
       end
@@ -429,13 +427,14 @@ module RightScale
     # Try to create WebSocket connection
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true
-    def try_connect(routing_keys, &handler)
-      connect(routing_keys, &handler)
+    def try_connect(routing_keys, replay_uuids, &handler)
+      connect(routing_keys, replay_uuids, &handler)
       update_listen_state(:check, 1)
     rescue Exception => e
       ErrorTracker.log(self, "Failed creating WebSocket", e, nil, :caller)
@@ -447,17 +446,21 @@ module RightScale
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called when event received
-    # @yieldparam [Object] event received
+    # @yieldparam [Object] event received or exception
     # @yieldreturn [Hash, NilClass] event this is response to event received,
     #   or nil meaning no response
     #
-    # @return [Faye::WebSocket] WebSocket created
+    # @return [EventWebSocket] WebSocket created
     #
     # @raise [ArgumentError] block missing
-    def connect(routing_keys, &handler)
+    def connect(routing_keys, replay_uuids, &handler)
       raise ArgumentError, "Block missing" unless block_given?
+
+      # Ensure that current replay UUIDS not arbitrarily reapplied if ever go back to long-polling
+      @replay_uuids && @replay_uuids.clear
 
       @attempted_connect_at = Time.now
       @close_code = @close_reason = nil
@@ -467,6 +470,7 @@ module RightScale
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout],
         :peer => "router"}
+
       url = URI.parse(@auth_client.router_url)
       url.scheme = url.scheme == "https" ? "wss" : "ws"
       url.path = url.path + "/connect"
@@ -504,39 +508,141 @@ module RightScale
       end
 
       # Define proc for receiving WebSocket event message
-      @websocket.onevent = lambda do |data|
-        event = data[:event]
-        Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
-        @stats["events"].update("#{event[:type]} #{event[:path]}")
+      @websocket.oneventmessage = lambda do |data|
+        begin
+          event = data[:event]
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          @stats["events"].update("#{event[:type]} #{event[:path]}")
 
-        # Acknowledge event
-        @websocket.send({:ack => event[:uuid]})
+          # Acknowledge event
+          @websocket.send({:ack => event[:uuid]})
 
-        # Handle event
-        handler.call(event)
-        @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+          # Verify event is in sequence and if not, initiate replay
+          accepted = verify_in_sequence(event) do |last_uuid|
+            ErrorTracker.log(self, "Event <#{event[:uuid]}> is out of sequence, requesting replay after event <#{last_uuid}>")
+            @websocket.send({:replay => [last_uuid]}) do |status, content|
+              begin
+                ErrorTracker.log(self, "Failed replay for event <#{last_uuid}> (#{status}: #{content})")
+                unless status == 449
+                  error = "Attempt to replay after event <#{last_uuid}> to close gap in event sequence failed " +
+                          "(#{status}: #{content}), recommend application level resync"
+                  handler.call(EventSequenceBroken.new(error))
+                end
+              rescue Exception => e
+                ErrorTracker.log(self, "Failed handling error from replay", e)
+              end
+            end
+          end
+
+          # Handle event
+          if accepted
+            handler.call(event)
+            @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+          end
+        rescue EventSequenceBroken => e
+          handler.call(e)
+        rescue Exception => e
+          ErrorTracker.log(self, "Failed handling event message from WebSocket", e)
+        end
       end
 
       # Define proc for receiving WebSocket event acknowledgement message
-      websocket.onack = lambda do |data|
-        Log.debug("Received ACK <#{data[:uuid]}>")
+      @websocket.onackmessage = lambda do |data|
+        Log.debug("Received ACK <#{data[:ack]}>")
+      end
+
+      # Initiate replay if requested, then clear replay list
+      # so that does not get reused in listen_loop
+      if replay_uuids && replay_uuids.any?
+        @websocket.send({:replay => replay_uuids})
+        replay_uuids.clear
       end
 
       @websocket
     end
 
+    # Verify that event is in sequence
+    # If previously received, ignore it; if gap in sequence, initiate replay
+    # If replay fails, notify application so that it can take other actions to resync
+    # Do not replay if exceed maximum attempts from same event to avoid getting into cycle
+    #
+    # @param [Hash] event received with symbolized keys
+    #
+    # @yield [last_uuid] required block called to perform replay action
+    # @yieldparam [String] last_uuid of last event received
+    #
+    # @return [Boolean] whether event should be accepted
+    #
+    # @raise [ArgumentError] block missing
+    # @raise [EventSequenceBroken] replay has failed repeatedly and no further attempts allowed
+    def verify_in_sequence(event)
+      raise ArgumentError, "Block missing" unless block_given?
+
+      result = true
+      uuid = event[:uuid]
+      source_uid, event_id = parse_uuid(uuid)
+      if event_id
+        last_uuid, last_id = @last_event[source_uid]
+        if last_id.nil? || event_id == (last_id + 1)
+          @last_event[source_uid] = [uuid, event_id]
+        elsif event_id <= last_id
+          Log.info("Ignoring event <#{uuid}> because not newer than last <#{last_uuid}>")
+          result = false
+        else
+          # Need to replay events for this source, but limit attempts from this same event
+          if (replay = @replays[source_uid])
+            if replay[:last_id] == last_id && replay[:count] >= MAX_REPLAY_ATTEMPTS
+              ErrorTracker.log(self, "Rejecting replay after event <#{last_uuid}> for source #{source_uid} " +
+                                     "because already attempted #{MAX_REPLAY_ATTEMPTS} times")
+              raise EventSequenceBroken, "Repeated replay attempts after event <#{last_uuid}> to close gap in event " +
+                                         "sequence have failed, recommend application level resync"
+            elsif replay[:last_id] == last_id
+              replay[:count] += 1
+            else
+              replay = {:last_id => last_id, :count => 1}
+            end
+          else
+            replay = {:last_id => last_id, :count => 1}
+          end
+          yield(last_uuid)
+          @replays[source_uid] = replay
+          result = false
+        end
+      end
+      result
+    end
+
+    # Parse event UUID for a sequenced event
+    #
+    # @param [String] uuid for event
+    #
+    # @return [Array] source_uid as String and event_id as Integer if is sequenced event
+    #   otherwise nil for both
+    #
+    # @raise [ArgumentError] UUID contains more than one separator
+    def parse_uuid(uuid)
+      parts = uuid.split("-")
+      case parts.size
+        when 1 then [nil, nil]
+        when 2 then [parts[0], parts[1].to_i]
+        else raise ArgumentError, "Event UUID contains more than dash: #{uuid.inspect}"
+      end
+    end
+
     # Try to make long-polling request to receive events
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] event_uuids from previous poll
+    # @param [Array, NilClass] ack_uuids for events received on previous poll
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
-    # @return [Array, NilClass, Exception] UUIDs of events received, or nil if none, or Exception if failed
-    def try_long_poll(routing_keys, event_uuids, &handler)
+    # @return [Array, Exception] UUIDs of events to be acknowledged and UUIDs for event replays,
+    #   or Exception if failed
+    def try_long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
       begin
-        long_poll(routing_keys, event_uuids, &handler)
+        long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
       rescue Exception => e
         e
       end
@@ -546,18 +652,19 @@ module RightScale
     # Repeat long-polling until there is an error or the stop time has been reached
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
-    # @param [Array, NilClass] event_uuids from previous poll
+    # @param [Array, NilClass] ack_uuids for events received on previous poll
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Hash] event received
+    # @yieldparam [Hash] event received or exception
     #
-    # @return [Array, NilClass] UUIDs of events received, or nil if none
-    def try_deferred_long_poll(routing_keys, event_uuids, &handler)
+    # @return [TrueClass] always true
+    def try_deferred_long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
       # Proc for running long-poll in EM defer thread since this is a blocking call
-      @defer_operation_proc = Proc.new { try_long_poll(routing_keys, event_uuids, &handler) }
+      @defer_operation_proc = Proc.new { try_long_poll(routing_keys, ack_uuids, replay_uuids, &handler) }
 
       # Proc that runs in main EM reactor thread to handle result from above operation proc
-      @defer_callback_proc = Proc.new { |result| @event_uuids = process_long_poll(result) }
+      @defer_callback_proc = Proc.new { |result| @ack_uuids, @replay_uuids = process_long_poll(result) }
 
       # Use EM defer thread since the long-poll will block
       EM.defer(@defer_operation_proc, @defer_callback_proc)
@@ -569,45 +676,60 @@ module RightScale
     #
     # @param [Array, NilClass] routing_keys as strings to assist router in delivering
     #   event to interested parties
-    # @param [Array, NilClass] ack UUIDs for events received on previous poll
+    # @param [Array, NilClass] ack_uuids for events received on previous poll
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called for each event received
-    # @yieldparam [Object] event received
+    # @yieldparam [Object] event received or exception
     #
-    # @return [Array, NilClass] UUIDs of events received, or nil if none
+    # @return [Array] UUIDs of events to be acknowledged and UUIDs for event replays
     #
     # @raise [ArgumentError] block missing
-    def long_poll(routing_keys, ack, &handler)
+    def long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
-      params[:routing_keys] = routing_keys if routing_keys
-      params[:ack] = ack if ack && ack.any?
+      params[:routing_keys] = routing_keys if routing_keys && routing_keys.any?
+      params[:ack] = ack_uuids if ack_uuids && ack_uuids.any?
+
+      # Initiate replay if requested, then clear replay list
+      # so that does not get reused in listen_loop
+      if replay_uuids && replay_uuids.any?
+        params[:replay] = replay_uuids.dup
+        replay_uuids.clear
+      end
 
       options = {
         :request_timeout => @connect_interval,
         :poll_timeout => @options[:listen_timeout] }
 
-      event_uuids = []
       events = make_request(:poll, "/listen", params, "listen", options)
+      ack_uuids = []
+      replay_uuids = []
       if events
         events.each do |event|
-          event = SerializationHelper.symbolize_keys(event)
-          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
-          @stats["events"].update("#{event[:type]} #{event[:path]}")
-          event_uuids << event[:uuid]
-          handler.call(event)
+          begin
+            event = SerializationHelper.symbolize_keys(event)
+            uuid = event[:uuid]
+            ack_uuids << uuid
+            Log.info("Received EVENT <#{uuid}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+            @stats["events"].update("#{event[:type]} #{event[:path]}")
+            accepted = verify_in_sequence(event) { |last_uuid| replay_uuids << last_uuid }
+            handler.call(event) if accepted
+          rescue EventSequenceBroken => e
+            handler.call(e)
+          end
         end
       end
-      event_uuids if event_uuids.any?
+      [ack_uuids, replay_uuids]
     end
 
     # Process result from long-polling attempt
     # Not necessary to log failure since should already have been done by underlying HTTP client
     #
-    # @param [Array, NilClass] result from long-polling attempt
+    # @param [Array, Exception] result from long-polling attempt
     #
     # @return [Array, NilClass] result for long-polling attempt
     def process_long_poll(result)

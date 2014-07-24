@@ -170,9 +170,10 @@ module RightScale
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
     #
     # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
-    # @yieldparam [Object] event received
+    # @yieldparam [Object] event received or exception
     #
     # @return [TrueClass] always true, although normally never returns
     #
@@ -181,9 +182,9 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(routing_keys, &handler)
+    def listen(routing_keys, replay_uuids = nil, &handler)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.listen(routing_keys, &handler)
+      @router.listen(routing_keys, replay_uuids, &handler)
     end
 
     # Resource href associated with the user of this client
