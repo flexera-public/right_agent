@@ -267,7 +267,7 @@ module RightScale
     # @return [Hash] status of various clients
     def update_status(type, state)
       @status[type] = state
-      @status_callbacks.each do |callback|
+      (@status_callbacks || []).each do |callback|
         begin
           callback.call(type, state)
         rescue RuntimeError => e
