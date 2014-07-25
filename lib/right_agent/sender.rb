@@ -365,9 +365,9 @@ module RightScale
         token = response.token
         if (result = OperationResult.from_results(response))
           if result.non_delivery?
-            @non_delivery_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+            @non_delivery_stats.update(result.content.nil? ? "nil" : result.content)
           elsif result.error?
-            @result_error_stats.update(result.content.nil? ? "nil" : result.content.inspect)
+            @result_error_stats.update(result.content.nil? ? "nil" : result.content)
           end
           @result_stats.update(result.status)
         else
@@ -781,7 +781,6 @@ module RightScale
               else
                 Log.warning("RE-SEND TIMEOUT after #{elapsed.to_i} seconds for #{packet.trace} #{packet.type}")
                 result = OperationResult.non_delivery(OperationResult::RETRY_TIMEOUT)
-                @non_delivery_stats.update(result.content)
                 handle_response(Result.new(packet.token, @identity, result, @identity))
               end
               @connectivity_checker.check(check_broker_ids.first) if check_broker_ids.any? && count == 1

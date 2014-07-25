@@ -101,6 +101,7 @@ module RightScale
     # @param [String, Hash, NilClass] target for request, which may be identity of specific
     #   target, hash for selecting potentially multiple targets, or nil if routing solely
     #   using type; hash may contain:
+    #   [String] :agent_id serialized identity of specific target
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
@@ -139,6 +140,7 @@ module RightScale
     # @param [String, Hash, NilClass] target for request, which may be identity of specific
     #   target, hash for selecting targets of which one is picked randomly, or nil if routing solely
     #   using type; hash may contain:
+    #   [String] :agent_id serialized identity of specific target
     #   [Array] :tags that must all be associated with a target for it to be selected
     #   [Hash] :scope for restricting routing which may contain:
     #     [Integer] :account id that agents must be associated with to be included
