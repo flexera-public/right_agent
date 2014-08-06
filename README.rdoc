@@ -52,6 +52,8 @@ RightAgent has been tested on EC2 instances running CentOS 5.2 and Ubuntu 8.10.
 
 RightAgent is work in progress, expect more documentation and examples in the near future.
 
+Owned by the RightScale Cornsilk team.
+
 = ADDITIONAL RESOURCES
 
 * [1] RabbitMQ is http://www.rabbitmq.com/documentation.html
