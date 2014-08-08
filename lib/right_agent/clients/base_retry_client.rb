@@ -158,12 +158,10 @@ module RightScale
     #   [Hash, NilClass] "reconnects" Activity stats or nil if none
     #   [Hash, NilClass] "request failures" Activity stats or nil if none
     #   [Hash, NilClass] "request sent" Activity stats or nil if none
-    #   [Float, NilClass] "response time" average number of seconds to respond to a request or nil if none
     #   [Hash, NilClass] "state" Activity stats or nil if none
     def stats(reset = false)
       stats = {}
       @stats.each { |k, v| stats[k] = v.all }
-      stats["response time"] = @stats["requests sent"].avg_duration
       reset_stats if reset
       stats
     end

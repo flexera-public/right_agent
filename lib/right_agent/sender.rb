@@ -456,7 +456,6 @@ module RightScale
     #     with percentage breakdown per request type, or nil if none
     #   "requests pending"(Hash|nil):: Number of requests waiting for response and age of oldest,
     #     or nil if none
-    #   "response time"(Float):: Average number of seconds to respond to a request recently
     #   "result errors"(Hash|nil):: Error result activity stats with keys "total", "percent", "last",
     #     and 'rate' with percentage breakdown per error, or nil if none
     #   "results"(Hash|nil):: Results activity stats with keys "total", "percent", "last", and "rate"
@@ -485,7 +484,6 @@ module RightScale
           "request kinds"    => @request_kind_stats.all,
           "requests"         => @request_stats.all,
           "requests pending" => pending,
-          "response time"    => @request_stats.avg_duration,
           "result errors"    => @result_error_stats.all,
           "results"          => @result_stats.all,
           "retries"          => @retry_stats.all,

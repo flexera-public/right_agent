@@ -260,7 +260,6 @@ module RightScale
     #   [Hash, NilClass] "reconnects" Activity stats or nil if none
     #   [Hash, NilClass] "request failures" Activity stats or nil if none
     #   [Hash, NilClass] "request sent" Activity stats or nil if none
-    #   [Float, NilClass] "response time" average number of seconds to respond to a request or nil if none
     def stats(reset = false)
       events = @stats["events"].all
       stats = super(reset)

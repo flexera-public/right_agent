@@ -115,14 +115,12 @@ module RightScale
     #     "stale (<method>)"), or nil if none
     #   "requests"(Hash|nil):: Request activity stats with keys "total", "percent", "last", and "rate"
     #     with percentage breakdown per request type, or nil if none
-    #   "response time"(Float):: Average number of seconds to respond to a request recently
     def stats(reset = false)
       stats = {
         "dispatched cache"  => (@dispatched_cache.stats if @dispatched_cache),
         "dispatch failures" => @dispatch_failure_stats.all,
         "rejects"           => @reject_stats.all,
-        "requests"          => @request_stats.all,
-        "response time"     => @request_stats.avg_duration
+        "requests"          => @request_stats.all
       }
       reset_stats if reset
       stats
