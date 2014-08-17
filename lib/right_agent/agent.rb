@@ -641,7 +641,7 @@ module RightScale
           EM_S.next_tick do
             begin
               if (result = @dispatcher.dispatch(event_to_packet(event))) && event[:type] == "Request"
-                @client.notify(result_to_event(result), [result.to])
+                @client.notify(result_to_event(result))
               end
             rescue Dispatcher::DuplicateRequest
             rescue Exception => e
@@ -652,10 +652,10 @@ module RightScale
           if (data = event[:data]) && (result = data[:result]) && result.respond_to?(:non_delivery?) && result.non_delivery?
             Log.info("Non-delivery of event <#{data[:request_uuid]}>: #{result.content}")
           else
-            ErrorTracker.log(self, "Unexpected Result event from #{event[:from]}: #{event.inspect}")
+            ErrorTracker.log(self, "Unexpected Result event from #{event[:source]}: #{event.inspect}")
           end
         else
-          ErrorTracker.log(self, "Unrecognized event type #{event[:type]} from #{event[:from]}")
+          ErrorTracker.log(self, "Unrecognized event type #{event[:type]} from #{event[:source]}")
         end
       else
         ErrorTracker.log(self, "Unrecognized event: #{event.class}")
@@ -674,10 +674,10 @@ module RightScale
       packet = nil
       case event[:type]
       when "Push"
-        packet = RightScale::Push.new(event[:path], event[:data], {:from => event[:from], :token => event[:uuid]})
+        packet = RightScale::Push.new(event[:path], event[:data], {:from => event[:source], :token => event[:uuid]})
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
       when "Request"
-        options = {:from => event[:from], :token => event[:uuid], :reply_to => event[:reply_to], :tries => event[:tries]}
+        options = {:from => event[:source], :token => event[:uuid], :reply_to => event[:reply_to], :tries => event[:tries]}
         packet = RightScale::Request.new(event[:path], event[:data], options)
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
       end
@@ -693,8 +693,9 @@ module RightScale
     # (Hash):: Event
     def result_to_event(result)
       { :type => "Result",
-        :from => result.from,
+        :source => result.from,
         :data => {
+          :to => result.to,
           :result => result.results,
           :duration => result.duration,
           :request_uuid => result.token,
@@ -1033,7 +1034,7 @@ module RightScale
     def publish_stats
       s = stats({}).content
       if @mode == :http
-        @client.notify({:type => "Stats", :from => @identity, :data => s}, nil)
+        @client.notify({:type => "Stats", :source => @identity, :data => s})
       else
         exchange = {:type => :topic, :name => "stats", :options => {:no_declare => true}}
         @client.publish(exchange, Stats.new(s, @identity), :no_log => true,

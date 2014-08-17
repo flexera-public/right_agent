@@ -151,9 +151,7 @@ module RightScale
     # Use WebSocket if possible
     # Do not block this request even if in the process of closing
     #
-    # @param [Hash] event to send
-    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
-    #   event to interested parties
+    # @param [Hash] event to send with :source and :type controlling routing
     #
     # @return [TrueClass] always true
     #
@@ -162,14 +160,16 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def notify(event, routing_keys)
+    def notify(event)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.notify(event, routing_keys)
+      @router.notify(event)
     end
 
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events with source uid, name, or routing ID
+    #   as key and array of event types of interest as value, nil meaning all from that
+    #   source; defaults to events from pre-defined sources for the given type of agent
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
@@ -182,9 +182,9 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(routing_keys, replay_uuids = nil, &handler)
+    def listen(sources, replay_uuids = nil, &handler)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.listen(routing_keys, replay_uuids, &handler)
+      @router.listen(sources, replay_uuids, &handler)
     end
 
     # Resource href associated with the user of this client

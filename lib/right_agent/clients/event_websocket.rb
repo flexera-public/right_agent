@@ -160,7 +160,6 @@ module RightScale
               when :replay then @on_replay_message && @on_replay_message.call(data)
               when :error  then data[key] = SerializationHelper.symbolize_keys(data[key]);
                                 receive_error(data)
-              when :routing_keys
               else
                 ErrorTracker.log(self, "Unrecognized WebSocket message key #{key.inspect}#{@from}")
               end
@@ -213,7 +212,7 @@ module RightScale
     # Store block to be executed when event is received
     #
     # @param [Proc] proc with one parameter, which is a hash containing :event
-    #   as hash and :routing_keys as an array
+    #   as a hash
     #
     # @return [Proc] proc stored
     def oneventmessage=(proc)

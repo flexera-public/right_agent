@@ -46,7 +46,7 @@ describe RightScale::EventWebSocket do
     flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@faye_websocket).by_default
     @websocket = RightScale::EventWebSocket.new(@url, @protocols, @options)
     @old_websocket = RightScale::EventWebSocket.new(@url, @protocols, @options.merge(:protocol_version => @old_version))
-    @event = {:uuid => "uuid", :type => "Push", :path => "/foo/bar", :from => "rs-agent-1-1", :data => {}, :version => @version}
+    @event = {:uuid => "uuid", :type => "Push", :path => "/foo/bar", :source => "rs-agent-1-1", :data => {}, :version => @version}
   end
 
   context :initialize do
@@ -151,7 +151,7 @@ describe RightScale::EventWebSocket do
 
     context "when generic message received" do
       it "handles event message" do
-        event = {:event => {:uuid => "uuid"}, :routing_keys => ["1111"], :msg_id => 1}
+        event = {:event => {:uuid => "uuid"}, :msg_id => 1}
         @websocket.receive(JSON.dump(event)).should == event
         data = nil
         @websocket.oneventmessage = lambda { |d| data = d }

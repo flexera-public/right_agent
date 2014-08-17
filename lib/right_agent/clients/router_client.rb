@@ -175,9 +175,7 @@ module RightScale
     # Use WebSocket if possible
     # Do not block this request even if in the process of closing since used for request responses
     #
-    # @param [Hash] event to send
-    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
-    #   event to interested parties
+    # @param [Hash] event to send with :source and :type controlling routing
     #
     # @return [TrueClass] always true
     #
@@ -187,15 +185,14 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def notify(event, routing_keys)
+    def notify(event)
       event[:uuid] ||= RightSupport::Data::UUID.generate
       event[:version] ||= AgentConfig.protocol_version
       params = {:event => event}
-      params[:routing_keys] = routing_keys if routing_keys
       if @websocket
-        path = event[:path] ? " #{event[:path]}" : ""
-        to = routing_keys ? " to #{routing_keys.inspect}" : ""
-        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{to}")
+        path = event[:path] ? " #{event[:path]}" : "" # TODO deprecate
+        from = event[:source] ? " from #{event[:source]}" : ""
+        Log.info("Sending EVENT <#{event[:uuid]}> #{event[:type]}#{path}#{from}")
         @websocket.send(params)
       else
         make_request(:post, "/notify", params, "notify", :request_uuid => event[:uuid], :filter_params => ["event"])
@@ -205,7 +202,9 @@ module RightScale
 
     # Receive events via an HTTP WebSocket if available, otherwise via an HTTP long-polling
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events with source uid, name, or routing ID
+    #   as key and array of event types of interest as value, nil meaning all from that
+    #   source; defaults to events from pre-defined sources for the given type of agent
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
@@ -220,7 +219,7 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(routing_keys, replay_uuids = nil, &handler)
+    def listen(sources, replay_uuids = nil, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       @ack_uuids = nil
@@ -231,7 +230,7 @@ module RightScale
       @connect_interval = CONNECT_INTERVAL
       @reconnect_interval = RECONNECT_INTERVAL
 
-      listen_loop(routing_keys, replay_uuids, &handler)
+      listen_loop(sources, replay_uuids, &handler)
       true
     end
 
@@ -278,14 +277,14 @@ module RightScale
     # Perform listen action, then wait prescribed time for next action
     # A periodic timer is not effective here because it does not wa
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received or exception
     #
     # @return [Boolean] false if failed or terminating, otherwise true
-    def listen_loop(routing_keys, replay_uuids, &handler)
+    def listen_loop(sources, replay_uuids, &handler)
       @listen_timer = nil
 
       begin
@@ -314,17 +313,17 @@ module RightScale
         when :connect
           # Use of WebSockets is enabled and it is again time to try to connect
           @stats["reconnects"].update("websocket") if @attempted_connect_at
-          try_connect(routing_keys, replay_uuids, &handler)
+          try_connect(sources, replay_uuids, &handler)
         when :long_poll
           # Resorting to long-polling
           # Need to long-poll on separate thread if cannot use non-blocking HTTP i/o
           # Will still periodically retry WebSockets if not restricted to just long-polling
           @replay_uuids = replay_uuids if replay_uuids && replay_uuids.any?
           if @options[:non_blocking]
-            @ack_uuids, @replay_uuids = process_long_poll(try_long_poll(routing_keys, @ack_uuids, @replay_uuids, &handler))
+            @ack_uuids, @replay_uuids = process_long_poll(try_long_poll(sources, @ack_uuids, @replay_uuids, &handler))
           else
             update_listen_state(:wait, 1)
-            try_deferred_long_poll(routing_keys, @ack_uuids, @replay_uuids, &handler)
+            try_deferred_long_poll(sources, @ack_uuids, @replay_uuids, &handler)
           end
         when :wait
           # Deferred long-polling is expected to break out of this state eventually
@@ -345,7 +344,7 @@ module RightScale
         @listen_interval = CHECK_INTERVAL
       end
 
-      listen_loop_wait(Time.now, @listen_interval, routing_keys, replay_uuids, &handler)
+      listen_loop_wait(Time.now, @listen_interval, sources, replay_uuids, &handler)
     end
 
     # Wait specified interval before next listen loop
@@ -353,23 +352,23 @@ module RightScale
     #
     # @param [Time] started_at time when first started waiting
     # @param [Numeric] interval to wait
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true
-    def listen_loop_wait(started_at, interval, routing_keys, replay_uuids, &handler)
+    def listen_loop_wait(started_at, interval, sources, replay_uuids, &handler)
       if @listen_interval == 0
-        EM_S.next_tick { listen_loop(routing_keys, replay_uuids, &handler) }
+        EM_S.next_tick { listen_loop(sources, replay_uuids, &handler) }
       else
         @listen_timer = EM_S::Timer.new(interval) do
           remaining = @listen_interval - (Time.now - started_at)
           if remaining > 0
-            listen_loop_wait(started_at, remaining, routing_keys, replay_uuids, &handler)
+            listen_loop_wait(started_at, remaining, sources, replay_uuids, &handler)
           else
-            listen_loop(routing_keys, replay_uuids, &handler)
+            listen_loop(sources, replay_uuids, &handler)
           end
         end
       end
@@ -426,15 +425,15 @@ module RightScale
 
     # Try to create WebSocket connection
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true
-    def try_connect(routing_keys, replay_uuids, &handler)
-      connect(routing_keys, replay_uuids, &handler)
+    def try_connect(sources, replay_uuids, &handler)
+      connect(sources, replay_uuids, &handler)
       update_listen_state(:check, 1)
     rescue Exception => e
       ErrorTracker.log(self, "Failed creating WebSocket", e, nil, :caller)
@@ -444,8 +443,7 @@ module RightScale
 
     # Connect to RightNet router using WebSocket for receiving events
     #
-    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
-    #   event to interested parties
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
     # @yield [event] required block called when event received
@@ -456,7 +454,7 @@ module RightScale
     # @return [EventWebSocket] WebSocket created
     #
     # @raise [ArgumentError] block missing
-    def connect(routing_keys, replay_uuids, &handler)
+    def connect(sources, replay_uuids, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       # Ensure that current replay UUIDS not arbitrarily reapplied if ever go back to long-polling
@@ -474,7 +472,15 @@ module RightScale
       url = URI.parse(@auth_client.router_url)
       url.scheme = url.scheme == "https" ? "wss" : "ws"
       url.path = url.path + "/connect"
-      url.query = routing_keys.map { |k| "routing_keys[]=#{CGI.escape(k)}" }.join("&") if routing_keys && routing_keys.any?
+      if sources && sources.any?
+        url.query = sources.map do |key, types|
+          if types
+            types.map { |t| "sources[#{key}][]=#{CGI.escape(t)}" }.join("&")
+          else
+            "sources[#{key}]="
+          end
+        end.join("&")
+      end
 
       Log.info("Creating WebSocket connection to #{url.to_s}")
       @websocket = EventWebSocket.new(url.to_s, protocols = nil, options)
@@ -511,7 +517,7 @@ module RightScale
       @websocket.oneventmessage = lambda do |data|
         begin
           event = data[:event]
-          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+          Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:source]}")
           @stats["events"].update("#{event[:type]} #{event[:path]}")
 
           # Acknowledge event
@@ -631,7 +637,7 @@ module RightScale
 
     # Try to make long-polling request to receive events
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] ack_uuids for events received on previous poll
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
@@ -640,9 +646,9 @@ module RightScale
     #
     # @return [Array, Exception] UUIDs of events to be acknowledged and UUIDs for event replays,
     #   or Exception if failed
-    def try_long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
+    def try_long_poll(sources, ack_uuids, replay_uuids, &handler)
       begin
-        long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
+        long_poll(sources, ack_uuids, replay_uuids, &handler)
       rescue Exception => e
         e
       end
@@ -651,7 +657,7 @@ module RightScale
     # Try to make long-polling request to receive events using EM defer thread
     # Repeat long-polling until there is an error or the stop time has been reached
     #
-    # @param [Array, NilClass] routing_keys for event sources of interest with nil meaning all
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] ack_uuids for events received on previous poll
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
@@ -659,9 +665,9 @@ module RightScale
     # @yieldparam [Hash] event received or exception
     #
     # @return [TrueClass] always true
-    def try_deferred_long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
+    def try_deferred_long_poll(sources, ack_uuids, replay_uuids, &handler)
       # Proc for running long-poll in EM defer thread since this is a blocking call
-      @defer_operation_proc = Proc.new { try_long_poll(routing_keys, ack_uuids, replay_uuids, &handler) }
+      @defer_operation_proc = Proc.new { try_long_poll(sources, ack_uuids, replay_uuids, &handler) }
 
       # Proc that runs in main EM reactor thread to handle result from above operation proc
       @defer_callback_proc = Proc.new { |result| @ack_uuids, @replay_uuids = process_long_poll(result) }
@@ -674,8 +680,7 @@ module RightScale
     # Make long-polling request to receive one or more events
     # Do not return until an event is received or the polling times out or fails
     #
-    # @param [Array, NilClass] routing_keys as strings to assist router in delivering
-    #   event to interested parties
+    # @param [Hash, NilClass] sources of events
     # @param [Array, NilClass] ack_uuids for events received on previous poll
     # @param [Array, NilClass] replay_uuids of last event received after which to replay
     #
@@ -685,13 +690,13 @@ module RightScale
     # @return [Array] UUIDs of events to be acknowledged and UUIDs for event replays
     #
     # @raise [ArgumentError] block missing
-    def long_poll(routing_keys, ack_uuids, replay_uuids, &handler)
+    def long_poll(sources, ack_uuids, replay_uuids, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
       params = {
         :wait_time => @options[:listen_timeout] - 5,
         :timestamp => Time.now.to_f }
-      params[:routing_keys] = routing_keys if routing_keys && routing_keys.any?
+      params[:sources] = sources if sources && sources.any?
       params[:ack] = ack_uuids if ack_uuids && ack_uuids.any?
 
       # Initiate replay if requested, then clear replay list
@@ -714,7 +719,7 @@ module RightScale
             event = SerializationHelper.symbolize_keys(event)
             uuid = event[:uuid]
             ack_uuids << uuid
-            Log.info("Received EVENT <#{uuid}> #{event[:type]} #{event[:path]} from #{event[:from]}")
+            Log.info("Received EVENT <#{uuid}> #{event[:type]} #{event[:path]} from #{event[:source]}")
             @stats["events"].update("#{event[:type]} #{event[:path]}")
             accepted = verify_in_sequence(event) { |last_uuid| replay_uuids << last_uuid }
             handler.call(event) if accepted
