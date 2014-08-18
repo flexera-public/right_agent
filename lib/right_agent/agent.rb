@@ -32,6 +32,7 @@ module RightScale
 
     include ConsoleHelper
     include DaemonizeHelper
+    include EventMixin
 
     # (String) Identity of this agent
     attr_reader :identity
@@ -645,12 +646,12 @@ module RightScale
               end
             rescue Dispatcher::DuplicateRequest
             rescue Exception => e
-              ErrorTracker.log(self, "Failed sending response for <#{event[:uuid]}>", e)
+              ErrorTracker.log(self, "Failed sending response for #{event_trace(event)}", e)
             end
           end
         elsif event[:type] == "Result"
           if (data = event[:data]) && (result = data[:result]) && result.respond_to?(:non_delivery?) && result.non_delivery?
-            Log.info("Non-delivery of event <#{data[:request_uuid]}>: #{result.content}")
+            Log.info("Non-delivery of event #{event_trace(data[:request_uuid])}: #{result.content}")
           else
             ErrorTracker.log(self, "Unexpected Result event from #{event[:source]}: #{event.inspect}")
           end
@@ -694,8 +695,8 @@ module RightScale
     def result_to_event(result)
       { :type => "Result",
         :source => result.from,
+        :to => result.to,
         :data => {
-          :to => result.to,
           :result => result.results,
           :duration => result.duration,
           :request_uuid => result.token,

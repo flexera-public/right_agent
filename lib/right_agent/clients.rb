@@ -31,6 +31,7 @@ unless defined?(Fiber)
   end
 end
 
+require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'event_mixin'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'event_websocket'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'non_blocking_client'))
 require File.normalize_path(File.join(CLIENTS_BASE_DIR, 'blocking_client'))

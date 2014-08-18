@@ -170,7 +170,8 @@ module RightScale
     # @param [Hash, NilClass] sources of events with source uid, name, or routing ID
     #   as key and array of event types of interest as value, nil meaning all from that
     #   source; defaults to events from pre-defined sources for the given type of agent
-    # @param [Array, NilClass] replay_uuids of last event received after which to replay
+    # @param [Hash, NilClass] replay events with source uid, name, or routing ID of source
+    #   as key and ID of last event received after which to replay as value
     #
     # @yield [event] required block called each time event received
     # @yieldparam [Object] event received or exception
@@ -182,9 +183,9 @@ module RightScale
     # @raise [Exceptions::RetryableError] request failed but if retried may succeed
     # @raise [Exceptions::Terminating] closing client and terminating service
     # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def listen(sources, replay_uuids = nil, &handler)
+    def listen(sources, replay = nil, &handler)
       raise RuntimeError, "#{self.class.name}#init was not called" unless @auth
-      @router.listen(sources, replay_uuids, &handler)
+      @router.listen(sources, replay, &handler)
     end
 
     # Resource href associated with the user of this client
