@@ -64,6 +64,9 @@ module RightScale
     # Test whether given version of agent can handle HTTP communication mode
     def can_handle_http?(version); version && version >= 23 end
 
+    # Test whether given version of agent can always handle a hash payload
+    def can_always_handle_hash_payload?(version); version && version >= 24 end
+
   end # ProtocolVersionMixin
 
 end # RightScale
