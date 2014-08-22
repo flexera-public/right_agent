@@ -55,3 +55,4 @@
 #     :send_persistent_push and :send_retryable_request
 #     Deprecated /mapper/update_tags in favor of /router/add_tags and /router/delete_tags
 #     Changed tag interface to use hrefs instead of agent IDs
+# 24: Request payload is always a hash or nil

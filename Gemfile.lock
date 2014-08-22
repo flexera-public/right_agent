@@ -17,7 +17,7 @@ GIT
 PATH
   remote: .
   specs:
-    right_agent (2.3.8)
+    right_agent (2.4.0)
       eventmachine (>= 0.12.10, < 2.0)
       faye-websocket (~> 0.7.0)
       ffi
