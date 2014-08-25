@@ -56,6 +56,10 @@ module RightScale
     # Instance variables that are not serialized because they are only used locally
     NOT_SERIALIZED = ["received_at"]
 
+    # Regexp for inserting packet size into msgpack encoded packet
+    # For ruby 1.9 size attribute moves from front to back of packet
+    PACKET_SIZE_REGEXP = RUBY_VERSION < "1.9.0" ? Regexp.new("size\xC0", nil, "n") : Regexp.new("size\xC0$", nil, "n")
+
     # (Float) Time in seconds in Unix-epoch when message was received
     attr_accessor :received_at
 
@@ -106,10 +110,8 @@ module RightScale
         'size'          => nil
       }.to_msgpack(*a)
       @size = msg.size
-      # For ruby 1.9 size attribute moves from front to back of packet
-      re = RUBY_VERSION < "1.9.0" ? Regexp.new("size\xC0") : Regexp.new("size\xC0$", nil, "n")
       # For msgpack 0.5.1 the to_msgpack result is a MessagePack::Packer so need to convert to string
-      msg = msg.to_s.sub!(re) { |m| "size" + @size.to_msgpack }
+      msg = msg.to_s.sub!(PACKET_SIZE_REGEXP) { |m| "size" + @size.to_msgpack }
       msg
     end
 
