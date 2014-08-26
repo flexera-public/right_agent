@@ -49,8 +49,8 @@ module RightScale
     # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Boolean] :long_polling_only never attempt to create a WebSocket, always long-polling instead
-    # @option options [Array] :filter_params symbols or strings for names of request parameters
-    #   whose values are to be hidden when logging
+    # @option options [Array] :filter_params symbols or strings for names of request parameters whose
+    #   values are to be hidden when logging; also applied to contents of any parameters named :payload
     #
     # @return [TrueClass] always true
     #

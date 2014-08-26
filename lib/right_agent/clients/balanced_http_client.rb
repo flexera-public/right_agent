@@ -59,6 +59,9 @@ module RightScale
     # Text used for filtered parameter value
     FILTERED_PARAM_VALUE = "<hidden>"
 
+    # Parameters whose contents are also to have filtering applied
+    CONTENT_FILTERED_PARAMS = ["payload"]
+
     # Environment variables to examine for proxy settings, in order
     PROXY_ENVIRONMENT_VARIABLES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY']
 
@@ -71,7 +74,8 @@ module RightScale
     # @option options [String] :health_check_path in URI for health check resource;
     #   defaults to DEFAULT_HEALTH_CHECK_PATH
     # @option options [Array] :filter_params symbols or strings for names of request parameters
-    #   whose values are to be hidden when logging; can be augmented on individual requests
+    #   whose values are to be hidden when logging; also applied to contents of any parameters
+    #   in CONTENT_FILTERED_PARAMS; can be augmented on individual requests
     # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     def initialize(urls, options = {})
@@ -140,9 +144,9 @@ module RightScale
     # @option options [Numeric] :open_timeout maximum wait for connection; defaults to DEFAULT_OPEN_TIMEOUT
     # @option options [Numeric] :request_timeout maximum wait for response; defaults to DEFAULT_REQUEST_TIMEOUT
     # @option options [String] :request_uuid uniquely identifying request; defaults to random generated UUID
-    # @option options [Array] :filter_params symbols or strings for names of request
-    #   parameters whose values are to be hidden when logging in addition to the ones
-    #   provided during object initialization
+    # @option options [Array] :filter_params symbols or strings for names of request parameters whose
+    #   values are to be hidden when logging in addition to the ones provided during object initialization;
+    #   also applied to contents of any parameters named :payload
     # @option options [Hash] :headers to be added to request
     # @option options [Numeric] :poll_timeout maximum wait for individual poll; defaults to :request_timeout
     # @option options [Symbol] :log_level to use when logging information about the request other than errors;
@@ -359,8 +363,7 @@ module RightScale
     #
     # @return [String] Log text
     def log_text(path, params, filter, host = nil, exception = nil)
-      filtered_params = (exception || Log.level == :debug) ? filter(params, filter).inspect : nil
-      text = filtered_params ? "#{path} #{filtered_params}" : path
+      text = "#{path} #{filter(params, filter).inspect}"
       text = "[#{host}#{text}]" if host
       text << " | #{self.class.exception_text(exception)}" if exception
       text
@@ -368,8 +371,9 @@ module RightScale
 
     # Apply parameter hiding filter
     #
-    # @param [Hash, Object] params to be filtered
-    # @param [Array] filter names of params as strings (not symbols) whose value is to be hidden
+    # @param [Hash, Object] params to be filtered with strings or symbols as keys
+    # @param [Array] filter names of params as strings (not symbols) whose value is to be hidden;
+    #   also filter the contents of any CONTENT_FILTERED_PARAMS
     #
     # @return [Hash] filtered parameters
     def filter(params, filter)
@@ -377,7 +381,14 @@ module RightScale
         params
       else
         filtered_params = {}
-        params.each { |k, p| filtered_params[k] = filter.include?(k.to_s) ? FILTERED_PARAM_VALUE : p }
+        params.each do |k, p|
+          s = k.to_s
+          if filter.include?(s)
+            filtered_params[k] = FILTERED_PARAM_VALUE
+          else
+            filtered_params[k] = CONTENT_FILTERED_PARAMS.include?(s) ? filter(p, filter) : p
+          end
+        end
         filtered_params
       end
     end

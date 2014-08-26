@@ -88,6 +88,8 @@ module RightScale
     # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
     # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
+    # @option options [Array] :filter_params symbols or strings for names of request parameters whose
+    #   values are to be hidden when logging; also applied to contents of any parameters named :payload
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)

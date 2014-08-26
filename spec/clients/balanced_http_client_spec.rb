@@ -123,26 +123,26 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "uses specified request UUID" do
-      @log.should_receive(:info).with("Requesting POST <my uuid> /foo/bar").once
+      @log.should_receive(:info).with("Requesting POST <my uuid> /foo/bar {}").once
       @log.should_receive(:info).with("Completed <my uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes")
       @client.request(:post, @path, @params, :request_uuid => "my uuid")
     end
 
     it "generates request UUID if none specified" do
-      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
+      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {}").once
       @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
       @client.request(:post, @path)
     end
 
     it "logs request before sending it" do
-      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar").once
+      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {}").once
       flexmock(@http_client).should_receive(:request).and_raise(RuntimeError).once
       @client.request(:post, @path) rescue nil
     end
 
     it "logs using specified :log_level" do
       @params = {:some => "data"}
-      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar").once
+      @log.should_receive(:debug).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\"}").once
       @log.should_receive(:debug).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
       @client.request(:post, @path, @params, :log_level => :debug)
     end
@@ -170,7 +170,7 @@ describe RightScale::BalancedHttpClient do
     end
 
     it "logs successful completion of request" do
-      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar")
+      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {}")
       @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes").once
       @client.request(:post, @path, @params, @options)
     end
@@ -530,27 +530,10 @@ describe RightScale::BalancedHttpClient do
     end
 
     context "when no exception" do
-
-      context "and Log.level is :info with no host" do
-        it "generates text containing path" do
-          text = @client.send(:log_text, @path, {:value => 123}, [])
-          text.should == "/foo/bar"
-        end
-      end
-
-      context "and Log.level is :info with host" do
-        it "generates text containing host and path" do
-          text = @client.send(:log_text, @path, {:value => 123}, [], @url)
-          text.should == "[http://my.com/foo/bar]"
-        end
-      end
-
-      context "and Log.level is :debug" do
-        it "generates text containing containing host, path, and filtered parameters" do
-          @log.should_receive(:level).and_return(:debug)
-          text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url)
-          text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]"
-        end
+      it "generates text containing containing host, path, and filtered parameters" do
+        @log.should_receive(:level).and_return(:debug)
+        text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url)
+        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]"
       end
     end
 
@@ -592,6 +575,13 @@ describe RightScale::BalancedHttpClient do
 
     it "does not filter if params is not a hash" do
       @client.send(:filter, "params", ["secret"]).should == "params"
+    end
+
+    it "also applies filters to any parameter named :payload or 'payload'" do
+      filter = ["secret", "very_secret"]
+      params = {:some => 1, :payload => {:secret => "data"}, "payload" => {:very_secret => "data"}, :secret => "data"}
+      @client.send(:filter, params, filter).should == {:some => 1, :payload => {:secret => "<hidden>"},
+                                                       "payload" => { :very_secret => "<hidden>"}, :secret => "<hidden>"}
     end
   end
 
