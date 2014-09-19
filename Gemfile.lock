@@ -7,13 +7,6 @@ GIT
       eventmachine (>= 0.12.10, < 2.0)
       right_support (>= 1.2, < 3.0)
 
-GIT
-  remote: git@github.com:rightscale/right_support.git
-  revision: f0e6a7e0908907180ec93a6013dc8986df7cc31a
-  branch: master
-  specs:
-    right_support (2.8.27)
-
 PATH
   remote: .
   specs:
@@ -75,6 +68,7 @@ GEM
       mime-types (>= 1.16)
       net-http-persistent
       netrc (~> 0.7.7)
+    right_support (2.8.29)
     rspec (2.10.0)
       rspec-core (~> 2.10.0)
       rspec-expectations (~> 2.10.0)
@@ -121,7 +115,7 @@ DEPENDENCIES
   rake (>= 0.9.2.2)
   right_agent!
   right_amqp!
-  right_support!
+  right_support (~> 2.8)
   rspec (~> 2.8)
   ruby-debug
   ruby-debug19
