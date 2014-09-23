@@ -5,7 +5,7 @@ gemspec
 
 gem 'right_amqp',
     :git => 'git@github.com:rightscale/right_amqp.git',
-    :branch => 'master'
+    :tag => 'v0.8.3'
 
 gem 'right_support', '~> 2.8'
 
