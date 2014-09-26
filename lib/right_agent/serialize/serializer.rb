@@ -38,7 +38,10 @@ module JSONSerializer
       source = source.read
     end
     source.force_encoding("UTF-8") if source.respond_to?(:force_encoding)
-    JSON.load(source)
+    # Workaround to make RightLink MessageEncoder work after chef update to 14.11
+    # which uses ffi-yajl which monkey patch JSON module and decoding of serialazed Ruby objects
+    # doesn't works as expected
+    JSON.parser.new(source, JSON.load_default_options).parse
   end
 
   def self.dump(*args)
