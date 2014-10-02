@@ -36,7 +36,7 @@ module RightScale
     end
 
     # Internal application error
-    class Application < StandardError; end
+    class Application < NestedException; end
 
     # Agent command IO error
     class IO < RuntimeError; end
