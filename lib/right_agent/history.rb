@@ -62,7 +62,7 @@ module RightScale
     #     where String is the event name and Object is any associated JSON-encodable data
     def load
       events = []
-      File.open(@history, "r") { |f| events = f.readlines.map { |l| JSON.load(l) } } if File.readable?(@history)
+      File.open(@history, "r") { |f| events = f.readlines.map { |l| JSON.parser.new(l, JSON.load_default_options).parse } } if File.readable?(@history)
       events
     end
 

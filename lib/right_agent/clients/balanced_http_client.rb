@@ -445,7 +445,7 @@ module RightScale
         elsif code == 204 || body.nil? || (body.respond_to?(:empty?) && body.empty?)
           result = nil
         elsif decode
-          result = JSON.load(body)
+          result = JSON.parser.new(body, JSON.load_default_options).parse
           result = nil if result.respond_to?(:empty?) && result.empty?
         else
           result = body

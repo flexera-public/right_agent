@@ -493,7 +493,7 @@ module RightScale
       @websocket.onmessage = lambda do |event|
         begin
           # Receive event
-          event = SerializationHelper.symbolize_keys(JSON.load(event.data))
+          event = SerializationHelper.symbolize_keys(JSON.parser.new(event.data, JSON.load_default_options).parse)
           Log.info("Received EVENT <#{event[:uuid]}> #{event[:type]} #{event[:path]} from #{event[:from]}")
           @stats["events"].update("#{event[:type]} #{event[:path]}")
 
