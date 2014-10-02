@@ -404,6 +404,10 @@ describe RightScale::NonBlockingClient do
       @client.send(:handle_error, :get, Errno::ETIMEDOUT).should == [408, "Request timeout"]
     end
 
+    it "converts Errno::ECONNREFUSED to 503 ServiceUnavailable" do
+      @client.send(:handle_error, :get, Errno::ECONNREFUSED).should == [503, "Connection refused"]
+    end
+
     it "converts error to 500 InternalServerError by default" do
       @client.send(:handle_error, :get, "failed").should == [500, "failed"]
     end
