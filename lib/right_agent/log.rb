@@ -200,10 +200,14 @@ module RightScale
           description += " (#{exception}"
           backtrace = :no_trace
         end
-        case backtrace
-        when :no_trace then description += ")"
-        when :caller   then description += " in " + exception.backtrace[0] + ")"
-        when :trace    then description += " in\n  " + exception.backtrace.join("\n  ") + ")"
+        if exception.respond_to?(:backtrace) && exception.backtrace
+          case backtrace
+          when :no_trace then description += ")"
+          when :caller   then description += " in " + exception.backtrace[0] + ")"
+          when :trace    then description += " in\n  " + exception.backtrace.join("\n  ") + ")"
+          end
+        else
+          description += ")"
         end
       end
       description

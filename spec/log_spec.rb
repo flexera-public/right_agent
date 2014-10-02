@@ -187,6 +187,10 @@ describe RightScale::Log do
       log_count("Test error \\\(NoMethodError: undefined method \\\`\\\+\' for nil:NilClass in$").should == 1
     end
 
+    it 'should not attempt to use backtrace if exception has none' do
+      RightScale::Log.error("Test error", RuntimeError.new("failed"), :trace)
+      log_count("Test error \\\(RuntimeError: failed\\\)$").should == 1
+    end
   end
 
 end
