@@ -87,9 +87,6 @@ module RightScale
     #
     # === Return
     # (String):: MessagePack serialized and optionally encrypted object
-    #
-    # === Raise
-    # Exception:: If certificate identity, certificate store, certificate, or private key missing
     def dump(obj, encrypt = nil)
       must_encrypt = encrypt || @encrypt
       serialize_format = if obj.respond_to?(:send_version) && can_handle_msgpack_result?(obj.send_version)
@@ -124,8 +121,8 @@ module RightScale
     # (Object):: Unserialized object
     #
     # === Raise
-    # Exception:: If certificate store, certificate, or private key missing
-    # MissingCertificate:: If could not find certificate for message signer
+    # MissingCertificate:: If could not find certificate for message signer or receiver
+    # MissingPrivateKey:: If could not find private key for message receiver
     # InvalidSignature:: If message signature check failed for message
     def load(msg, id = nil)
       msg = @serializer.load(msg)

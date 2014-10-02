@@ -77,6 +77,12 @@ describe RightScale::Serializer do
       lambda { serializer.dump("hello") }.should raise_error(RightScale::Serializer::SerializationError)
     end
 
+    it "should raise ConnectivityFailure if packet could not be serialized for connectivity reasons" do
+      flexmock(RightScale::SecureSerializer).should_receive(:dump).with("hello", nil).and_raise(SocketError).once
+      serializer = RightScale::Serializer.new(:secure)
+      lambda { serializer.dump("hello") }.should raise_error(RightScale::Exceptions::ConnectivityFailure)
+    end
+
     it "should return serialized packet" do
       serialized_packet = flexmock("Packet")
       flexmock(MessagePack).should_receive(:dump).with("hello").and_return(serialized_packet).once
@@ -183,6 +189,14 @@ describe RightScale::Serializer do
       flexmock(JSONSerializer).should_receive(:load).with("olleh").and_raise(StandardError).once
       serializer = RightScale::Serializer.new
       lambda { serializer.load("olleh") }.should raise_error(RightScale::Serializer::SerializationError)
+    end
+
+    it "should raise ConnectivityFailure if packet could not be unserialized for connectivity reasons" do
+      serialized = "securely serialized"
+      flexmock(RightScale::SecureSerializer).should_receive(:load).with(serialized, "id").
+          and_raise(RightSupport::Net::NoResult.new("failed")).once
+      serializer = RightScale::Serializer.new(:secure)
+      lambda { serializer.load(serialized, "id") }.should raise_error(RightScale::Exceptions::ConnectivityFailure)
     end
 
     it "should return unserialized packet" do

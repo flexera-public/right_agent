@@ -140,15 +140,19 @@ module RightScale
     #
     # === Raises
     # SerializationError:: If none of the serializers can perform the requested action
+    # RightScale::Exceptions::ConnectivityFailure:: If cannot access external services
     def cascade_serializers(action, packet, serializers, id = nil)
       errors = []
       serializers.map do |serializer|
         obj = nil
         begin
-          obj = serializer == SecureSerializer ? serializer.send(action, packet, id) :  serializer.send(action, packet)
-        rescue SecureSerializer::MissingCertificate, SecureSerializer::InvalidSignature => e
+          obj = serializer == SecureSerializer ? serializer.send(action, packet, id) : serializer.send(action, packet)
+        rescue RightSupport::Net::NoResult, SocketError => e
+          raise Exceptions::ConnectivityFailure.new("Failed to #{action} with #{serializer.name} due to external " +
+                                                    "service access failures (#{e.class.name}: #{e.message})", e)
+        rescue SecureSerializer::MissingCertificate, SecureSerializer::MissingPrivateKey, SecureSerializer::InvalidSignature => e
           errors << Log.format("Failed to #{action} with #{serializer.name}", e)
-        rescue Exception => e
+        rescue StandardError => e
           errors << Log.format("Failed to #{action} with #{serializer.name}", e, :trace)
         end
         return obj if obj
