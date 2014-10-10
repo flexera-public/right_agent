@@ -51,5 +51,6 @@ RIGHT_AGENT_RUBY_PATCH_BASE_DIR = ::File.normalize_path('../ruby_patch', __FILE_
 
 require File.join(RIGHT_AGENT_RUBY_PATCH_BASE_DIR, 'array_patch')
 require File.join(RIGHT_AGENT_RUBY_PATCH_BASE_DIR, 'object_patch')
+require File.join(RIGHT_AGENT_RUBY_PATCH_BASE_DIR, 'json_patch')
 
 end # Unless already defined
