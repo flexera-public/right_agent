@@ -151,7 +151,8 @@ describe RightScale::BlockingClient do
         it "uses form-encoded query option for parameters" do
           @params = {:some => "data", :more => ["a", "b"]}
           _, request_options = @client.options(verb, @path, @params, @headers, @options)
-          request_options[:query].should == "?some=data&more[]=a&more[]=b"
+          query = request_options[:query]
+          (query == "?some=data&more[]=a&more[]=b" || query == "?more[]=a&more[]=b&some=data").should be true
           request_options[:payload].should be nil
         end
 

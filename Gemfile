@@ -3,15 +3,9 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'right_amqp',
-    :git => 'git@github.com:rightscale/right_amqp.git',
-    :tag => 'v0.8.3'
-
-gem 'right_support', '~> 2.8'
-
-gem "simple_uuid", "~> 0.2"
-
-gem "mime-types", "< 2.0"
+gem 'rake',              '>= 0.9.2.2'
+gem 'simple_uuid',       '~> 0.2'
+gem 'mime-types',        '< 2.0'
 
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # Going forward to ruby 1.9 we can relax the constraint on the json gem.
@@ -30,14 +24,25 @@ group :windows do
   end
 end
 
-group :development, :test do
-  gem "rspec",           "~> 2.8"
-  gem "flexmock",        "~> 0.9"
-  gem "rake",            ">= 0.9.2.2"
-  gem "ruby-debug",
-      :platforms => :mri_18
-  gem "ruby-debug19",
-      :platforms => :mri_19
-  gem "fiber_pool",      "1.0.0"
-  gem "em-http-request", "1.0.3"
+###
+### Test-only gems
+###
+group :test do
+  gem 'fiber_pool',      '1.0.0'
+  gem 'em-http-request', '1.0.3'
+  gem 'flexmock',        '~> 1.0'
+  gem 'rspec',           '~> 2.13.0'
+  gem 'right_develop',   '~> 3.1'
+  gem 'simplecov'
+end
+
+###
+### Development-only gems (not available in CI).
+### No version or Ruby VM constraints; assume these are always compatible with
+### whatever Ruby version we're using, until we discover otherwise.
+###
+group :development do
+  gem 'ruby-debug', :platforms => [:ruby_18]
+  gem 'pry', :platforms => [:ruby_19, :ruby_20, :ruby_21]
+  gem 'pry-byebug', :platforms => [:ruby_20, :ruby_21]
 end

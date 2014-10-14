@@ -35,6 +35,8 @@ describe RightScale::RetryableRequest do
       RightScale.module_eval('OldSender = Sender')
     end
     RightScale.module_eval('Sender = SenderMock')
+    @now = Time.now
+    flexmock(Time).should_receive(:now).and_return(@now)
     @options = {:time_to_live => RightScale::RetryableRequest::DEFAULT_TIMEOUT}
   end
 

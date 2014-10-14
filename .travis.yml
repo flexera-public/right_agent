@@ -1,0 +1,10 @@
+language: ruby
+cache: bundler
+bundler_args: --without debugger development
+rvm:
+ - 1.8
+ - 1.9
+ - 2.0
+ - 2.1
+script:
+ - bundle exec rake ci:spec

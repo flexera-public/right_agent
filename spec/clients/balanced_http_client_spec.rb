@@ -158,7 +158,7 @@ describe RightScale::BalancedHttpClient do
     it "appends specified filter parameters to list when Log.level is :debug" do
       @params = {:some => "data", :secret => "data", :other => "data"}
       @log.should_receive(:level).and_return(:debug)
-      @log.should_receive(:info).with("Requesting POST <random uuid> /foo/bar {:some=>\"data\", :secret=>\"<hidden>\", :other=>\"<hidden>\"}").once
+      @log.should_receive(:info).with(on { |a| a =~ /^Requesting POST/ && a =~ /some.*data/ && a =~ /secret.*hidden/ && a =~ /other.*hidden/ }).once
       @log.should_receive(:info).with("Completed <random uuid> in 10ms | 200 [http://my.com/foo/bar] | 11 bytes | {\"out\"=>123}").once
       @client.request(:post, @path, @params, :filter_params => [:other])
     end
@@ -533,20 +533,23 @@ describe RightScale::BalancedHttpClient do
       it "generates text containing containing host, path, and filtered parameters" do
         @log.should_receive(:level).and_return(:debug)
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url)
-        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]"
+        (text == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}]" ||
+         text == "[http://my.com/foo/bar {:secret=>\"<hidden>\", :some=>\"data\"}]").should be true
       end
     end
 
     context "when exception" do
       it "includes params regardless of Log.level" do
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, "failed")
-        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | failed"
+        (text == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | failed" ||
+         text == "[http://my.com/foo/bar {:secret=>\"<hidden>\", :some=>\"data\"}] | failed").should be true
       end
 
       it "includes exception text" do
         exception = RightScale::HttpExceptions.create(400, "bad data")
         text = @client.send(:log_text, @path, {:some => "data", :secret => "data"}, ["secret"], @url, exception)
-        text.should == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | 400 Bad Request: bad data"
+        (text == "[http://my.com/foo/bar {:some=>\"data\", :secret=>\"<hidden>\"}] | 400 Bad Request: bad data" ||
+         text == "[http://my.com/foo/bar {:secret=>\"<hidden>\", :some=>\"data\"}] | 400 Bad Request: bad data").should be true
       end
     end
   end

@@ -23,8 +23,9 @@
 require 'rubygems'
 require 'bundler/setup'
 
-require 'flexmock'
 require 'rspec'
+require 'flexmock'
+require 'simplecov'
 require 'eventmachine'
 require 'fileutils'
 

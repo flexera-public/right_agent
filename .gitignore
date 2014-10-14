@@ -9,3 +9,7 @@ nbproject/*
 .project
 .ruby-version
 .rvmrc
+
+# Code metrics
+measurement
+coverage

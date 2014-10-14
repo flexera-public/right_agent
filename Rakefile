@@ -23,16 +23,48 @@
 
 require 'rubygems'
 require 'bundler/setup'
-require 'fileutils'
+
 require 'rake'
-require 'rspec/core/rake_task'
-require 'rake/rdoctask'
-require 'rake/gempackagetask'
+require 'rubygems/package_task'
 require 'rake/clean'
+require 'rspec/core/rake_task'
+require 'fileutils'
 
-task :default => 'spec'
+# These dependencies can be omitted using "bundle install --without"; tolerate their absence.
+['rdoc/task'].each do |optional|
+  begin
+    require optional
+  rescue LoadError
+    # ignore
+  end
+end
 
-# == Gem packaging == #
+spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.opts\""
+spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.win32.opts\"" if RUBY_PLATFORM =~ /mingw|mswin32/
+RSPEC_OPTS = ['--options', spec_opts_file]
+
+desc "Run unit tests"
+task :default => :spec
+
+desc 'Run unit tests'
+RSpec::Core::RakeTask.new do |t|
+  t.rspec_opts = RSPEC_OPTS
+  t.pattern = Dir['**/*_spec.rb']
+end
+
+if defined?(Rake::RDocTask)
+  desc 'Generate documentation for the right_agent gem.'
+  Rake::RDocTask.new(:rdoc) do |rdoc|
+    rdoc.rdoc_dir = 'doc'
+    rdoc.title    = 'RightAgent'
+    rdoc.options << '--line-numbers' << '--inline-source'
+    rdoc.rdoc_files.include('README.rdoc')
+    rdoc.rdoc_files.include('lib/**/*.rb')
+    rdoc.rdoc_files.exclude('spec/**/*')
+  end
+end
+CLEAN.include('doc')
+
 module RightScale
   class MultiPlatformGemTask
     def self.gem_platform_override
@@ -50,64 +82,23 @@ module RightScale
   end
 end
 
-# multiply define gem and package task(s) using a gemspec with overridden gem
-# platform value. this works because rake accumulates task actions instead of
-# redefining them, so accumulated gem tasks will gem up all platforms. we need
+# Multiply define gem and package task(s) using a gemspec with overridden gem
+# platform value. This works because rake accumulates task actions instead of
+# redefining them, so accumulated gem tasks will gem up all platforms. We need
 # to produce multiple platform-specific .gem files because otherwise the gem
 # dependencies for non-Linux platforms (i.e. Windows) are lost from the default
 # .gem file produced on a Linux platform.
 gemtask = nil
 ::RightScale::MultiPlatformGemTask.define(%w[linux mingw], 'right_agent.gemspec') do |spec|
-  gemtask = ::Rake::GemPackageTask.new(spec) do |gpt|
-    gpt.package_dir = ENV['PACKAGE_DIR'] || 'pkg'
+  gemtask = Gem::PackageTask.new(spec) do |pkg|
+    pkg.package_dir = 'pkg'
 
     # the following are used by 'package' task (but not by 'gem' task)
-    gpt.need_zip = !`which zip`.strip.empty? # not present on Windows by default
-    gpt.need_tar = true  # some form of tar is required on Windows and Linux
+    pkg.need_zip = !`which zip`.strip.empty? # not present on Windows by default
+    pkg.need_tar = true  # some form of tar is required on Windows and Linux
   end
 end
+CLEAN.include('pkg')
 
-directory gemtask.package_dir
-
-CLEAN.include(gemtask.package_dir)
-
-# == Unit tests == #
-spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.opts\""
-spec_opts_file = "\"#{File.dirname(__FILE__)}/spec/spec.win32.opts\"" if RUBY_PLATFORM =~ /mingw|mswin32/
-RSPEC_OPTS = ['--options', spec_opts_file]
-
-desc 'Run unit tests'
-RSpec::Core::RakeTask.new do |t|
-  t.rspec_opts = RSPEC_OPTS
-end
-
-namespace :spec do
-  desc 'Run unit tests with RCov'
-  RSpec::Core::RakeTask.new(:rcov) do |t|
-    t.rspec_opts = RSPEC_OPTS
-    t.rcov = true
-    t.rcov_opts = %q[--exclude "spec"]
-  end
-
-  desc 'Print Specdoc for all unit tests'
-  RSpec::Core::RakeTask.new(:doc) do |t|
-    t.rspec_opts = ["--format", "documentation"]
-  end
-end
-
-# == Documentation == #
-
-desc 'Generate API documentation to doc/rdocs/index.html'
-Rake::RDocTask.new do |rd|
-  rd.rdoc_dir = 'doc/rdocs'
-  rd.main = 'README.rdoc'
-  rd.rdoc_files.include 'README.rdoc', 'lib/**/*.rb'
-end
-CLEAN.include('doc/rdocs')
-
-# == Emacs integration ==
-
-desc 'Rebuild TAGS file for emacs'
-task :tags do
-  sh 'rtags -R lib spec'
-end
+require 'right_develop'
+RightDevelop::CI::RakeTask.new

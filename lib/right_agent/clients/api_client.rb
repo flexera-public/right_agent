@@ -339,8 +339,8 @@ module RightScale
     end
 
     # Truncate string if it exceeds maximum length
-    # Do length check with bytesize rather than size since this code
-    # is running with ruby 1.9.2 while the API uses 1.8.7, otherwise
+    # Do length check with bytesize rather than size since this method
+    # is only intended for use with ruby 1.9 and above, otherwise
     # multi-byte characters could cause this code to be too lenient
     #
     # @param [String, NilClass] value to be truncated
