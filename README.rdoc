@@ -1,4 +1,4 @@
-"master" branch: [![Build Status](https://magnum.travis-ci.com/rightscale/right_agent.svg?branch=master)](https://magnum.travis-ci.com/rightscale/right_agent)
+"master" branch: {<img src="https://travis-ci.org/rightscale/right_agent.svg?branch=master" alt="Build Status" />}[https://travis-ci.org/rightscale/right_agent]
 
 = RightAgent
 
