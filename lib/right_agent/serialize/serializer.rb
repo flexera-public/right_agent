@@ -29,16 +29,7 @@ require File.normalize_path(File.join(File.dirname(__FILE__), 'message_pack'))
 
 module JSONSerializer
   def self.load(source)
-
-    if source.respond_to? :to_str
-      source = source.to_str
-    elsif source.respond_to? :to_io
-      source = source.to_io.read
-    else
-      source = source.read
-    end
-    source.force_encoding("UTF-8") if source.respond_to?(:force_encoding)
-    JSON.load(source)
+    JSON.legacy_load(source)
   end
 
   def self.dump(*args)
