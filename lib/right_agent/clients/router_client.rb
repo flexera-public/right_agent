@@ -35,7 +35,8 @@ module RightScale
     API_VERSION = "2.0"
 
     # Initial interval between attempts to make a WebSocket connection
-    CONNECT_INTERVAL = 30
+    # and interval between ongoing checks to see if still connected
+    CONNECT_INTERVAL = 15
 
     # Maximum interval between attempts to make a WebSocket connection
     MAX_CONNECT_INTERVAL = 60 * 60 * 24
@@ -83,6 +84,7 @@ module RightScale
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Array] :filter_params symbols or strings for names of request parameters whose
     #   values are to be hidden when logging; also applied to contents of any parameters named :payload
+    # @option options [Boolean] :event_demo output enabled
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)
@@ -90,6 +92,18 @@ module RightScale
       @options[:listen_timeout] ||= DEFAULT_LISTEN_TIMEOUT
       @last_event = {}
       @replays = {}
+      if @options[:event_demo]
+        trap 'USR1' do
+          @demo_skip_events = !@demo_skip_events
+        end
+        trap 'USR2' do
+          if @websocket
+            File.open("/tmp/event_client", "a") { |f| f.puts f.puts "close websocket" }
+            @websocket.close
+            sleep 5
+          end
+        end
+      end
     end
 
     # Route a request to a single target or multiple targets with no response expected
@@ -225,6 +239,8 @@ module RightScale
     def listen(sources, replay = nil, &handler)
       raise ArgumentError, "Block missing" unless block_given?
 
+      File.open("/tmp/event_sink", "a") { |f| f.puts "replay #{replay.values.first.to_i + 1}" } if @options[:event_demo] && replay
+
       @ack_uuids = nil
       @replay_sources = nil
       @listen_interval = 0
@@ -278,7 +294,6 @@ module RightScale
     end
 
     # Perform listen action, then wait prescribed time for next action
-    # A periodic timer is not effective here because it does not wa
     #
     # @param [Hash, NilClass] sources of events
     # @param [Hash, NilClass] replay events for sources
@@ -520,34 +535,38 @@ module RightScale
       @websocket.oneventmessage = lambda do |data|
         begin
           event = data[:event]
-          Log.info("Received EVENT #{event_text(event)}")
-          @stats["events"].update("#{event[:type]} #{event[:path]}")
+          File.open("/tmp/event_client", "a") { |f| f.puts "#{@demo_skip_events ? "drop " : ""}#{event[:id]}#{event[:replayed] ? " replayed" : ""}" } if @options[:event_demo]
 
-          # Acknowledge event
-          @websocket.send({:ack => event[:uuid]})
-
-          # Verify event is in sequence and if not, initiate replay
-          accepted = verify_in_sequence(event) do |source, last_id|
-            ErrorTracker.log(self, "Event #{event_trace(event)} from #{source} is out of sequence, " +
-                                   "requesting replay after event #{event_trace(last_id)}")
-            @websocket.send({:replay => {source => last_id}}) do |status, content|
-              begin
-                ErrorTracker.log(self, "Failed replay for event #{event_trace(last_id)} from #{source} (#{status}: #{content})")
-                unless status == 449
-                  error = "Attempt to replay after event #{event_trace(last_id)} from #{source} to close gap in event " +
-                          "sequence failed (#{status}: #{content}), recommend application level resync"
-                  handler.call(EventSequenceBroken.new(error))
+          unless @demo_skip_events
+            # Verify event is in sequence and if not, initiate replay
+            accepted = verify_in_sequence(event) do |source, last_id|
+              File.open("/tmp/event_client", "a") { |f| f.puts "replay #{last_id + 1}" } if @options[:event_demo]
+              ErrorTracker.log(self, "Event #{event_trace(event)} from #{source} is out of sequence, " +
+                                     "requesting replay after event #{event_trace(last_id)}")
+              @websocket.send({:replay => {source => last_id}}) do |status, content|
+                begin
+                  ErrorTracker.log(self, "Failed replay for event #{event_trace(last_id)} from #{source} (#{status}: #{content})")
+                  unless status == 449
+                    error = "Attempt to replay after event #{event_trace(last_id)} from #{source} to close gap in event " +
+                            "sequence failed (#{status}: #{content}), recommend application level resync"
+                    handler.call(EventSequenceBroken.new(error))
+                  end
+                rescue Exception => e
+                  ErrorTracker.log(self, "Failed handling error from replay", e)
                 end
-              rescue Exception => e
-                ErrorTracker.log(self, "Failed handling error from replay", e)
               end
             end
-          end
 
-          # Handle event
-          if accepted
-            handler.call(event)
-            @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+            # Handle event
+            if accepted
+              Log.info("Received EVENT #{event_text(event)}")
+              @stats["events"].update("#{event[:type]} #{event[:path]}")
+              @websocket.send({:ack => event[:uuid]})
+
+              File.open("/tmp/event_sink", "a") { |f| f.puts event[:id] } if @options[:event_demo]
+              handler.call(event)
+              @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+            end
           end
         rescue EventSequenceBroken => e
           handler.call(e)
@@ -704,11 +723,21 @@ module RightScale
         events.each do |event|
           begin
             event = SerializationHelper.symbolize_keys(event)
-            ack_uuids << event[:uuid]
-            Log.info("Received EVENT #{event_text(event)}")
-            @stats["events"].update("#{event[:type]} #{event[:path]}")
-            accepted = verify_in_sequence(event) { |source, last_id| replay_sources[source] = last_id }
-            handler.call(event) if accepted
+            File.open("/tmp/event_client", "a") { |f| f.puts "#{@demo_skip_events ? "drop " : ""}#{event[:id]}" } if @options[:event_demo]
+
+            unless @demo_skip_events
+              accepted = verify_in_sequence(event) do |source, last_id|
+                File.open("/tmp/event_client", "a") { |f| f.puts "replay #{last_id + 1}" } if @options[:event_demo]
+                replay_sources[source] = last_id
+              end
+              if accepted
+                Log.info("Received EVENT #{event_text(event)}")
+                @stats["events"].update("#{event[:type]} #{event[:path]}")
+                ack_uuids << event[:uuid]
+                File.open("/tmp/event_sink", "a") { |f| f.puts "#{event[:replayed] ? " replayed" : ""}" } if @options[:event_demo]
+                handler.call(event)
+              end
+            end
           rescue EventSequenceBroken => e
             handler.call(e)
           end

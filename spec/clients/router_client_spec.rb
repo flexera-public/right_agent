@@ -259,7 +259,7 @@ describe RightScale::RouterClient do
             when_in_listen_state(:check, 5)
             @client.send(:listen_loop, @sources, @replay_sources, &@handler).should be true
             @client.instance_variable_get(:@listen_state).should == :choose
-            @client.instance_variable_get(:@listen_interval).should == 30
+            @client.instance_variable_get(:@listen_interval).should == 15
           end
 
           it "otherwise stays in same state" do
@@ -659,17 +659,17 @@ describe RightScale::RouterClient do
               @ack = {:ack => "uuid"}
               @json_ack = JSON.dump(@ack.merge(:msg_id => 1))
               @replay = {:replay => {@source => 1}}
-              @json_replay = JSON.dump(@replay.merge(:msg_id => 2))
+              @json_replay = JSON.dump(@replay.merge(:msg_id => 1))
               flexmock(@client).should_receive(:verify_in_sequence).with(@event, Proc).and_return(false).
                   and_yield(@source, 1).by_default
             end
 
-            it "initiates replay if event is not in sequence" do
+            it "initiates replay if event is not in sequence and does not ack event" do
               @client.send(:connect, @sources, @replay_sources) { |_| nil }
-              flexmock(@websocket).should_receive(:send).with(@json_ack).once.ordered
+              flexmock(@websocket).should_receive(:send).with(@json_ack).never
               @log.should_receive(:error).with("Event <uuid:3> from rs-source-test-11 is out of sequence, " +
                                                "requesting replay after event <..:1>").once
-              flexmock(@websocket).should_receive(:send).with(@json_replay).once.ordered
+              flexmock(@websocket).should_receive(:send).with(@json_replay).once
               @websocket.onmessage(@json_event)
             end
 
@@ -683,7 +683,6 @@ describe RightScale::RouterClient do
               end
 
               it "delivers EventSequenceBroken to handler if server reports replay failure" do
-                flexmock(@event_websocket).should_receive(:send).with(@ack).once.ordered
                 flexmock(@event_websocket).should_receive(:send).with(@replay, Proc).and_yield(404, "Event missing").once.ordered
                 @log.should_receive(:error).with("Failed replay for event <..:1> from rs-source-test-11 (404: Event missing)").once.ordered
                 @websocket.onmessage(@json_event)
@@ -691,7 +690,6 @@ describe RightScale::RouterClient do
               end
 
               it "does not deliver EventSequenceBroken to handler if server reports retryable replay failure" do
-                flexmock(@event_websocket).should_receive(:send).with(@ack).once.ordered
                 flexmock(@event_websocket).should_receive(:send).with(@replay, Proc).and_yield(449, "Try again").once.ordered
                 @log.should_receive(:error).with("Failed replay for event <..:1> from rs-source-test-11 (449: Try again)").once.ordered
                 @websocket.onmessage(@json_event)
@@ -701,7 +699,6 @@ describe RightScale::RouterClient do
               it "logs unexpected exceptions from replay" do
                 @client.send(:connect, @sources, @replay_sources) { |_| raise RuntimeError }
                 @event_websocket = @client.instance_variable_get(:@websocket)
-                flexmock(@event_websocket).should_receive(:send).with(@ack).once.ordered
                 flexmock(@event_websocket).should_receive(:send).with(@replay, Proc).and_yield(404, "Event missing").once.ordered
                 @log.should_receive(:error).with("Failed replay for event <..:1> from rs-source-test-11 (404: Event missing)").once.ordered
                 @log.should_receive(:error).with("Failed handling error from replay", RuntimeError, :trace).once.ordered
@@ -714,7 +711,7 @@ describe RightScale::RouterClient do
                   and_raise(RightScale::RouterClient::EventSequenceBroken).once
               @event = nil
               @client.send(:connect, @sources, @replay_sources) { |e| @event = e }
-              flexmock(@websocket).should_receive(:send).with(@json_ack).once.ordered
+              flexmock(@websocket).should_receive(:send).with(@json_ack).never
               @websocket.onmessage(@json_event)
               @event.should be_a RightScale::RouterClient::EventSequenceBroken
             end
@@ -952,13 +949,14 @@ describe RightScale::RouterClient do
         event.should == @event
       end
 
-      it "does not present event to handler if events are not in sequence" do
+      it "does not present event to handler if events are not in sequence and does not ack event" do
         @event.merge!(:id => 3)
         flexmock(@client).should_receive(:make_request).and_return([@event])
         flexmock(@client).should_receive(:verify_in_sequence).with(@event, Proc).and_return(false).once
         event = nil
-        @client.send(:long_poll, @sources, @ack_uuids, @replay_sources) { |e| event = e }
+        ack_uuids, _ = @client.send(:long_poll, @sources, @ack_uuids, @replay_sources) { |e| event = e }
         event.should be nil
+        ack_uuids.should == []
       end
 
       it "handles event keys that are strings" do
