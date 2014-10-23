@@ -585,16 +585,25 @@ describe RightScale::RouterClient do
       end
 
       context "on error" do
-        it "logs error" do
-          @log.should_receive(:error).with("WebSocket error (Protocol Error)")
-          @client.send(:connect, @routing_keys, &@handler)
-          @websocket.onerror("Protocol Error")
-        end
+        ["0.7.0", "0.7.4"].each do |version|
+          context "in faye-websocket #{version}" do
+            before(:each) do
+              @websocket = WebSocketClientMock.new(version)
+              flexmock(Faye::WebSocket::Client).should_receive(:new).and_return(@websocket)
+            end
 
-        it "does not log if there is no error data" do
-          @log.should_receive(:error).never
-          @client.send(:connect, @routing_keys, &@handler)
-          @websocket.onerror(nil)
+            it "logs error" do
+              @log.should_receive(:error).with("WebSocket error (Protocol Error)")
+              @client.send(:connect, @routing_keys, &@handler)
+              @websocket.onerror("Protocol Error")
+            end
+
+            it "does not log if there is no error data" do
+              @log.should_receive(:error).never
+              @client.send(:connect, @routing_keys, &@handler)
+              @websocket.onerror(nil)
+            end
+          end
         end
       end
     end

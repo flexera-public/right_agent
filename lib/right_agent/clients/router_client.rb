@@ -474,7 +474,16 @@ module RightScale
       @websocket = Faye::WebSocket::Client.new(url.to_s, protocols = nil, options)
 
       @websocket.onerror = lambda do |event|
-        ErrorTracker.log(self, "WebSocket error (#{event.data})") if event.data
+        error = if event.respond_to?(:data)
+          # faye-websocket 0.7.0
+          event.data
+        elsif event.respond_to?(:message)
+          # faye-websocket 0.7.4
+          event.message
+        else
+          event.to_s
+        end
+        ErrorTracker.log(self, "WebSocket error (#{error})") if error
       end
 
       @websocket.onclose = lambda do |event|

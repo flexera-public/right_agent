@@ -57,7 +57,7 @@ class AuthClientMock < RightScale::AuthClient
   end
 end
 
-# Mock WebSocket event
+# Mock WebSocket event per faye-websocket 0.7.0
 class WebSocketEventMock
   attr_reader :code, :data, :reason
 
@@ -68,9 +68,41 @@ class WebSocketEventMock
   end
 end
 
+# Mock WebSocket message event per faye-websocket 0.7.4
+class WebSocketMessageEventMock
+  attr_reader :data
+
+  def initialize(data)
+    @data = data
+  end
+end
+
+# Mock WebSocket close event per faye-websocket 0.7.4
+class WebSocketCloseEventMock
+  attr_reader :code, :reason
+
+  def initialize(code = nil, reason = nil)
+    @code = code
+    @reason = reason
+  end
+end
+
+# Mock WebSocket error event per faye-websocket 0.7.4
+class WebSocketErrorEventMock
+  attr_reader :message
+
+  def initialize(message = nil)
+    @message = message
+  end
+end
+
 # Mock of WebSocket so that can call on methods
 class WebSocketClientMock
   attr_reader :sent, :closed, :code, :reason
+
+  def initialize(version = "0.7.4")
+    @version = version
+  end
 
   def send(event)
     @sent = @sent.nil? ? event : (@sent.is_a?(Array) ? @sent << event : [@sent, event])
@@ -87,7 +119,7 @@ class WebSocketClientMock
   end
 
   def onclose(code, reason = nil)
-    @event = WebSocketEventMock.new(nil, code, reason)
+    @event = @version == "0.7.4" ? WebSocketCloseEventMock.new(code, reason) : WebSocketEventMock.new(nil, code, reason)
     @close_block.call(@event)
   end
 
@@ -95,8 +127,8 @@ class WebSocketClientMock
     @error_block = block
   end
 
-  def onerror(data)
-    @event = WebSocketEventMock.new(data)
+  def onerror(message)
+    @event = @version == "0.7.4" ? WebSocketErrorEventMock.new(message) : WebSocketEventMock.new(message)
     @error_block.call(@event)
   end
 
@@ -105,7 +137,7 @@ class WebSocketClientMock
   end
 
   def onmessage(data)
-    @event = WebSocketEventMock.new(data)
+    @event = @version == "0.7.4" ? WebSocketMessageEventMock.new(data) : WebSocketEventMock.new(data)
     @message_block.call(@event)
   end
 end
