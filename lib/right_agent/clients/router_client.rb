@@ -93,7 +93,7 @@ module RightScale
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)
-      init(:router, auth_client, options.merge(:server_name => "RightNet", :api_version => API_VERSION))
+      super(:router, auth_client, options.merge(:server_name => "RightNet", :api_version => API_VERSION))
       @options[:listen_timeout] ||= DEFAULT_LISTEN_TIMEOUT
     end
 

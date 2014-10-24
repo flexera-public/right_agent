@@ -25,7 +25,7 @@ require File.join(File.dirname(__FILE__), '..', 'core_payload_types')
 
 module RightScale
 
-  # Abstract base client for creating RightNet and RightApi clients with retry capability
+  # Base client for creating HTTP clients with retry capability
   # Requests are automatically retried to overcome connectivity failures
   # A status callback is provided so that the user of the client can take action
   # (e.g., queue requests) when connectivity is lost
@@ -73,6 +73,8 @@ module RightScale
     # @option options [Array] :retry_intervals between successive retries; defaults to DEFAULT_RETRY_INTERVALS
     # @option options [Boolean] :retry_enabled for requests that fail to connect or that return a retry result
     # @option options [Numeric] :reconnect_interval for reconnect attempts after lose connectivity
+    # @option options [String] :health_check_path in URI for health check resource
+    # @option options [Hash] :health_check_headers in addition to version header
     # @option options [Boolean] :non_blocking i/o is to be used for HTTP requests by applying
     #   EM::HttpRequest and fibers instead of RestClient; requests remain synchronous
     # @option options [Array] :filter_params symbols or strings for names of request parameters
@@ -83,7 +85,7 @@ module RightScale
     #
     # @raise [ArgumentError] auth client does not support this client type
     # @raise [ArgumentError] :api_version missing
-    def init(type, auth_client, options)
+    def initialize(type, auth_client, options)
       raise ArgumentError, "Auth client does not support server type #{type.inspect}" unless auth_client.respond_to?(type.to_s + "_url")
       raise ArgumentError, ":api_version option missing" unless options[:api_version]
       @type = type
@@ -102,6 +104,77 @@ module RightScale
       create_http_client
       enable_use if check_health == :connected
       state == :connected
+    end
+
+    # Make request via HTTP
+    # Rely on underlying HTTP client to log request and response
+    # Retry request if response indicates to or if there are connectivity failures
+    #
+    # There are also several timeouts involved:
+    #   - Underlying BalancedHttpClient connection open timeout (:open_timeout)
+    #   - Underlying BalancedHttpClient request timeout (:request_timeout)
+    #   - Retry timeout for this method and its handlers (:retry_timeout)
+    #   - Seconds before request expires and is to be ignored (:time_to_live)
+    # and if the target server is a RightNet router:
+    #   - Router response timeout (ideally > :retry_timeout and < :request_timeout)
+    #   - Router retry timeout (ideally = :retry_timeout)
+    #
+    # There are several possible levels of retry involved, starting with the outermost:
+    #   - This method will retry if the targeted server is not responding or if it receives
+    #     a retry response, but the total elapsed time is not allowed to exceed :request_timeout
+    #   - RequestBalancer in BalancedHttpClient will retry using other endpoints if it gets an error
+    #     that it considers retryable, and even if a front-end balancer is in use there will
+    #     likely be at least two such endpoints for redundancy
+    # and if the target server is a RightNet router:
+    #   - The router when sending a request via AMQP will retry if it receives no response,
+    #     but not exceeding its configured :retry_timeout; if the router's timeouts for retry
+    #     are consistent with the ones prescribed above, there will be no retry by the
+    #     RequestBalancer after router retries
+    #
+    # @param [Symbol] verb for HTTP REST request
+    # @param [String] path in URI for desired resource
+    # @param [Hash] params for HTTP request
+    # @param [String] type of request for use in logging; defaults to path
+    # @param [String, NilClass] request_uuid uniquely identifying this request;
+    #   defaults to randomly generated UUID
+    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
+    #   non-positive value or nil means never expire; defaults to nil
+    # @param [Hash] options augmenting or overriding default options for HTTP request
+    #
+    # @return [Object, NilClass] result of request with nil meaning no result
+    #
+    # @raise [Exceptions::Unauthorized] authorization failed
+    # @raise [Exceptions::ConnectivityFailure] cannot connect to server, lost connection
+    #   to it, or it is out of service or too busy to respond
+    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
+    # @raise [Exceptions::Terminating] closing client and terminating service
+    # @raise [Exceptions::InternalServerError] internal error in server being accessed
+    def make_request(verb, path, params = {}, type = nil, options = {})
+      raise Exceptions::Terminating if state == :closed
+      started_at = Time.now
+      time_to_live = (options[:time_to_live] && options[:time_to_live] > 0) ? options[:time_to_live] : nil
+      expires_at = started_at + [time_to_live || @options[:retry_timeout], @options[:retry_timeout]].min
+      headers = time_to_live ? @auth_client.headers.merge("X-Expires-At" => started_at + time_to_live) : @auth_client.headers
+      request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
+      attempts = 0
+      result = nil
+      @stats["requests sent"].measure(type || path, request_uuid) do
+        begin
+          attempts += 1
+          http_options = {
+            :open_timeout => @options[:open_timeout],
+            :request_timeout => @options[:request_timeout],
+            :request_uuid => request_uuid,
+            :headers => headers }
+          raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless [:connected, :closing].include?(state)
+          result = @http_client.send(verb, path, params, http_options.merge(options))
+        rescue StandardError => e
+          request_uuid = handle_exception(e, type || path, request_uuid, expires_at, attempts)
+          request_uuid ? retry : raise
+        end
+      end
+      @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
+      result
     end
 
     # Record callback to be notified of status changes
@@ -232,6 +305,8 @@ module RightScale
       options[:api_version] = @options[:api_version] if @options[:api_version]
       options[:non_blocking] = @options[:non_blocking] if @options[:non_blocking]
       options[:filter_params] = @options[:filter_params] if @options[:filter_params]
+      options[:health_check_path] = @options[:health_check_path] if @options[:health_check_path]
+      options[:health_check_headers] = @options[:health_check_headers] if @options[:health_check_headers]
       @http_client = RightScale::BalancedHttpClient.new(url, options)
     end
 
@@ -299,77 +374,6 @@ module RightScale
         end
       end
       true
-    end
-
-    # Make request via HTTP
-    # Rely on underlying HTTP client to log request and response
-    # Retry request if response indicates to or if there are connectivity failures
-    #
-    # There are also several timeouts involved:
-    #   - Underlying BalancedHttpClient connection open timeout (:open_timeout)
-    #   - Underlying BalancedHttpClient request timeout (:request_timeout)
-    #   - Retry timeout for this method and its handlers (:retry_timeout)
-    #   - Seconds before request expires and is to be ignored (:time_to_live)
-    # and if the target server is a RightNet router:
-    #   - Router response timeout (ideally > :retry_timeout and < :request_timeout)
-    #   - Router retry timeout (ideally = :retry_timeout)
-    #
-    # There are several possible levels of retry involved, starting with the outermost:
-    #   - This method will retry if the targeted server is not responding or if it receives
-    #     a retry response, but the total elapsed time is not allowed to exceed :request_timeout
-    #   - RequestBalancer in BalancedHttpClient will retry using other endpoints if it gets an error
-    #     that it considers retryable, and even if a front-end balancer is in use there will
-    #     likely be at least two such endpoints for redundancy
-    # and if the target server is a RightNet router:
-    #   - The router when sending a request via AMQP will retry if it receives no response,
-    #     but not exceeding its configured :retry_timeout; if the router's timeouts for retry
-    #     are consistent with the ones prescribed above, there will be no retry by the
-    #     RequestBalancer after router retries
-    #
-    # @param [Symbol] verb for HTTP REST request
-    # @param [String] path in URI for desired resource
-    # @param [Hash] params for HTTP request
-    # @param [String] type of request for use in logging; defaults to path
-    # @param [String, NilClass] request_uuid uniquely identifying this request;
-    #   defaults to randomly generated UUID
-    # @param [Numeric, NilClass] time_to_live seconds before request expires and is to be ignored;
-    #   non-positive value or nil means never expire; defaults to nil
-    # @param [Hash] options augmenting or overriding default options for HTTP request
-    #
-    # @return [Object, NilClass] result of request with nil meaning no result
-    #
-    # @raise [Exceptions::Unauthorized] authorization failed
-    # @raise [Exceptions::ConnectivityFailure] cannot connect to server, lost connection
-    #   to it, or it is out of service or too busy to respond
-    # @raise [Exceptions::RetryableError] request failed but if retried may succeed
-    # @raise [Exceptions::Terminating] closing client and terminating service
-    # @raise [Exceptions::InternalServerError] internal error in server being accessed
-    def make_request(verb, path, params = {}, type = nil, options = {})
-      raise Exceptions::Terminating if state == :closed
-      started_at = Time.now
-      time_to_live = (options[:time_to_live] && options[:time_to_live] > 0) ? options[:time_to_live] : nil
-      expires_at = started_at + [time_to_live || @options[:retry_timeout], @options[:retry_timeout]].min
-      headers = time_to_live ? @auth_client.headers.merge("X-Expires-At" => started_at + time_to_live) : @auth_client.headers
-      request_uuid = options[:request_uuid] || RightSupport::Data::UUID.generate
-      attempts = 0
-      result = nil
-      @stats["requests sent"].measure(type || path, request_uuid) do
-        begin
-          attempts += 1
-          http_options = {
-            :open_timeout => @options[:open_timeout],
-            :request_timeout => @options[:request_timeout],
-            :request_uuid => request_uuid,
-            :headers => headers }
-          raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless [:connected, :closing].include?(state)
-          result = @http_client.send(verb, path, params, http_options.merge(options))
-        rescue StandardError => e
-          request_uuid = handle_exception(e, type || path, request_uuid, expires_at, attempts)
-          request_uuid ? retry : raise
-        end
-      end
-      @communicated_callbacks.each { |callback| callback.call } if @communicated_callbacks
-      result
     end
 
     # Examine exception to determine whether to setup retry, raise new exception, or re-raise

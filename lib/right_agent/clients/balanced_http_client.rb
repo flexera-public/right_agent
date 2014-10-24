@@ -73,6 +73,7 @@ module RightScale
     # @option options [String] :server_name of server for use in exceptions; defaults to host name
     # @option options [String] :health_check_path in URI for health check resource;
     #   defaults to DEFAULT_HEALTH_CHECK_PATH
+    # @option options [Hash] :health_check_headers in addition to version header
     # @option options [Array] :filter_params symbols or strings for names of request parameters
     #   whose values are to be hidden when logging; also applied to contents of any parameters
     #   in CONTENT_FILTERED_PARAMS; can be augmented on individual requests

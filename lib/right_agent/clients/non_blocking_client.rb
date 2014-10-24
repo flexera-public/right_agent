@@ -40,6 +40,7 @@ module RightScale
     # @option options [String] :api_version for X-API-Version header
     # @option options [String] :health_check_path in URI for health check resource;
     #   defaults to BalancedHttpClient::DEFAULT_HEALTH_CHECK_PATH
+    # @option options [Hash] :health_check_headers in addition to version header
     def initialize(options)
       # Defer requiring this gem until now so that right_agent can be used with ruby 1.8.7
       require 'em-http-request'
@@ -64,7 +65,9 @@ module RightScale
           :inactivity_timeout => BalancedHttpClient::HEALTH_CHECK_TIMEOUT }
         connect_options[:proxy] = @proxy if @proxy
         request_options = {:path => uri.path}
-        request_options[:head] = {"X-API-Version" => options[:api_version]} if options[:api_version]
+        headers = (options[:health_check_headers] || {})
+        headers.merge!("X-API-Version" => options[:api_version]) if options[:api_version]
+        request_options[:head] = headers unless headers.empty?
         uri.path = ""
         request(:get, "", uri.to_s, connect_options, request_options)
       end

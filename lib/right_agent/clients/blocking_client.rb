@@ -41,6 +41,7 @@ module RightScale
     # @option options [String] :api_version for X-API-Version header
     # @option options [String] :health_check_path in URI for health check resource;
     #   defaults to DEFAULT_HEALTH_CHECK_PATH
+    # @option options [Hash] :health_check_headers in addition to version header
     def initialize(options)
       @connections = {}
 
@@ -59,7 +60,9 @@ module RightScale
         request_options = {
           :open_timeout => BalancedHttpClient::DEFAULT_OPEN_TIMEOUT,
           :timeout => BalancedHttpClient::HEALTH_CHECK_TIMEOUT }
-        request_options[:headers] = {"X-API-Version" => options[:api_version]} if options[:api_version]
+        headers = (options[:health_check_headers] || {})
+        headers.merge!("X-API-Version" => options[:api_version]) if options[:api_version]
+        request_options[:headers] = headers unless headers.empty?
         request(:get, "", uri.to_s, {}, request_options)
       end
     end

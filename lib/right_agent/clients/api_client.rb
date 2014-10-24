@@ -86,7 +86,7 @@ module RightScale
     #
     # @raise [ArgumentError] auth client does not support this client type
     def initialize(auth_client, options)
-      init(:api, auth_client, options.merge(:server_name => "RightApi", :api_version => API_VERSION))
+      super(:api, auth_client, options.merge(:server_name => "RightApi", :api_version => API_VERSION))
     end
 
     # Route a request to a single target or multiple targets with no response expected
