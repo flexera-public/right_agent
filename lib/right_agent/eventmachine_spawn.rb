@@ -45,6 +45,16 @@ module EventMachineSpawn
     EM.next_tick(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
   end
 
+  def self.wait(seconds)
+    if @fiber_pool
+      fiber = Fiber.current
+      EM.add_timer(seconds) { fiber.resume }
+      Fiber.yield
+    else
+      sleep(seconds)
+    end
+  end
+
   def self.add_timer(*args, &block)
     EM.add_timer(*args) { @fiber_pool ? @fiber_pool.spawn(&block) : yield }
   end
