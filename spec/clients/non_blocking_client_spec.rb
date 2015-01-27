@@ -253,15 +253,15 @@ describe RightScale::NonBlockingClient do
         @request_options[:path].should == "/api/foo/bar"
       end
 
-      it "converts connection errors to 500 by default" do
-        @headers.http_status = 500
+      it "converts connection errors to 504 by default" do
+        @headers.http_status = 504
         @response.should_receive(:errback).and_yield.once
         @response.should_receive(:error).and_return(nil)
-        @fiber.should_receive(:resume).with(500, "HTTP connection failure for GET").once
-        flexmock(Fiber).should_receive(:yield).and_return([500, "HTTP connection failure for GET"]).once
+        @fiber.should_receive(:resume).with(504, "HTTP connection failure for GET").once
+        flexmock(Fiber).should_receive(:yield).and_return([504, "HTTP connection failure for GET"]).once
         flexmock(EM::HttpRequest).should_receive(:new).with(@host, @connect_options).and_return(@request).once
         lambda { @client.request(:get, @path, @host, @connect_options, @request_options) }.
-            should raise_error(RightScale::HttpExceptions::InternalServerError)
+            should raise_error(RightScale::HttpExceptions::GatewayTimeout)
       end
 
       it "converts Errno::ETIMEDOUT error to 408 RequestTimeout" do
@@ -353,7 +353,7 @@ describe RightScale::NonBlockingClient do
         it "stops polling if there is an error" do
           @response.should_receive(:error).and_return("some error").once
           @response.should_receive(:errback).and_yield.once
-          @fiber.should_receive(:resume).with(500, "some error").once
+          @fiber.should_receive(:resume).with(504, "some error").once
           @client.send(:poll_again, @fiber, @request, @request_options, @stop_at).should be true
         end
 
@@ -408,12 +408,12 @@ describe RightScale::NonBlockingClient do
       @client.send(:handle_error, :get, Errno::ECONNREFUSED).should == [503, "Connection refused"]
     end
 
-    it "converts error to 500 InternalServerError by default" do
-      @client.send(:handle_error, :get, "failed").should == [500, "failed"]
+    it "converts error to 504 GatewayTimeout by default" do
+      @client.send(:handle_error, :get, "failed").should == [504, "failed"]
     end
 
-    it "generates error message for 500 InternalServerError if none specified" do
-      @client.send(:handle_error, :get, nil).should == [500, "HTTP connection failure for GET"]
+    it "generates error message for 504 GatewayTimeout if none specified" do
+      @client.send(:handle_error, :get, nil).should == [504, "HTTP connection failure for GET"]
     end
   end
 

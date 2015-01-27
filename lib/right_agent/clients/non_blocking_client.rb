@@ -206,7 +206,7 @@ module RightScale
       when "terminating", "reconnecting" then [200, nil]
       when "Errno::ETIMEDOUT" then [408, "Request timeout"]
       when "Errno::ECONNREFUSED" then [503, "Connection refused"]
-      else [500, (error && error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}"]
+      else [504, (error && error.to_s) || "HTTP connection failure for #{verb.to_s.upcase}"]
       end
     end
 
