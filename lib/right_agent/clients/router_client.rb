@@ -462,10 +462,19 @@ module RightScale
       @attempted_connect_at = Time.now
       @close_code = @close_reason = nil
 
+      # Initialize use of proxy if defined
+      if (v = BalancedHttpClient::PROXY_ENVIRONMENT_VARIABLES.detect { |v| ENV.has_key?(v) })
+        proxy_uri = ENV[v].match(/^[[:alpha:]]+:\/\//) ? URI.parse(ENV[v]) : URI.parse("http://" + ENV[v])
+        @proxy = { :origin => proxy_uri.to_s }
+      end
+
       options = {
         # Limit to .auth_header here (rather than .headers) to keep WebSockets happy
         :headers => {"X-API-Version" => API_VERSION}.merge(@auth_client.auth_header),
         :ping => @options[:listen_timeout] }
+
+      options[:proxy] = @proxy if @proxy
+
       url = URI.parse(@auth_client.router_url)
       url.scheme = url.scheme == "https" ? "wss" : "ws"
       url.path = url.path + "/connect"
