@@ -103,5 +103,5 @@ def version_can_handle_msgpack_result; 12 end
 def version_cannot_handle_non_delivery_result; 12 end
 def version_can_handle_non_delivery_result; 13 end
 
-def version_cannot_handle_http_result; 22 end
-def version_can_handle_http_result; 23 end
+def version_cannot_handle_http; 22 end
+def version_can_handle_http; 23 end
