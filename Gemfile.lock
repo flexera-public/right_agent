@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    right_agent (2.5.0)
+    right_agent (2.5.1)
       eventmachine (>= 0.12.10, < 2.0)
       faye-websocket (~> 0.8.0)
       ffi
