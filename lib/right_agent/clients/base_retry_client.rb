@@ -286,9 +286,12 @@ module RightScale
             create_http_client
             if check_health == :connected
               enable_use
-              @stats["reconnects"].update("success")
-              @reconnect_timer.cancel if @reconnect_timer # only need 'if' for test purposes
-              @reconnect_timer = @reconnecting = nil
+              # Check state again since may have disconnected during enable_use
+              if self.state == :connected
+                @stats["reconnects"].update("success")
+                @reconnect_timer.cancel if @reconnect_timer # only need 'if' for test purposes
+                @reconnect_timer = @reconnecting = nil
+              end
             end
           rescue Exception => e
             ErrorTracker.log(self, "Failed #{@options[:server_name]} reconnect", e, nil, :caller)

@@ -366,6 +366,13 @@ describe RightScale::BaseRetryClient do
         @client.send(:reconnect).should be_true
       end
 
+      it "rechecks state after enables use" do
+        flexmock(EM::PeriodicTimer).should_receive(:new).and_return(@timer).and_yield
+        flexmock(@client).should_receive(:enable_use).and_return { @client.instance_variable_set(:@state, :disconnected) }.once
+        @client.send(:reconnect).should be_true
+        @client.instance_variable_get(:@reconnecting).should be true
+      end
+
       it "disables timer" do
         @client.send(:reconnect); @client.instance_variable_set(:@reconnecting, nil) # to get @reconnect_timer initialized
         @client.instance_variable_set(:@reconnecting, nil)
