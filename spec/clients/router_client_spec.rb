@@ -756,6 +756,7 @@ describe RightScale::RouterClient do
           @client.send(:process_long_poll, e).should be nil
           @client.instance_variable_get(:@listen_state).should == :choose
           @client.instance_variable_get(:@listen_interval).should == 4
+          @client.instance_variable_get(:@connect_interval).should == 30
         end
       end
 

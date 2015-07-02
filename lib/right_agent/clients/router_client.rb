@@ -617,6 +617,8 @@ module RightScale
     def process_long_poll(result)
       case result
       when Exceptions::Unauthorized, Exceptions::ConnectivityFailure, Exceptions::RetryableError, Exceptions::InternalServerError
+        # Reset connect_interval otherwise long-poll and WebSocket connect attempts will continue to backoff
+        @connect_interval = CONNECT_INTERVAL
         update_listen_state(:choose, backoff_reconnect_interval)
         result = nil
       when Exception
