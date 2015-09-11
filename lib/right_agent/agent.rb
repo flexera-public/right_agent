@@ -676,10 +676,12 @@ module RightScale
       when "Push"
         packet = RightScale::Push.new(event[:path], event[:data], {:from => event[:from], :token => event[:uuid]})
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
+        packet.skewed_by = event[:skewed_by].to_i if event.has_key?(:skewed_by)
       when "Request"
         options = {:from => event[:from], :token => event[:uuid], :reply_to => event[:reply_to], :tries => event[:tries]}
         packet = RightScale::Request.new(event[:path], event[:data], options)
         packet.expires_at = event[:expires_at].to_i if event.has_key?(:expires_at)
+        packet.skewed_by = event[:skewed_by].to_i if event.has_key?(:skewed_by)
       end
       packet
     end
