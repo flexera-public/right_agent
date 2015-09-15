@@ -427,7 +427,7 @@ describe RightScale::Sender do
             @sender = create_sender(:http, :offline_queueing => true)
             flexmock(@sender.offline_handler).should_receive(:queueing?).and_return(true)
             flexmock(@sender.offline_handler).should_receive(:queue_request).
-                with(kind, @type, @payload, @target, @token, (@now + @ttl).to_i, @callback).once
+                with(kind, @type, @payload, @target, @token, (@now + @ttl).to_i, 0, @callback).once
             @sender.build_packet(kind, @type, @payload, @target, @options, &@callback).should be nil
           end
         end
@@ -779,7 +779,7 @@ describe RightScale::Sender do
               @sender.enable_offline_mode
               @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "disconnected").once
               flexmock(@sender.offline_handler).should_receive(:queue_request).
-                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i).once
+                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i, 0).once
               flexmock(@sender).should_receive(:handle_response).never
               @sender.send(:http_send_once, :send_push, @target, @packet, @received_at).should be_true
             end
@@ -792,7 +792,7 @@ describe RightScale::Sender do
               @sender.enable_offline_mode
               @client.should_receive(:request).and_raise(RightScale::Exceptions::ConnectivityFailure, "disconnected").once
               flexmock(@sender.offline_handler).should_receive(:queue_request).
-                  with(:send_request, @type, @payload, @target, @token, (@now + @ttl).to_i, @callback).once
+                  with(:send_request, @type, @payload, @target, @token, (@now + @ttl).to_i, 0, @callback).once
               flexmock(@sender).should_receive(:handle_response).never
               @sender.send(:http_send_once, :send_request, @target, @packet, @received_at, &@callback).should be_true
             end
@@ -886,7 +886,7 @@ describe RightScale::Sender do
               @sender.initialize_offline_queue
               @sender.enable_offline_mode
               flexmock(@sender.offline_handler).should_receive(:queue_request).
-                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i).once
+                  with(:send_push, @type, @payload, @target, @token, (@now + @ttl).to_i, 0).once
               flexmock(@sender).should_receive(:amqp_send_once).and_raise(RightScale::Sender::TemporarilyOffline).once
               @sender.send(:amqp_send, :send_push, @target, @packet, @received_at).should be_true
               @sender.pending_requests[@token].should be_nil
