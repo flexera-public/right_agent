@@ -168,6 +168,7 @@ module RightScale
     # token(String):: Token uniquely identifying request
     # expires_at(Integer):: Time in seconds in Unix-epoch when this request expires and
     #   is to be ignored by the receiver; value 0 means never expire
+    # skewed_by(Integer):: Amount of skew already applied to expires_at in seconds
     #
     # === Block
     # Optional block used to process response asynchronously with the following parameter:
@@ -175,9 +176,10 @@ module RightScale
     #
     # === Return
     # true:: Always return true
-    def queue_request(kind, type, payload, target, token, expires_at, &callback)
+    def queue_request(kind, type, payload, target, token, expires_at, skewed_by, &callback)
       request = {:kind => kind, :type => type, :payload => payload, :target => target,
-                 :token => token, :expires_at => expires_at, :callback => callback}
+                 :token => token, :expires_at => expires_at, :skewed_by => skewed_by,
+                 :callback => callback}
       Log.info("[offline] Queuing request: #{request.inspect}")
       vote_to_restart if (@restart_vote_count += 1) >= MAX_QUEUED_REQUESTS
       if @state == :initializing

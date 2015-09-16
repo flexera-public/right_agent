@@ -196,14 +196,15 @@ describe RightScale::OfflineHandler do
       @now = Time.now
       flexmock(Time).should_receive(:now).and_return(@now)
       @expires_at = @now + 25
+      @skewed_by = 1
       @callback = lambda { |_| }
     end
 
     it "queues request at head of queue if still initializing" do
       @handler.init
-      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, &@callback).should be_true
+      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, @skewed_by, &@callback).should be_true
       @handler.queue.size.should == 1
-      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, &@callback).should be_true
+      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, @skewed_by, &@callback).should be_true
       @handler.queue.size.should == 2
       @handler.queue.first[:target] == "target2"
     end
@@ -211,9 +212,9 @@ describe RightScale::OfflineHandler do
     it "queues request at end of queue if no longer initializing" do
       @handler.init
       @handler.start
-      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, &@callback)
+      @handler.queue_request(@kind, @type, @payload, "target1", "token1", @expires_at, @skewed_by, &@callback)
       @handler.queue.size.should == 1
-      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, &@callback)
+      @handler.queue_request(@kind, @type, @payload, "target2", "token2", @expires_at, @skewed_by, &@callback)
       @handler.queue.size.should == 2
       @handler.queue.first[:target] == "target1"
     end
@@ -223,7 +224,7 @@ describe RightScale::OfflineHandler do
       @handler.start
       flexmock(@handler).should_receive(:vote_to_restart).once
       RightScale::OfflineHandler::MAX_QUEUED_REQUESTS.times do |i|
-        @handler.queue_request(@kind, @type, @payload, @target, @token, @expires_at, &@callback)
+        @handler.queue_request(@kind, @type, @payload, @target, @token, @expires_at, @skewed_by, &@callback)
       end
     end
   end
@@ -249,6 +250,7 @@ describe RightScale::OfflineHandler do
       @now = Time.now
       flexmock(Time).should_receive(:now).and_return(@now)
       @expires_at = (@now + 25).to_i
+      @skewed_by = 1
       @result = nil
       @callback = lambda { |result| @result = result }
     end
@@ -259,9 +261,9 @@ describe RightScale::OfflineHandler do
         @handler.start
         flexmock(@handler).should_receive(:start_timer)
         @handler.enable
-        @handler.queue_request(:send_push, @type, @payload, @target, @token, 0)
-        @handler.queue_request(:send_request, @type, @payload, @target, @token, @expires_at, &@callback)
-        @handler.queue_request(:send_request, @type, @payload, @target, @token, @now.to_i, &@callback)
+        @handler.queue_request(:send_push, @type, @payload, @target, @token, 0, 0)
+        @handler.queue_request(:send_request, @type, @payload, @target, @token, @expires_at, @skewed_by, &@callback)
+        @handler.queue_request(:send_request, @type, @payload, @target, @token, @now.to_i, @skewed_by, &@callback)
         @handler.queue.size.should == 3
         flexmock(EM).should_receive(:next_tick).and_yield.twice
         @sender.should_receive(:send_push).with(@type, @payload, @target, {:token => @token}).once.ordered

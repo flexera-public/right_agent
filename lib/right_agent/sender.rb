@@ -346,7 +346,7 @@ module RightScale
       end
 
       if queueing?
-        @offline_handler.queue_request(kind, type, payload, target, packet.token, packet.expires_at, &callback)
+        @offline_handler.queue_request(kind, type, payload, target, packet.token, packet.expires_at, packet.skewed_by, &callback)
         nil
       else
         packet
@@ -637,7 +637,7 @@ module RightScale
         result = error_result(e.message)
       rescue Exceptions::ConnectivityFailure => e
         if queueing?
-          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, &callback)
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, packet.skewed_by, &callback)
           result = nil
         else
           result = retry_result(e.message)
@@ -696,7 +696,7 @@ module RightScale
       rescue TemporarilyOffline => e
         if queueing?
           # Queue request until come back online
-          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, &callback)
+          @offline_handler.queue_request(kind, packet.type, packet.payload, target, packet.token, packet.expires_at, packet.skewed_by, &callback)
           @pending_requests.delete(packet.token) if callback
         else
           # Send retry response so that requester, e.g., RetryableRequest, can retry
