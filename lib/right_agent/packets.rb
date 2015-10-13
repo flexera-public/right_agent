@@ -285,7 +285,7 @@ module RightScale
   class Request < Packet
 
     attr_accessor :from, :scope, :payload, :type, :token, :reply_to, :selector, :target, :persistent, :expires_at,
-                  :tags, :tries
+                  :skewed_by, :tags, :tries
 
     DEFAULT_OPTIONS = {:selector => :any}
 
@@ -306,6 +306,7 @@ module RightScale
     #     by the AMQP broker
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
     #      is to be ignored by the receiver; value 0 means never expire; defaults to 0
+    #   :skewed_by(Integer|nil):: Amount of skew already applied to expires_at in seconds
     #   :tags(Array(Symbol)):: List of tags to be used for selecting target for this request
     #   :tries(Array):: List of tokens for previous attempts to send this request
     # version(Array):: Protocol version of the original creator of the packet followed by the
@@ -324,6 +325,7 @@ module RightScale
       @target     = opts[:target]
       @persistent = opts[:persistent]
       @expires_at = opts[:expires_at] || 0
+      @skewed_by  = opts[:skewed_by] || 0
       @tags       = opts[:tags] || []
       @tries      = opts[:tries] || []
       @version    = version
@@ -348,16 +350,17 @@ module RightScale
     def self.create(o)
       i = o['data']
       expires_at = if i.has_key?('created_at')
-        created_at = i['created_at'].to_i
-        created_at > 0 ? created_at + (15 * 60) : 0
-      else
-        i['expires_at']
-      end
+                     created_at = i['created_at'].to_i
+                     created_at > 0 ? created_at + (15 * 60) : 0
+                   else
+                     i['expires_at']
+                   end
       new(i['type'], i['payload'], { :from       => self.compatible(i['from']), :scope      => i['scope'],
                                      :token      => i['token'],                 :reply_to   => self.compatible(i['reply_to']),
                                      :selector   => i['selector'],              :target     => self.compatible(i['target']),
                                      :persistent => i['persistent'],            :tags       => i['tags'],
-                                     :expires_at => expires_at,                 :tries      => i['tries'] },
+                                     :expires_at => expires_at,                 :skewed_by  => i['skewed_by'],
+                                     :tries      => i['tries'] },
           i['version'] || [DEFAULT_VERSION, DEFAULT_VERSION], o['size'])
     end
 
@@ -416,7 +419,7 @@ module RightScale
   class Push < Packet
 
     attr_accessor :from, :scope, :payload, :type, :token, :selector, :target, :persistent, :confirm,
-                  :expires_at, :tags
+                  :expires_at, :skewed_by, :tags
 
     DEFAULT_OPTIONS = {:selector => :any}
 
@@ -437,6 +440,7 @@ module RightScale
     #     to which request was published but not necessarily delivered
     #   :expires_at(Integer|nil):: Time in seconds in Unix-epoch when this request expires and
     #      is to be ignored by the receiver; value 0 means never expire; defaults to 0
+    #   :skewed_by(Integer|nil):: Amount of skew already applied to expires_at in seconds
     #   :tags(Array(Symbol)):: List of tags to be used for selecting target for this request
     # version(Array):: Protocol version of the original creator of the packet followed by the
     #   protocol version of the packet contents to be used when sending
@@ -454,6 +458,7 @@ module RightScale
       @persistent = opts[:persistent]
       @confirm    = opts[:confirm]
       @expires_at = opts[:expires_at] || 0
+      @skewed_by  = opts[:skewed_by] || 0
       @tags       = opts[:tags] || []
       @version    = version
       @size       = size
@@ -485,11 +490,11 @@ module RightScale
     # (Push):: New packet
     def self.create(o)
       i = o['data']
-      new(i['type'], i['payload'], { :from    => self.compatible(i['from']),   :scope      => i['scope'],
-                                     :token   => i['token'],                   :selector   => i['selector'],
-                                     :target  => self.compatible(i['target']), :persistent => i['persistent'],
-                                     :confirm => i['confirm'],                 :expires_at => i['expires_at'],
-                                     :tags    => i['tags']},
+      new(i['type'], i['payload'], { :from      => self.compatible(i['from']),   :scope      => i['scope'],
+                                     :token     => i['token'],                   :selector   => i['selector'],
+                                     :target    => self.compatible(i['target']), :persistent => i['persistent'],
+                                     :confirm   => i['confirm'],                 :expires_at => i['expires_at'],
+                                     :skewed_by => i['skewed_by'],               :tags       => i['tags'] },
           i['version'] || [DEFAULT_VERSION, DEFAULT_VERSION], o['size'])
     end
 
