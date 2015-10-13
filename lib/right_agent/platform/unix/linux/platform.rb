@@ -268,6 +268,7 @@ module RightScale
       private
 
       def scan_for_failed_packages(output_text, regex)
+        output_text = output_text.force_encoding("UTF-8") if output_text.respond_to?(:force_encoding)
         @output = output_text
         failed_packages = []
         output_text.scan(regex) { |package| failed_packages << package.last }
