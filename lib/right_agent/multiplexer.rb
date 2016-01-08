@@ -95,8 +95,8 @@ module RightScale
     #
     # === Return
     # (true|false):: True if this object, or ALL targets, respond to the names method; false otherwise
-    def respond_to?(m)
-      super(m) || @targets.all? { |t| t.respond_to?(m) }
+    def respond_to?(m, *args)
+      super(m, *args) || @targets.all? { |t| t.respond_to?(m, *args) }
     end
   end
 end
