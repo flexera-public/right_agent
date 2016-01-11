@@ -146,8 +146,8 @@ module RightScale
     #
     # === Return
     # (true|false):: True if this object or its proxy responds to the names method, false otherwise
-    def respond_to?(m)
-      super(m) || @logger.respond_to?(m)
+    def respond_to?(m, *args)
+      super(m, *args) || @logger.respond_to?(m, *args)
     end
 
     # Log warning and optionally append exception information
