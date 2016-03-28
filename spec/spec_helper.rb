@@ -22,7 +22,12 @@
 
 require 'rubygems'
 require 'bundler/setup'
-require 'pry'
+
+begin
+  require 'pry'
+rescue LoadError
+  #no-op; optional dependency
+end
 
 require 'rspec'
 require 'flexmock'
