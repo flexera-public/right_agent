@@ -161,6 +161,11 @@ describe RightScale::ErrorTracker do
       @exception = RuntimeError.new("error")
       @tracker.init(@agent, @agent_name, @options)
       @cgi_data = @tracker.instance_variable_get(:@cgi_data)
+      ENV['RAILS_ENV'] = 'development'
+    end
+
+    after(:each) do
+      ENV['RAILS_ENV'] = nil
     end
 
     it "sends notification using HydraulicBrake" do

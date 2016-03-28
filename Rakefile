@@ -48,7 +48,6 @@ task :default => :spec
 
 desc 'Run unit tests'
 RSpec::Core::RakeTask.new do |t|
-  t.rspec_opts = RSPEC_OPTS
   t.pattern = Dir['**/*_spec.rb']
 end
 

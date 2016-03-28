@@ -273,40 +273,57 @@ module RightScale
       end
     end
 
-    # Reconnect with server by periodically checking health
-    # Randomize when initially start checking to reduce server spiking
+    # If EventMachine reactor is running, begin attempting to periodically
+    # reconnect with server by checking health. Randomize initial attempt to
+    # reduce server spiking.
+    #
+    # If EventMachine reactor is NOT running, attempt to reconnect once
+    # and raise any exception that is encountered.
     #
     # @return [TrueClass] always true
     def reconnect
       unless @reconnecting
         @reconnecting = true
-        @stats["reconnects"].update("initiate")
-        @reconnect_timer = EM_S::PeriodicTimer.new(rand(@options[:reconnect_interval])) do
-          begin
-            create_http_client
-            if check_health == :connected
-              enable_use
-              # Check state again since may have disconnected during enable_use
-              if self.state == :connected
-                @stats["reconnects"].update("success")
-                @reconnect_timer.cancel if @reconnect_timer # only need 'if' for test purposes
-                @reconnect_timer = @reconnecting = nil
-              end
+
+        if EM.reactor_running?
+          @stats["reconnects"].update("initiate")
+          @reconnect_timer = EM_S::PeriodicTimer.new(rand(@options[:reconnect_interval])) do
+            begin
+              reconnect_once
+            rescue Exception => e
+              ErrorTracker.log(self, "Failed #{@options[:server_name]} reconnect", e, nil, :caller)
+              @stats["reconnects"].update("failure")
+              self.state = :disconnected
             end
-          rescue Exception => e
-            ErrorTracker.log(self, "Failed #{@options[:server_name]} reconnect", e, nil, :caller)
-            @stats["reconnects"].update("failure")
-            self.state = :disconnected
+            @reconnect_timer.interval = @options[:reconnect_interval] if @reconnect_timer
           end
-          @reconnect_timer.interval = @options[:reconnect_interval] if @reconnect_timer
+        else
+          reconnect_once
         end
       end
+
       true
     end
 
-    # Make request via HTTP
-    # Rely on underlying HTTP client to log request and response
-    # Retry request if response indicates to or if there are connectivity failures
+    # Attempt to reconnect exactly once. Perform no exception handling,
+    # state management, or scheduling of future reconnects, but cancel the
+    # reconnect timer if it exists and set @reconnecting, et al to nil.
+    def reconnect_once
+      create_http_client
+      if check_health == :connected
+        enable_use
+        # Check state again since may have disconnected during enable_use
+        if self.state == :connected
+          @stats["reconnects"].update("success")
+          @reconnect_timer.cancel if @reconnect_timer
+          @reconnect_timer = @reconnecting = nil
+        end
+      end
+    end
+
+    # Make request via HTTP. Attempt to reconnect first if disconnected and EM reactor is not running.
+    # Rely on underlying HTTP client to log request and response.
+    # Retry request if response indicates to or if there are connectivity failures.
     #
     # There are also several timeouts involved:
     #   - Underlying BalancedHttpClient connection open timeout (:open_timeout)
@@ -364,6 +381,7 @@ module RightScale
             :request_timeout => @options[:request_timeout],
             :request_uuid => request_uuid,
             :headers => headers }
+          reconnect_once if (:disconnected == state) && !EM.reactor_running?
           raise Exceptions::ConnectivityFailure, "#{@type} client not connected" unless [:connected, :closing].include?(state)
           result = @http_client.send(verb, path, params, http_options.merge(options))
         rescue StandardError => e

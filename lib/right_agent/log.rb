@@ -416,22 +416,21 @@ module RightScale
 
     # Initialize logger
     #
-    # === Parameters
-    # identity(String):: Log identity
-    # path(String):: Log directory path
-    # opts[:force](TrueClass|FalseClass):: Whether to re-initialize if logger
-    #                                      is already initialized
-    # opts[:print](TrueClass|FalseClass):: Whether to print to STDOUT log destination
+    # @param [String] identity RightNet identity (for log file name or syslog program name)
+    # @param [String] path directory to create log files in
+    # @option opts [Boolean] :force whether to re-initialize if logger is already initialized
+    # @option opts [Boolean] :print whether to print log-location info to STDOUT
     #
-    # === Return
-    # logger(RightScale::Multiplexer):: logger instance
+    # @return [RightScale::Multiplexer] logger instance
     def init(identity=nil, path=nil, opts={})
       if opts[:force] || !@initialized
         @initialized = true
         @level_frozen = false
-        logger = nil
+        logger = opts[:logger]
 
-        if @log_to_file_only || Platform.windows?
+        if !logger.nil?
+          $stderr.puts "Logging to already-initialized #{logger.class.name}" if opts[:print]
+        elsif @log_to_file_only || Platform.windows?
           if path
             file = File.join(path, "#{identity}.log")
           else
