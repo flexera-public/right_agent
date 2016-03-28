@@ -134,6 +134,7 @@ module RightScale
       end
       true
     rescue Exception => e
+      raise if e.class.name =~ /^RSpec/ # keep us from going insane while running tests
       Log.error("Failed to notify Errbit", e, :trace)
     end
 
