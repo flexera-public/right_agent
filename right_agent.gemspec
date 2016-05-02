@@ -44,7 +44,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('faye-websocket', '~> 0.7.0')
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('net-ssh', '~> 2.0')
-  spec.add_dependency('addressable', '~> 2.3', '< 2.4')
+  spec.add_dependency('addressable', '~> 2.3')
 
   # TEAL HACK: rake gem may override current RUBY_PLATFORM to allow building
   # gems for all supported platforms from any platform. rubygems 1.8.x makes it
