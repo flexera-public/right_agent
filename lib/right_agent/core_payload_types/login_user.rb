@@ -40,7 +40,7 @@ module RightScale
       @public_key   = args[2]
       @common_name  = args[3] || ''
       @superuser    = args[4] || false
-      @expires_at   = Time.at(args[5]) if args[5] && (args[5] != 0) # nil -> 0 because of expires_at.to_i below
+      @expires_at   = Time.at(args[5].to_i) if args[5] && (args[5] != 0) # nil -> 0 because of expires_at.to_i below
       @public_keys  = args[6]
       @profile_data = args[7]
       @public_key_fingerprints = args[8]
