@@ -13,9 +13,8 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine',      '~> 1.0.0.10'
-
-gem 'hydraulic_brake',   '~> 0.1.0'
+gem 'eventmachine', '~> 1.0.0.10'
+gem 'airbrake-ruby', '~> 1.2'
 
 group :windows do
   platform :mswin do

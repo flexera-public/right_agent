@@ -14,7 +14,7 @@ module RightScale
   # Tracker for unexpected errors
   # Logs them with appropriate trace information
   # Accumulates statistics about exceptions
-  # Reports exceptions to external Errbit service via HydraulicBrake
+  # Reports exceptions to external Errbit service via Airbrake
   class ErrorTracker
 
     include RightSupport::Ruby::EasySingleton
@@ -104,33 +104,34 @@ module RightScale
     # @return [TrueClass] always true
     def notify(exception, packet = nil, agent = nil, component = nil)
       if @notify_enabled
-        data = {
-          :error_message => exception.respond_to?(:message) ? exception.message : exception.to_s,
-          :backtrace => exception.respond_to?(:backtrace) ? exception.backtrace : caller,
-          :environment_name => ENV["RAILS_ENV"],
-        }
-        if agent
-          data[:cgi_data] = (@cgi_data || {}).merge(:agent_class => agent.class.name)
-        elsif @cgi_data
-          data[:cgi_data] = @cgi_data
-        end
-        data[:error_class] = exception.class.name if exception.is_a?(Exception)
-        data[:component] = component if component
         if packet && packet.is_a?(Packet)
-          data[:action] = packet.type.split("/").last if packet.respond_to?(:type)
+          action = packet.type.split("/").last if packet.respond_to?(:type)
           params = packet.respond_to?(:payload) && packet.payload
           uuid = packet.respond_to?(:token) && packet.token
         elsif packet.is_a?(Hash)
-          action = packet[:path] || packet["path"]
-          data[:action] = action.split("/").last if action
+          action_path = packet[:path] || packet["path"]
+          action = action_path.split("/").last if action_path
           params = packet[:data] || packet["data"]
           uuid = packet[:uuid] || packet["uuid"]
         else
           params = uuid = nil
         end
-        data[:parameters] = params.is_a?(Hash) ? filter(params) : {:param => params} if params
-        data[:session_data] = {:uuid => uuid} if uuid
-        HydraulicBrake.notify(data)
+
+        n = Airbrake.build_notice(
+          exception,
+          { component: component, action: action },
+          :right_agent )
+
+        n[:params] = params.is_a?(Hash) ? filter(params) : {:param => params} if params
+        n[:session] = { :uuid => uuid } if uuid
+
+        if agent
+          n[:environment] = (@cgi_data || {}).merge(:agent_class => agent.class.name)
+        elsif @cgi_data
+          n[:environment] = @cgi_data || {}
+        end
+
+        Airbrake.notify(n, {}, :right_agent)
       end
       true
     rescue Exception => e
@@ -169,7 +170,7 @@ module RightScale
       @exception_stats.reset
     end
 
-    # Configure HydraulicBreak for exception notification
+    # Configure Airbrake for exception notification
     #
     # @param [String] agent_name uniquely identifying agent process on given server
     #
@@ -182,11 +183,11 @@ module RightScale
     #
     # @return [TrueClass] always true
     #
-    # @raise [RuntimeError] hydraulic_brake gem missing
+    # @raise [RuntimeError] airbrake gem missing
     def notify_init(agent_name, options)
       if options[:airbrake_endpoint] && options[:airbrake_api_key]
-        unless require_succeeds?("hydraulic_brake")
-          raise RuntimeError, "hydraulic_brake gem missing - required if airbrake options used in ErrorTracker"
+        unless require_succeeds?("airbrake-ruby")
+          raise RuntimeError, "airbrake-ruby gem missing - required if airbrake options used in ErrorTracker"
         end
 
         @cgi_data = {
@@ -195,21 +196,23 @@ module RightScale
           :agent_name => agent_name
         }
         @cgi_data[:shard_id] = options[:shard_id] if options[:shard_id]
-        @cgi_data[:sha] = CURRENT_SOURCE_SHA if defined?(CURRENT_SOURCE_SHA)
-
-        uri = URI.parse(options[:airbrake_endpoint])
-        HydraulicBrake.configure do |config|
-          config.secure = (uri.scheme == "https")
-          config.host = uri.host
-          config.port = uri.port
-          config.api_key = options[:airbrake_api_key]
-          config.project_root = AgentConfig.root_dir
-        end
         @filter_params = (options[:filter_params] || []).map { |p| p.to_s }
         @notify_enabled = true
+
+        return true if Airbrake.send(:configured?, :right_agent)
+
+        Airbrake.configure(:right_agent) do |config|
+          config.host = options[:airbrake_endpoint]
+          config.project_id = options[:airbrake_api_key]
+          config.project_key = options[:airbrake_api_key]
+          config.root_directory = AgentConfig.root_dir
+          config.environment = ENV['RAILS_ENV']
+          config.app_version = CURRENT_SOURCE_SHA if defined?(CURRENT_SOURCE_SHA)
+        end
       else
         @notify_enabled = false
       end
+
       true
     end
 
