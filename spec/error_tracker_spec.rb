@@ -20,7 +20,7 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-require 'hydraulic_brake'
+require 'airbrake-ruby'
 
 require File.expand_path(File.join(File.dirname(__FILE__), 'spec_helper'))
 
@@ -39,7 +39,7 @@ describe RightScale::ErrorTracker do
     @trace_level = RightScale::Agent::TRACE_LEVEL
     @tracker = RightScale::ErrorTracker.instance
     @log = flexmock(RightScale::Log)
-    @brake = flexmock(HydraulicBrake)
+    @brake = flexmock(Airbrake)
     @options = {
       :shard_id => @shard_id,
       :trace_level => @trace_level,
@@ -168,80 +168,90 @@ describe RightScale::ErrorTracker do
       ENV['RAILS_ENV'] = nil
     end
 
-    it "sends notification using HydraulicBrake" do
-      @brake.should_receive(:notify).with(on { |a| a[:error_message] == "error" &&
-                                                   a[:error_class] == "RuntimeError" &&
-                                                   a[:backtrace].nil? &&
-                                                   ["test", "development"].include?(a[:environment_name]) &&
-                                                   a[:cgi_data].should == @cgi_data &&
-                                                   a.keys & [:component, :action, :parameters, :session_data] == [] }).once
+    it "sends notification using Airbrake" do
+      @brake.should_receive(:notify).with(on { |a|
+        a[:errors].first[:type] == "RuntimeError" &&
+        a[:environment] == @cgi_data
+      }, {}, :right_agent).once
       @tracker.notify(@exception).should be true
     end
 
     it "includes packet data in notification" do
       request = RightScale::Request.new("/foo/bar", {:pay => "load"}, :token => "token")
-      @brake.should_receive(:notify).with(on { |a| a[:error_message] == "error" &&
-                                                   a[:error_class] == "RuntimeError" &&
-                                                   a[:backtrace].nil? &&
-                                                   a[:action] == "bar" &&
-                                                   a[:parameters] == {:pay => "load"} &&
-                                                   ["test", "development"].include?(a[:environment_name]) &&
-                                                   a[:cgi_data] == @cgi_data &&
-                                                   a[:session_data] == {:uuid => "token"} }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:errors].first[:message] == "error" &&
+        a[:context][:action] == 'bar' &&
+        a[:params] == { :pay => 'load' } &&
+        a[:session] == { :uuid => 'token' }
+      }, {}, :right_agent).once
+
       @tracker.notify(@exception, request).should be true
     end
 
     it "includes event data in notification" do
-      @brake.should_receive(:notify).with(on { |a| a[:error_message] == "error" &&
-                                                   a[:error_class] == "RuntimeError" &&
-                                                   a[:backtrace].nil? &&
-                                                   a[:action] == "bar" &&
-                                                   a[:parameters] == {:pay => "load"} &&
-                                                   ["test", "development"].include?(a[:environment_name]) &&
-                                                   a[:cgi_data] == @cgi_data &&
-                                                   a[:session_data] == {:uuid => "token"} }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:errors].first[:message] == "error" &&
+        a[:errors].first[:type] == "RuntimeError" &&
+        a[:context][:action] == 'bar' &&
+        a[:params] == { :pay => 'load' } &&
+        a[:session] == { :uuid => 'token' }
+      }, {}, :right_agent).once
+
       @tracker.notify(@exception, {"uuid" => "token", "path" => "/foo/bar", "data" => {:pay => "load"}}).should be true
     end
 
     it "adds agent class to :cgi_data in notification" do
-      @brake.should_receive(:notify).with(on { |a| a[:cgi_data] == @cgi_data.merge(:agent_class => "AgentMock") }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:environment] == @cgi_data.merge(:agent_class => 'AgentMock')
+      }, {}, :right_agent).once
+
       @tracker.notify(@exception, packet = nil, @agent).should be true
     end
 
     it "adds component to notification" do
-      @brake.should_receive(:notify).with(on { |a| a[:component] == "component" }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:context][:component] == 'component'
+      }, {}, :right_agent).once
       @tracker.notify(@exception, packet = nil, agent = nil, "component").should be true
     end
 
     it "converts non-nil, non-hash payload in packet to a hash" do
       request = RightScale::Request.new("/foo/bar", "payload", :token => "token")
-      @brake.should_receive(:notify).with(on { |a| a[:parameters] == {:param => "payload"} }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:params] == { :param => 'payload' }
+      }, {}, :right_agent).once
       @tracker.notify(@exception, request).should be true
     end
 
     it "converts non-nil, non-hash data in event to a hash" do
-      @brake.should_receive(:notify).with(on { |a| a[:parameters] == {:param => "payload"} }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:params] == { :param => 'payload' }
+      }, {}, :right_agent).once
       @tracker.notify(@exception, {"uuid" => "token", "path" => "/foo/bar", "data" => "payload"}).should be true
     end
 
     it "omits :parameters from notification if payload in packet is nil" do
       request = RightScale::Request.new("/foo/bar", nil, :token => "token")
-      @brake.should_receive(:notify).with(on { |a| !a.has_key?(:parameters) }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:params] == {}
+      }, {}, :right_agent).once
       @tracker.notify(@exception, request).should be true
     end
 
     it "omits :parameters from notification if data in packet is nil" do
-      @brake.should_receive(:notify).with(on { |a| !a.has_key?(:parameters) }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:params] == {}
+      }, {}, :right_agent).once
       @tracker.notify(@exception, {"uuid" => "token", "path" => "/foo/bar", "data" => nil}).should be true
     end
 
     it "functions even if cgi_data has not been initialized by notify_init" do
       @tracker.instance_variable_set(:@cgi_data, nil)
-      @brake.should_receive(:notify).with(on { |a| a[:error_message] == "error" &&
-                                                   a[:error_class] == "RuntimeError" &&
-                                                   a[:backtrace].nil? &&
-                                                   ["test", "development"].include?(a[:environment_name]) &&
-                                                   a.keys & [:cgi_data, :component, :action, :parameters, :session_data] == [] }).once
+      @brake.should_receive(:notify).with(on { |a|
+        a[:errors].first[:message] == "error" &&
+        a[:errors].first[:type] == "RuntimeError" &&
+        a[:environment] == {}
+      }, {}, :right_agent).once
       @tracker.notify(@exception).should be true
     end
 
@@ -290,7 +300,7 @@ describe RightScale::ErrorTracker do
 
   context :notify_init do
     class ConfigMock
-      attr_accessor :secure, :host, :port, :api_key, :project_root
+      attr_accessor :host, :api_key, :project_id, :project_key, :root_directory, :environment
     end
 
     it "does not initialize if Airbrake endpoint or API key is undefined" do
@@ -301,7 +311,10 @@ describe RightScale::ErrorTracker do
       @tracker.instance_variable_get(:@notify_enabled).should be false
     end
 
-    it "initializes cgi data and configures HydraulicBrake" do
+    it "initializes cgi data and configures Airbrake" do
+      # dirty, but we need to make sure this is unset in order to progress
+      Airbrake.instance_variable_set(:@notifiers, {})
+
       config = ConfigMock.new
       @brake.should_receive(:configure).and_yield(config).once
       @tracker.send(:notify_init, @agent_name, @options).should be true
@@ -310,20 +323,19 @@ describe RightScale::ErrorTracker do
       cgi_data[:pid].should be_a Integer
       cgi_data[:process].should be_a String
       cgi_data[:shard_id].should == @shard_id
-      config.secure.should be true
-      config.host.should == "airbrake.com"
-      config.port.should == 443
-      config.api_key.should == @api_key
-      config.project_root.should be_a String
+      config.host.should == "https://airbrake.com"
+      config.project_id.should == @api_key
+      config.project_key.should == @api_key
+      config.root_directory.should be_a String
       @tracker.instance_variable_get(:@notify_enabled).should be true
       @tracker.instance_variable_get(:@filter_params).should == ["password"]
     end
 
-    it "raises exception if hydraulic_gem is not available" do
-      flexmock(@tracker).should_receive(:require_succeeds?).with("hydraulic_brake").and_return(false)
+    it "raises exception if airbrake-ruby is not available" do
+      flexmock(@tracker).should_receive(:require_succeeds?).with("airbrake-ruby").and_return(false)
       lambda do
         @tracker.send(:notify_init, @agent_name, @options)
-      end.should raise_error(RuntimeError, /hydraulic_brake gem missing/)
+      end.should raise_error(RuntimeError, /airbrake-ruby gem missing/)
     end
   end
 
