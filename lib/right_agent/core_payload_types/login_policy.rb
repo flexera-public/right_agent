@@ -1,3 +1,5 @@
+require 'digest/sha2'
+
 #
 # Copyright (c) 2009-2011 RightScale Inc
 #
@@ -42,6 +44,30 @@ module RightScale
     # Array of serialized fields given to constructor
     def serialized_members
       [ @audit_id, @created_at.to_i, @exclusive, @users ]
+    end
+
+    # Compute a cryptographic hash of the information in this policy; helps
+    # callers compare two policies to see if they are equivalent.
+    # @see https://github.com/rightscale/cmaro/domain/login_policy.go
+    def fingerprint
+      h = Digest::SHA2.new
+      h << (self.exclusive ? 'true' : 'false')
+
+      users = self.users.sort { |a, b| a.uuid <=> b.uuid }
+      users.each do |u|
+        h << format(",(%d,%s,%s,%d,%s",
+                    u.uuid, u.common_name,
+                    (u.superuser ? 'true' : 'false'),
+                    (u.expires_at ? u.expires_at.to_i : 0),
+                    u.username)
+
+        u.public_key_fingerprints.each do |fp|
+          h << "," << fp
+        end
+        h << ')'
+      end
+
+      h.hexdigest
     end
 
     # Utility method to parse an SSH2-format public key and return a 4-tuple consisting
