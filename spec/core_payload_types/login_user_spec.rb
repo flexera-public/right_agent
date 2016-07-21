@@ -46,6 +46,26 @@ module LoginUserSpec
 end
 
 describe RightScale::LoginUser do
+  context '.fingerprint' do
+    # Shared with CMARO specs. See https://github.com/rightscale/cmaro/domain/login_policy_test.go
+    let(:keys) {
+      [
+        'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDW5pCQxyHOX/GoBtCypA312KPW4xGG9KgYueU11AH+s3NnhNWRxV0NFxyBpS9ti5trgRQtz96nslbhv3xwOMhxi6phHr3RM1gFsP2KCzmWrVtwnivL/EEP4exT8ksnS6tM0o4YcK35R+pqCcef6zvu0+36PeUCMxPMXui37Q2DH8VW2oAtv4yXgaZKIPf+6T86Nl1lfXYwSa49RVWIugcCZ1hlOWxTA7Qp1zmP1VQsl10o7NlK5ftOhgZkvu8KBPmL8qqD9YzoQgHpAx77cquV1if3ZcZIDCCbzo5mD60uEiBzNssE38aMilc9XtRR4b0Wb+/ousfzbOe8lB0hGRfZ alice@initech.com',
+        'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDMJRT7/ESoJwmMY5pD5cXcHU24pXnBYv9hSaYcowshuSTRtCYr+7RRcxtGy7vSI6IFiA1+8fp0RXMN0XwGC1wx2ndOWFW4pHNy7wNr8CDJDnl4wyL90XK6MJQBqpmHL+NMA9YyVixzPYrW/foaRUyP/uTr5fVnTySvfQHSmqwDD5NcwJqt4Gz4w47hNKwlCwXq1DG5+KyR5n2SdpcdIkZLB9H8luvTLucv4ozoibi7JNYkJ+mR1oumcXrvUDDO24cvIBYyoVLGIFXcP5jvshijcEzmRz8/lzeJ0fzJXIN+rs7fuunJkuC/85fHwroeae5RB82HLOHWapGX6taevrBp bob@initech.com'
+      ]
+    }
+    let(:fingerprints) do
+      [
+        'abd8e6410457ad1681123bc5997de6efc8dd3c2f',
+        '21fdda62b604e30ef36f8af3b42eb74832492808'
+      ]
+    end
+
+    it 'interoperates with golang' do
+      described_class.fingerprint(keys[0]).should == fingerprints[0]
+      described_class.fingerprint(keys[1]).should == fingerprints[1]
+    end
+  end
 
   # ensures that the serialization downgrade case works.
   def test_serialization_downgrade(user, public_key)
