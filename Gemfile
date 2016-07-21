@@ -16,6 +16,9 @@ gem 'json', '~> 1.4'
 gem 'eventmachine', '~> 1.0.0.10'
 gem 'airbrake-ruby', '~> 1.2'
 
+# we test with Ruby 2.0 which is not compatible with Rack 2.x
+gem 'rack', '~> 1.6'
+
 group :windows do
   platform :mswin do
     gem 'win32-dir',     '~> 0.4.5'
