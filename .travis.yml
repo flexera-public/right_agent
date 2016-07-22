@@ -6,4 +6,5 @@ rvm:
  - 2.0
  - 2.1
 script:
+ - travis_debug
  - bundle exec rake ci:spec
