@@ -35,7 +35,7 @@ describe RightScale::ErrorTracker do
     @agent_name = "test_agent"
     @shard_id = 9
     @endpoint = "https://airbrake.com"
-    @api_key = "secret"
+    @api_key = '1'
     @trace_level = RightScale::Agent::TRACE_LEVEL
     @tracker = RightScale::ErrorTracker.instance
     @log = flexmock(RightScale::Log)
