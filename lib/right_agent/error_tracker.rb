@@ -99,7 +99,7 @@ module RightScale
     # @param [Exception, String] exception raised
     # @param [Packet, Hash] packet associated with exception
     # @param [Object] agent object reporting error
-    # @param [String] component or service area where error occurred
+    # @param [String,Object] component or service area where error occurred
     #
     # @return [TrueClass] always true
     def notify(exception, packet = nil, agent = nil, component = nil)
@@ -116,6 +116,8 @@ module RightScale
         else
           params = uuid = nil
         end
+
+        component = component.class.name unless component.is_a?(String)
 
         n = Airbrake.build_notice(
           exception,
