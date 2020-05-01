@@ -78,7 +78,7 @@ Gem::Specification.new do |spec|
     # allows bundler to generate a consistent Gemfile.lock when it is declared
     # for both mingw and Linux.
     spec.add_dependency('ffi')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+    spec.add_dependency('msgpack', ['>= 0.4.4'])
     spec.add_dependency('json', '~> 1.4')
   end
 
