@@ -61,14 +61,14 @@ Gem::Specification.new do |spec|
     spec.add_dependency('win32-api', ['>= 1.4.5', '< 1.4.7'])
     spec.add_dependency('win32-dir', '~> 0.3.5')
     spec.add_dependency('win32-process', '~> 0.6.1')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.5'])
+    spec.add_dependency('msgpack', '~>1.3.3')
     spec.add_dependency('json', '1.4.6')
     spec.platform = 'x86-mswin32-60'
   when /mingw/i
     spec.add_dependency('ffi')
     spec.add_dependency('win32-dir', '>= 0.3.5')
     spec.add_dependency('win32-process', '>= 0.6.1')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+    spec.add_dependency('msgpack', '~>1.3.3')
     spec.add_dependency('json', '~> 1.4')
     spec.platform = 'x86-mingw32'
   when /win32|dos|cygwin|windows/i
@@ -78,7 +78,7 @@ Gem::Specification.new do |spec|
     # allows bundler to generate a consistent Gemfile.lock when it is declared
     # for both mingw and Linux.
     spec.add_dependency('ffi')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+    spec.add_dependency('msgpack', '~>1.3.3')
     spec.add_dependency('json', '~> 1.4')
   end
 
