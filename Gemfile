@@ -1,4 +1,3 @@
-source 'http://gems.test.rightscale.com'
 source 'https://rubygems.org'
 
 gemspec
@@ -9,15 +8,15 @@ gem 'mime-types',        '< 2.0'
 
 # RightScale internally publishes a JSON 1.4.6 gem for mswin32 platform;
 # Going forward to ruby 1.9 we can relax the constraint on the json gem.
-gem 'json', '~> 1.4'
+gem 'json', '~> 1.8.5'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '~> 1.0.0.10'
+gem 'eventmachine', '~> 1.0.1'
 gem 'airbrake-ruby', '~> 1.2'
 
 # we test with Ruby 2.0 which is not compatible with Rack 2.x
-gem 'rack', '~> 1.6'
+gem 'rack', '~> 2.2.3'
 
 group :windows do
   platform :mswin do
@@ -34,6 +33,7 @@ group :test do
   gem 'em-http-request', '1.0.3'
   gem 'flexmock',        '~> 1.0'
   gem 'rspec',           '~> 2.13.0'
+  gem 'rest-client',     '~> 1.8.0'
   gem 'right_develop',   '~> 3.1'
   gem 'simplecov'
 end
