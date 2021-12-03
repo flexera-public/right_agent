@@ -3,5 +3,5 @@ ruby do
   rubygems '1.8.26'
 end
 bundler do
-  version '1.3.5'
+  version '2.2.32'
 end

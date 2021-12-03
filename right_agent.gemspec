@@ -25,7 +25,7 @@ require 'rbconfig'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '2.7.2'
+  spec.version   = '2.7.3'
   spec.date      = '2016-07-25'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
@@ -40,7 +40,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency('right_support', ['>= 2.4.1', '< 3.0'])
   spec.add_dependency('right_amqp', '~> 0.8')
-  spec.add_dependency('rest-client', '~> 1.7.0.3')
+  spec.add_dependency('rest-client', '~> 1.8.0')
   spec.add_dependency('faye-websocket', '~> 0.7.0')
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
   spec.add_dependency('net-ssh', '~> 2.0')
@@ -61,14 +61,14 @@ Gem::Specification.new do |spec|
     spec.add_dependency('win32-api', ['>= 1.4.5', '< 1.4.7'])
     spec.add_dependency('win32-dir', '~> 0.3.5')
     spec.add_dependency('win32-process', '~> 0.6.1')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.5'])
+    spec.add_dependency('msgpack', '~> 1.0.0')
     spec.add_dependency('json', '1.4.6')
     spec.platform = 'x86-mswin32-60'
   when /mingw/i
     spec.add_dependency('ffi')
     spec.add_dependency('win32-dir', '>= 0.3.5')
     spec.add_dependency('win32-process', '>= 0.6.1')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+    spec.add_dependency('msgpack', '~> 1.0.0')
     spec.add_dependency('json', '~> 1.4')
     spec.platform = 'x86-mingw32'
   when /win32|dos|cygwin|windows/i
@@ -78,7 +78,7 @@ Gem::Specification.new do |spec|
     # allows bundler to generate a consistent Gemfile.lock when it is declared
     # for both mingw and Linux.
     spec.add_dependency('ffi')
-    spec.add_dependency('msgpack', ['>= 0.4.4', '< 0.6'])
+    spec.add_dependency('msgpack', '~> 1.0.0')
     spec.add_dependency('json', '~> 1.4')
   end
 
