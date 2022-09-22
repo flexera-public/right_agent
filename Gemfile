@@ -1,4 +1,3 @@
-source 'http://gems.test.rightscale.com'
 source 'https://rubygems.org'
 
 gemspec
@@ -13,7 +12,8 @@ gem 'json', '~> 1.4'
 
 # Lock eventmachine to a published and well-tested version to avoid picking up
 # proprietary builds that happen to be installed locally
-gem 'eventmachine', '~> 1.0.0.10'
+gem 'eventmachine', '~> 1.0.0.10', git: 'git@github.com:rightscale/rightscale-eventmachine.git'
+gem 'rest-client', git: 'git@github.com:flexera-public/rest-client.git', ref: '4df6b644cd495be4da6f16a3d1ca7de420a7d90e'
 gem 'airbrake-ruby', '~> 1.2'
 
 # we test with Ruby 2.0 which is not compatible with Rack 2.x
