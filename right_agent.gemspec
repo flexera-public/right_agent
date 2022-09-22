@@ -25,7 +25,7 @@ require 'rbconfig'
 
 Gem::Specification.new do |spec|
   spec.name      = 'right_agent'
-  spec.version   = '2.7.2'
+  spec.version   = '2.8.0-rc.1'
   spec.date      = '2016-07-25'
   spec.authors   = ['Lee Kirchhoff', 'Raphael Simon', 'Tony Spataro', 'Scott Messier']
   spec.email     = 'lee@rightscale.com'
@@ -43,7 +43,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency('rest-client', '~> 1.7.0.3')
   spec.add_dependency('faye-websocket', '~> 0.7.0')
   spec.add_dependency('eventmachine', ['>= 0.12.10', '< 2.0'])
-  spec.add_dependency('net-ssh', '~> 2.0')
+  spec.add_dependency('net-ssh', '>= 2.6.5')
   spec.add_dependency('addressable', '~> 2.3')
 
   # TEAL HACK: rake gem may override current RUBY_PLATFORM to allow building
